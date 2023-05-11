@@ -1,8 +1,6 @@
 pub mod gateway;
 pub mod models;
 
-use warp;
-
 #[tokio::main]
 async fn main() {
     let gateway_routes = gateway::handler::get_routes();
