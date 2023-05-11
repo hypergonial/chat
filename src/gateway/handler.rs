@@ -7,8 +7,8 @@ use std::sync::{
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use warp::filters::BoxedFilter;
 use warp::ws::{Message, WebSocket};
-use warp::filters::{BoxedFilter};
 use warp::Filter;
 
 use crate::models::socket_event::SocketEvent;
@@ -19,23 +19,25 @@ static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(0);
 type PeerMap = Arc<RwLock<HashMap<usize, mpsc::UnboundedSender<SocketEvent>>>>;
 
 /// Return a warp filter that handles websocket connections, add these routes to enable the gateway
-pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)>
-{
+pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     let users = PeerMap::default();
     let users = warp::any().map(move || users.clone());
 
-    let gateway = warp::path("gateway")
-        .and(warp::ws())
-        .and(users)
-        .map(|ws: warp::ws::Ws, users| ws.on_upgrade(move |socket| handle_connection(socket, users)));
+    let gateway =
+        warp::path("gateway")
+            .and(warp::ws())
+            .and(users)
+            .map(|ws: warp::ws::Ws, users| {
+                ws.on_upgrade(move |socket| handle_connection(socket, users))
+            });
 
     gateway.boxed()
 }
 
 /// Handle a new websocket connection
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `socket` - The websocket connection
 /// * `users` - The peermap of all users
 async fn handle_connection(socket: WebSocket, users: PeerMap) {
@@ -51,7 +53,12 @@ async fn handle_connection(socket: WebSocket, users: PeerMap) {
 
     // Add user to peermap
     users.write().await.insert(user_id, sender);
-    dispatch(user_id, SocketEvent::MemberJoin(user_id.to_string()), &users).await;
+    dispatch(
+        user_id,
+        SocketEvent::MemberJoin(user_id.to_string()),
+        &users,
+    )
+    .await;
 
     // Messages sent to this user by others should be sent through the socket to them
     tokio::spawn(async move {
@@ -86,14 +93,19 @@ async fn handle_connection(socket: WebSocket, users: PeerMap) {
 
     // Disconnection logic
     users.write().await.remove(&user_id);
-    dispatch(user_id, SocketEvent::MemberLeave(user_id.to_string()), &users).await;
+    dispatch(
+        user_id,
+        SocketEvent::MemberLeave(user_id.to_string()),
+        &users,
+    )
+    .await;
     println!("Disconnected: #{user_id}");
 }
 
 /// Dispatch a new event originating from the given user to all other users
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `user_id` - The id of the user that sent the event
 /// * `payload` - The event payload
 /// * `users` - The peermap of all users

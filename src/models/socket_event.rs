@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::message::Message;
+use serde::{Deserialize, Serialize};
 
 /// A JSON payload that can be sent over the websocket.
 #[derive(Serialize, Deserialize, Debug, Clone)]

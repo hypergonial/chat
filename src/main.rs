@@ -5,5 +5,7 @@ pub mod models;
 async fn main() {
     let gateway_routes = gateway::handler::get_routes();
 
-    warp::serve(gateway_routes).run(([127, 0, 0, 1], 8080)).await;
+    warp::serve(gateway_routes)
+        .run(([127, 0, 0, 1], 8080))
+        .await;
 }
