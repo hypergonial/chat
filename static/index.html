@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat App</title>
+    <style>
+        #messages {
+            height: 50%;
+            overflow-y: scroll;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chat App</h1>
+    <input type="text" id="username" placeholder="Enter your username...">
+    <div id="messages"></div>
+    <input type="text" id="message" placeholder="Type your message here...">
+    <button id="send">Send</button>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@2.3.1/dist/purify.min.js"></script>
+    <script>
+        const socket = new WebSocket("ws://127.0.0.1:8080");
+
+        socket.onmessage = function(event) {
+            const payload = JSON.parse(event.data);
+
+            switch (Object.keys(payload)[0]) {
+            case "Message":
+                handleMessageReceive(payload);
+                break;
+            case "MemberJoin":
+                handleMemberJoin(payload);
+                break;
+            case "MemberLeave":
+                handleMemberLeave(payload);
+                break;
+            default:
+                console.warn("Unknown payload received: ", payload);
+            }
+        };
+
+        socket.onopen = function() {
+            console.log("Connected to server.");
+        };
+
+        const sendButton = document.getElementById("send");
+        sendButton.onclick = function() {
+            const messageInput = document.getElementById("message");
+            const content = messageInput.value;
+            messageInput.value = "";
+            const author = document.getElementById("username").value;
+            const data = {"Message": { author: DOMPurify.sanitize(author), content: DOMPurify.sanitize(content) }};
+
+            // Don't send empty messages
+            if (!author || !content) {
+                return;
+            }
+
+            sendData(JSON.stringify(data));
+            // So the user can see their own sent messages
+            handleMessageReceive(JSON.stringify(data));
+        };
+
+        const sendData = (data) => {
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(data)
+        } else if (socket.readyState == WebSocket.CONNECTING) {
+            console.log('Still connecting...');
+            socket.addEventListener('open', () => sendData())
+        } else {
+            // readyState is CLOSED or CLOSING
+            // do something, e.g. retrying in a few seconds
+
+            }
+        };
+
+        const handleMessageReceive = (payload) => {
+            const messagesDiv = document.getElementById("messages");
+            const author = DOMPurify.sanitize(payload.Message.author);
+            const content = DOMPurify.sanitize(payload.Message.content);
+
+            // Don't render empty messages (this shouldn't happen but just in case)
+            if (author && content) {
+                messagesDiv.innerHTML += `<p>${author}: ${content}</p>`;
+            }
+        };
+
+        const handleMemberJoin = (payload) => {
+            const messagesDiv = document.getElementById("messages");
+            const user = DOMPurify.sanitize(payload.MemberJoin);
+
+            // Don't render empty messages (this shouldn't happen but just in case)
+            if (user) {
+                messagesDiv.innerHTML += `<p><i>${user} joined the channel.</i></p>`;
+            }
+        };
+
+        const handleMemberLeave = (payload) => {
+            const messagesDiv = document.getElementById("messages");
+            const user = DOMPurify.sanitize(payload.MemberLeave);
+
+            // Don't render empty messages (this shouldn't happen but just in case)
+            if (user) {
+                messagesDiv.innerHTML += `<p><i>${user} left the channel.</i></p>`;
+            }
+        };
+    </script>
+</body>
+</html>
