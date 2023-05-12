@@ -15,11 +15,14 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
             Method::POST,
             Method::DELETE,
             Method::OPTIONS,
+            Method::PUT,
+            Method::PATCH,
         ])
         .allow_headers(vec![
             header::CONTENT_TYPE,
             header::ORIGIN,
             header::AUTHORIZATION,
+            header::CACHE_CONTROL,
         ])
         .max_age(Duration::from_secs(3600));
 
