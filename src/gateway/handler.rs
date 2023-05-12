@@ -14,6 +14,7 @@ use warp::Filter;
 
 use crate::models::gateway_event::GatewayEvent;
 
+/// Mapping of <user_id, sender>
 pub type PeerMap = HashMap<usize, mpsc::UnboundedSender<GatewayEvent>>;
 pub type SharedGateway = Arc<RwLock<Gateway>>;
 
@@ -56,7 +57,11 @@ impl Gateway {
     }
 }
 
-// TODO: Move get_routes out of impl block and address static instance directly
+/// Get routes for handling the gateway
+/// 
+/// # Returns
+/// 
+/// A boxed filter that can be used to handle the gateway
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     let gateway_filter = warp::any().map(move || GATEWAY.clone());
 
