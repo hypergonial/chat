@@ -28,6 +28,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 
     let create_msg = warp::path!("message" / "create")
         .and(warp::post())
+        .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
         .and_then(create_message)
         .with(cors);
