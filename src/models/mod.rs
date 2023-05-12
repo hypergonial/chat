@@ -1,3 +1,3 @@
-pub mod message;
 pub mod gateway_event;
+pub mod message;
 pub mod user;

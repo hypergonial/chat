@@ -20,7 +20,7 @@ static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(0);
 pub type PeerMap = HashMap<usize, mpsc::UnboundedSender<GatewayEvent>>;
 pub type SharedGateway = Arc<RwLock<Gateway>>;
 
-lazy_static!{
+lazy_static! {
     pub static ref GATEWAY: SharedGateway = Arc::new(RwLock::new(Gateway::new()));
 }
 
@@ -60,15 +60,12 @@ impl Gateway {
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     let gateway_filter = warp::any().map(move || GATEWAY.clone());
 
-    let gateway =
-        warp::path("gateway")
-            .and(warp::ws())
-            .and(gateway_filter)
-            .map(|ws: warp::ws::Ws, gateway: SharedGateway| {
-                ws.on_upgrade(move |socket| {
-                    handle_connection(gateway, socket)
-                })
-            });
+    let gateway = warp::path("gateway")
+        .and(warp::ws())
+        .and(gateway_filter)
+        .map(|ws: warp::ws::Ws, gateway: SharedGateway| {
+            ws.on_upgrade(move |socket| handle_connection(gateway, socket))
+        });
 
     gateway.boxed()
 }
@@ -92,10 +89,10 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
 
     // Add user to peermap
     gateway.write().await.users.insert(user_id, sender);
-    gateway.read().await.dispatch(
-        user_id,
-        GatewayEvent::MemberJoin(user_id.to_string()),
-    );
+    gateway
+        .read()
+        .await
+        .dispatch(user_id, GatewayEvent::MemberJoin(user_id.to_string()));
 
     // Messages sent to this user by others should be sent through the socket to them
     tokio::spawn(async move {
@@ -131,9 +128,9 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
 
     // Disconnection logic
     gateway.write().await.users.remove(&user_id);
-    gateway.read().await.dispatch(
-        user_id,
-        GatewayEvent::MemberLeave(user_id.to_string()),
-    );
+    gateway
+        .read()
+        .await
+        .dispatch(user_id, GatewayEvent::MemberLeave(user_id.to_string()));
     println!("Disconnected: #{user_id}");
 }

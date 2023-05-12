@@ -9,10 +9,7 @@ pub struct User {
 
 impl User {
     pub fn new(id: usize, username: String) -> Self {
-        User {
-            id,
-            username,
-        }
+        User { id, username }
     }
 
     pub fn id(&self) -> usize {

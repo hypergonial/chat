@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::user::User;
+use serde::{Deserialize, Serialize};
 
 /// A chat message.
 #[derive(Serialize, Deserialize, Debug, Clone)]
