@@ -14,11 +14,11 @@ use warp::Filter;
 
 use crate::models::gateway_event::GatewayEvent;
 
-// Counter of users
-static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(0);
-
 pub type PeerMap = HashMap<usize, mpsc::UnboundedSender<GatewayEvent>>;
 pub type SharedGateway = Arc<RwLock<Gateway>>;
+
+// Counter of users
+static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(0);
 
 lazy_static! {
     pub static ref GATEWAY: SharedGateway = Arc::new(RwLock::new(Gateway::new()));
