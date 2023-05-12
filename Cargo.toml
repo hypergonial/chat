@@ -13,5 +13,4 @@ warp = "0.3.5"
 futures-util = "0.3.28"
 anyhow = "1.0.44"
 tokio-stream = "0.1.14"
-
-
+lazy_static = "1.4.0"

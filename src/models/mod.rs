@@ -1,2 +1,3 @@
 pub mod message;
-pub mod socket_event;
+pub mod gateway_event;
+pub mod user;

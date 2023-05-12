@@ -5,30 +5,69 @@ use std::sync::{
 };
 
 use futures_util::{SinkExt, StreamExt};
+use lazy_static::lazy_static;
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::filters::BoxedFilter;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
-use crate::models::socket_event::SocketEvent;
+use crate::models::gateway_event::GatewayEvent;
 
 // Counter of users
 static NEXT_USER_ID: AtomicUsize = AtomicUsize::new(0);
 
-type PeerMap = Arc<RwLock<HashMap<usize, mpsc::UnboundedSender<SocketEvent>>>>;
+pub type PeerMap = HashMap<usize, mpsc::UnboundedSender<GatewayEvent>>;
+pub type SharedGateway = Arc<RwLock<Gateway>>;
 
-/// Return a warp filter that handles websocket connections, add these routes to enable the gateway
+lazy_static!{
+    pub static ref GATEWAY: SharedGateway = Arc::new(RwLock::new(Gateway::new()));
+}
+
+/// A singleton representing the gateway state
+pub struct Gateway {
+    /// A map of currently connected users
+    users: PeerMap,
+}
+
+impl Gateway {
+    pub fn new() -> Self {
+        Gateway {
+            users: PeerMap::default(),
+        }
+    }
+
+    /// Dispatch a new event originating from the given user to all other users
+    ///
+    /// # Arguments
+    ///
+    /// * `user_id` - The id of the user that sent the event
+    /// * `payload` - The event payload
+    /// * `users` - The peermap of all users
+    pub fn dispatch(&self, user_id: usize, payload: GatewayEvent) {
+        println!("Dispatching event: {:?}", payload);
+        for (&uid, sender) in self.users.iter() {
+            if uid != user_id {
+                if let Err(_disconnected) = sender.send(payload.clone()) {
+                    eprintln!("Error dispatching event to user: {}", uid);
+                }
+            }
+        }
+    }
+}
+
+// TODO: Move get_routes out of impl block and address static instance directly
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
-    let users = PeerMap::default();
-    let users = warp::any().map(move || users.clone());
+    let gateway_filter = warp::any().map(move || GATEWAY.clone());
 
     let gateway =
         warp::path("gateway")
             .and(warp::ws())
-            .and(users)
-            .map(|ws: warp::ws::Ws, users| {
-                ws.on_upgrade(move |socket| handle_connection(socket, users))
+            .and(gateway_filter)
+            .map(|ws: warp::ws::Ws, gateway: SharedGateway| {
+                ws.on_upgrade(move |socket| {
+                    handle_connection(gateway, socket)
+                })
             });
 
     gateway.boxed()
@@ -38,33 +77,31 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 ///
 /// # Arguments
 ///
-/// * `socket` - The websocket connection
-/// * `users` - The peermap of all users
-async fn handle_connection(socket: WebSocket, users: PeerMap) {
+/// * `gateway` - The gateway state
+/// * `socket` - The websocket connection to handle
+async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
     // assign a new user_id to this connection
     let user_id = NEXT_USER_ID.fetch_add(1, Ordering::SeqCst);
     println!("Connected: #{user_id}");
 
-    let (mut user_sink, mut user_stream) = socket.split();
+    let (mut ws_sink, mut ws_stream) = socket.split();
 
-    let (sender, receiver) = mpsc::unbounded_channel::<SocketEvent>();
+    let (sender, receiver) = mpsc::unbounded_channel::<GatewayEvent>();
     // turn receiver into a stream for easier handling
-    let mut receiver_stream = UnboundedReceiverStream::new(receiver);
+    let mut receiver = UnboundedReceiverStream::new(receiver);
 
     // Add user to peermap
-    users.write().await.insert(user_id, sender);
-    dispatch(
+    gateway.write().await.users.insert(user_id, sender);
+    gateway.read().await.dispatch(
         user_id,
-        SocketEvent::MemberJoin(user_id.to_string()),
-        &users,
-    )
-    .await;
+        GatewayEvent::MemberJoin(user_id.to_string()),
+    );
 
     // Messages sent to this user by others should be sent through the socket to them
     tokio::spawn(async move {
-        while let Some(payload) = receiver_stream.next().await {
+        while let Some(payload) = receiver.next().await {
             let message = Message::text(serde_json::to_string(&payload).unwrap());
-            if let Err(e) = user_sink.send(message).await {
+            if let Err(e) = ws_sink.send(message).await {
                 eprintln!("Error sending message to user: {}", e);
                 break;
             }
@@ -72,7 +109,8 @@ async fn handle_connection(socket: WebSocket, users: PeerMap) {
     });
 
     // Messages sent by this user through the socket should be broadcasted to others
-    while let Some(raw_json) = user_stream.next().await {
+    // TODO: Reject payloads once REST api is operational
+    while let Some(raw_json) = ws_stream.next().await {
         let raw_json = match raw_json {
             Ok(x) => x,
             Err(e) => {
@@ -83,8 +121,8 @@ async fn handle_connection(socket: WebSocket, users: PeerMap) {
         let Ok(raw_json) = raw_json.to_str() else {
             break;
         };
-        match serde_json::from_str::<SocketEvent>(raw_json) {
-            Ok(payload) => dispatch(user_id, payload, &users).await,
+        match serde_json::from_str::<GatewayEvent>(raw_json) {
+            Ok(payload) => gateway.read().await.dispatch(user_id, payload),
             Err(e) => {
                 eprintln!("Error parsing payload: {}", e);
             }
@@ -92,30 +130,10 @@ async fn handle_connection(socket: WebSocket, users: PeerMap) {
     }
 
     // Disconnection logic
-    users.write().await.remove(&user_id);
-    dispatch(
+    gateway.write().await.users.remove(&user_id);
+    gateway.read().await.dispatch(
         user_id,
-        SocketEvent::MemberLeave(user_id.to_string()),
-        &users,
-    )
-    .await;
+        GatewayEvent::MemberLeave(user_id.to_string()),
+    );
     println!("Disconnected: #{user_id}");
-}
-
-/// Dispatch a new event originating from the given user to all other users
-///
-/// # Arguments
-///
-/// * `user_id` - The id of the user that sent the event
-/// * `payload` - The event payload
-/// * `users` - The peermap of all users
-async fn dispatch(user_id: usize, payload: SocketEvent, users: &PeerMap) {
-    println!("Dispatching event: {:?}", payload);
-    for (&uid, sender) in users.read().await.iter() {
-        if uid != user_id {
-            if let Err(_disconnected) = sender.send(payload.clone()) {
-                eprintln!("Error sending message to user: {}", uid);
-            }
-        }
-    }
 }

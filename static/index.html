@@ -19,73 +19,93 @@
     <button id="send">Send</button>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@2.3.1/dist/purify.min.js"></script>
     <script>
-        const socket = new WebSocket("ws://127.0.0.1:8080/gateway");
+        const gateway = new WebSocket("ws://127.0.0.1:8080/gateway");
 
         const chat = document.getElementById("messages");
         const sendButton = document.getElementById("send");
         const usernameInput = document.getElementById("username");
         const messageInput = document.getElementById("message");
 
-        socket.onopen = function() {
+        gateway.onopen = () => {
             console.log("Connected to gateway.");
             chat.innerHTML = "<p><em>Connected!</em></p>";
         };
 
-        socket.onclose = function() {
+        gateway.onclose = () => {
             console.log("Disconnected from gateway.");
             chat.innerHTML += "<p><em>Disconnected.</em></p>";
         };
 
-        socket.onmessage = function(event) {
+        gateway.onmessage = (event) => {
             const payload = JSON.parse(event.data);
 
             switch (Object.keys(payload)[0]) {
                 case "MessageCreate":
-                    handleMessageReceive(payload);
+                    handleMessageReceive(payload.MessageCreate);
                     break;
                 case "MemberJoin":
-                    handleMemberJoin(payload);
+                    handleMemberJoin(payload.MemberJoin);
                     break;
                 case "MemberLeave":
-                    handleMemberLeave(payload);
+                    handleMemberLeave(payload.MemberLeave);
                     break;
                 default:
                     console.warn("Unknown event payload received: ", payload);
             }
         };
 
-        sendButton.onclick = function() {
-            const content = messageInput.value;
-            messageInput.value = "";
-            const author =usernameInput.value;
-            const data = {"MessageCreate": { author: DOMPurify.sanitize(author), content: DOMPurify.sanitize(content) }};
+        sendButton.addEventListener("click", async () => {
+            // TODO: Set up a gateway event that provides user info on connect
+            var message = {
+                author: {
+                    id: 0, 
+                    username: DOMPurify.sanitize(usernameInput.value)
+                }, 
+                content: DOMPurify.sanitize(messageInput.value)
+            };
 
+            messageInput.value = "";
             // Don't send empty messages
-            if (!author || !content) {
+            if (!message.content || !message.author.username) {
                 return;
             }
-
-            sendData(JSON.stringify(data));
+            await sendMessage(message);
             // So the user can see their own sent messages
-            handleMessageReceive(data);
-        };
+            handleMessageReceive(message);
+        });
 
-        const sendData = (data) => {
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(data)
-        } else if (socket.readyState == WebSocket.CONNECTING) {
+        // Create a message using the REST API
+        const sendMessage = async (message) => {
+            const response = await fetch('http://127.0.0.1:8080/message/create', {
+                method: 'POST',
+                body: JSON.stringify(message),
+                headers: {
+                'Content-Type': 'application/json',
+                }
+            });
+            if (!response.ok) {
+                const message = `An error has occured: ${response.status}`;
+                throw new Error(message);
+            }
+}
+
+        // Deprecated: Use the REST API instead
+        const sendGatewayData = (data) => {
+        if (gateway.readyState === WebSocket.OPEN) {
+            gateway.send(data)
+        } else if (gateway.readyState == WebSocket.CONNECTING) {
             console.log('Still connecting...');
-            socket.addEventListener('open', () => sendData())
+            gateway.addEventListener('open', () => sendGatewayData())
         } else {
             console.log('Socket is closed, trying again in 2 seconds...');
-            setTimeout(() => sendData(data), 2000)
+            setTimeout(() => sendGatewayData(data), 2000)
 
             }
         };
 
-        const handleMessageReceive = (payload) => {
-            const author = DOMPurify.sanitize(payload.MessageCreate.author);
-            const content = DOMPurify.sanitize(payload.MessageCreate.content);
+        const handleMessageReceive = (message) => {
+            const author = DOMPurify.sanitize(message.author.username);
+            const content = DOMPurify.sanitize(message.content);
 
             // Don't render empty messages (this shouldn't happen but just in case)
             if (author && content) {
@@ -93,8 +113,8 @@
             }
         };
 
-        const handleMemberJoin = (payload) => {
-            const user = DOMPurify.sanitize(payload.MemberJoin);
+        const handleMemberJoin = (username) => {
+            const user = DOMPurify.sanitize(username);
 
             // Don't render empty messages (this shouldn't happen but just in case)
             if (user) {
@@ -102,8 +122,8 @@
             }
         };
 
-        const handleMemberLeave = (payload) => {
-            const user = DOMPurify.sanitize(payload.MemberLeave);
+        const handleMemberLeave = (username) => {
+            const user = DOMPurify.sanitize(username);
 
             // Don't render empty messages (this shouldn't happen but just in case)
             if (user) {
