@@ -57,10 +57,16 @@ impl Gateway {
     }
 }
 
+impl Default for Gateway {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Get routes for handling the gateway
-/// 
+///
 /// # Returns
-/// 
+///
 /// A boxed filter that can be used to handle the gateway
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     let gateway_filter = warp::any().map(move || GATEWAY.clone());
