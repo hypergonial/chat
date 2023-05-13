@@ -26,7 +26,8 @@ BEGIN
         CREATE TABLE IF NOT EXISTS users
         (
             id BIGINT NOT NULL,
-            username TEXT NOT NULL,
+            username TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
             PRIMARY KEY (id)
         );
 
@@ -45,7 +46,7 @@ BEGIN
         (
             user_id BIGINT NOT NULL,
             password TEXT NOT NULL,
-            is_valid BOOLEAN NOT NULL,
+            is_valid BOOLEAN NOT NULL DEFAULT TRUE,
             PRIMARY KEY (user_id),
             FOREIGN KEY (user_id) 
                 REFERENCES users(id)

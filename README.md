@@ -10,3 +10,9 @@ Why not?
 
 Firstly, rename `.env.example` and fill it out by providing a valid postgres dsn.
 Once done, running the server should be as simple as running it using `cargo run` and then opening `static/index.html` twice in two seperate browser tabs to experiment.
+
+## TODO
+
+- [ ] Nonces to handle message sending state
+- [ ] Unify global app state in backend
+- [ ] Proper frontend

@@ -1,25 +1,11 @@
-use super::user::User;
+use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 
 /// A request to create a new user
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct CreateUser {
     pub username: String,
-}
-
-/// A response to a request to create a new user
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CreateUserResponse {
-    /// The created user
-    user: User,
-    /// The login-token for the created user
-    token: String,
-}
-
-impl CreateUserResponse {
-    pub fn new(user: User, token: String) -> Self {
-        CreateUserResponse { user, token }
-    }
+    pub password: Secret<String>,
 }
 
 /// A request to create a new message

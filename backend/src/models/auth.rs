@@ -1,6 +1,7 @@
-use secrecy::{Secret, ExposeSecret};
+use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
+use super::db::DB;
 use super::snowflake::Snowflake;
 use chrono::prelude::*;
 use core::fmt::Debug;
@@ -26,7 +27,7 @@ impl TokenData {
         TokenData {
             user_id,
             iat,
-            exp: Utc::now().timestamp() as usize + 10000000000,
+            exp: Utc::now().timestamp() as usize + 86400,
         }
     }
 
@@ -47,6 +48,7 @@ impl TokenData {
 }
 
 /// Represents a JWT used for authentication
+#[derive(Clone)]
 pub struct Token {
     /// The data stored in the token
     data: TokenData,
@@ -133,6 +135,107 @@ impl Debug for Token {
             .field("data", &self.data)
             .field("token", &"**********")
             .finish()
+    }
+}
+
+/// An incoming set of credentials.
+#[derive(Deserialize, Debug, Clone)]
+pub struct Credentials {
+    username: String,
+    password: Secret<String>,
+}
+
+impl Credentials {
+    pub fn new(username: String, password: String) -> Self {
+        Credentials {
+            username,
+            password: Secret::new(password),
+        }
+    }
+
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn password(&self) -> &Secret<String> {
+        &self.password
+    }
+}
+
+pub struct StoredCredentials {
+    user_id: u64,
+    hash: Secret<String>,
+}
+
+impl StoredCredentials {
+    /// Create a new set of stored credentials.
+    pub fn new(user_id: u64, hash: String) -> Self {
+        StoredCredentials {
+            user_id,
+            hash: Secret::new(hash),
+        }
+    }
+
+    /// The user id of the user that owns the credentials.
+    pub fn user_id(&self) -> u64 {
+        self.user_id
+    }
+
+    /// The hashed password stored in PHC string format.
+    pub fn hash(&self) -> &Secret<String> {
+        &self.hash
+    }
+
+    /// Fetch a set of credentials from the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `username` - The username to fetch credentials for.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<StoredCredentials>` - The credentials if they exist.
+    pub async fn fetch(username: String) -> Option<StoredCredentials> {
+        let db = DB.read().await;
+
+        let result = sqlx::query!(
+            "SELECT users.id, secrets.password
+            FROM users JOIN secrets ON users.id = secrets.user_id
+            WHERE users.username = $1",
+            username
+        )
+        .fetch_optional(db.pool())
+        .await
+        .ok()??;
+
+        Some(Self {
+            user_id: result
+                .id
+                .try_into()
+                .expect("user_id is negative for some reason"),
+            hash: Secret::new(result.password),
+        })
+    }
+
+    /// Commit the credentials to the database.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the credentials could not be committed,
+    /// this could be due to the user not existing in the database.
+    pub async fn commit(&self) -> Result<(), sqlx::Error> {
+        let db = DB.read().await;
+
+        sqlx::query!(
+            "INSERT INTO secrets (user_id, password) VALUES ($1, $2)
+            ON CONFLICT (user_id) DO UPDATE SET password = $2",
+            self.user_id as i64,
+            self.hash.expose_secret()
+        )
+        .execute(db.pool())
+        .await?;
+
+        Ok(())
     }
 }
 

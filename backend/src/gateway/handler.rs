@@ -5,6 +5,7 @@ use std::time::Duration;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use lazy_static::lazy_static;
+use secrecy::ExposeSecret;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::filters::BoxedFilter;
@@ -81,11 +82,20 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     gateway.boxed()
 }
 
-/// Validate the token header for an incoming websocket connection
+/// Wait for and validate the IDENTIFY payload
+///
+/// ## Arguments
+///
+/// * `ws_sink` - The sink for sending messages to the client
+/// * `ws_stream` - The stream for receiving messages from the client
+///
+/// ## Returns
+///
+/// The resolved user if the handshake was successful
 async fn handle_handshake(
     ws_sink: &mut SplitSink<WebSocket, Message>,
     ws_stream: &mut SplitStream<WebSocket>,
-) -> Result<Token, ()> {
+) -> Result<User, ()> {
     // IDENTIFY should be the first message sent
     let Some(Ok(maybe_ident)) = ws_stream.next().await else {
         ws_sink.send(Message::close_with(
@@ -109,7 +119,7 @@ async fn handle_handshake(
         return Err(());
     }
 
-    let Ok(GatewayMessage::Identify(token)) = serde_json::from_str(maybe_ident.to_str().unwrap()) else {
+    let Ok(GatewayMessage::Identify(payload)) = serde_json::from_str(maybe_ident.to_str().unwrap()) else {
         ws_sink.send(Message::close_with(
             1003_u16,
             serde_json::to_string(&GatewayEvent::InvalidSession("Invalid IDENTIFY payload".into())).unwrap(),
@@ -117,14 +127,30 @@ async fn handle_handshake(
         return Err(());
     };
 
-    let Ok(token) = Token::decode(&token, "among us") else {
+    let Ok(token) = Token::decode(payload.token.expose_secret(), "among us") else {
         ws_sink.send(Message::close_with(
             1008_u16,
             serde_json::to_string(&GatewayEvent::InvalidSession("Invalid token".into())).unwrap(),
         )).await.ok();
         return Err(());
     };
-    Ok(token)
+
+    let user_id = token.data().user_id();
+    let Some(user) = User::fetch(user_id.into()).await else {
+        ws_sink.send(Message::close_with(
+            1008_u16,
+            serde_json::to_string(&GatewayEvent::InvalidSession("User not found".into())).unwrap(),
+        )).await.ok();
+        return Err(());
+    };
+
+    ws_sink
+        .send(Message::text(
+            serde_json::to_string(&GatewayEvent::Ready(user.clone())).unwrap(),
+        ))
+        .await
+        .ok();
+    Ok(user)
 }
 
 /// Handle a new websocket connection
@@ -134,31 +160,32 @@ async fn handle_handshake(
 /// * `gateway` - The gateway state
 /// * `socket` - The websocket connection to handle
 async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
-    // assign a new user_id to this connection
     let (mut ws_sink, mut ws_stream) = socket.split();
-    let Ok(token) = handle_handshake(&mut ws_sink, &mut ws_stream).await else {
+     // Handle handshake and get user
+    let Ok(user) = handle_handshake(&mut ws_sink, &mut ws_stream).await else {
         ws_sink.reunite(ws_stream).unwrap().close().await.ok();
         return;
     };
-    let user_id = token.data().user_id();
-    let user = User::fetch(user_id.into()).await.expect("User not found");
 
-    println!("Connected: {} #({})", user.username, user_id);
+    println!("Connected: {} ({})", user.username(), user.id());
 
     let (sender, receiver) = mpsc::unbounded_channel::<GatewayEvent>();
     // turn receiver into a stream for easier handling
     let mut receiver = UnboundedReceiverStream::new(receiver);
 
     // Add user to peermap
-    gateway.write().await.peers.insert(user_id.into(), sender);
-    gateway.read().await.dispatch(
-        user_id.into(),
-        GatewayEvent::MemberJoin(user_id.to_string()),
-    );
+    gateway.write().await.peers.insert(user.id(), sender);
+    gateway
+        .read()
+        .await
+        .dispatch(user.id(), GatewayEvent::MemberJoin(user.id().to_string()));
 
     // The sink needs to be shared between two tasks
     let ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>> = Arc::new(Mutex::new(ws_sink));
     let ws_sink_clone = ws_sink.clone();
+
+    // Same for user_id, so we only want to copy the ID
+    let user_id = user.id();
 
     // Send dispatched events to the user
     let send_events = tokio::spawn(async move {
@@ -203,32 +230,11 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
         _ = keep_alive => {},
     }
 
-    /* // Messages sent by this user through the socket should be broadcasted to others
-    // TODO: Reject payloads once REST api is operational
-    while let Some(raw_json) = ws_stream.next().await {
-        let raw_json = match raw_json {
-            Ok(x) => x,
-            Err(e) => {
-                eprintln!("Error receiving message from user: {}", e);
-                break;
-            }
-        };
-        let Ok(raw_json) = raw_json.to_str() else {
-            break;
-        };
-        match serde_json::from_str::<GatewayEvent>(raw_json) {
-            Ok(payload) => gateway.read().await.dispatch(user_id.into(), payload),
-            Err(e) => {
-                eprintln!("Error parsing payload: {}", e);
-            }
-        };
-    } */
-
     // Disconnection logic
-    gateway.write().await.peers.remove(&user_id.into());
-    gateway.read().await.dispatch(
-        user_id.into(),
-        GatewayEvent::MemberLeave(user_id.to_string()),
-    );
-    println!("Disconnected: {} #({})", user.username, user_id);
+    gateway.write().await.peers.remove(&user.id());
+    gateway
+        .read()
+        .await
+        .dispatch(user.id(), GatewayEvent::MemberLeave(user.id().to_string()));
+    println!("Disconnected: {} ({})", user.username(), user.id());
 }

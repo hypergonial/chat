@@ -49,8 +49,7 @@ impl Message {
         )
         .fetch_optional(db.pool())
         .await
-        .ok()?;
-        let row = row?;
+        .ok()??;
         let author = User::fetch(row.user_id.into()).await?;
         Some(Message::new(id, author, row.content))
     }

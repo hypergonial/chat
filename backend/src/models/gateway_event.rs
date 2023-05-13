@@ -1,4 +1,5 @@
 use super::{message::Message, user::User};
+use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 
 /// A JSON payload that can be received over the websocket by clients.
@@ -18,9 +19,14 @@ pub enum GatewayEvent {
 }
 
 /// A JSON payload that can be sent over the websocket by clients.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 #[non_exhaustive]
 pub enum GatewayMessage {
     /// Identify with the server. This should be the first event sent by the client.
-    Identify(String),
+    Identify(IdentifyPayload),
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct IdentifyPayload {
+    pub token: Secret<String>,
 }

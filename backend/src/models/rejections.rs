@@ -21,12 +21,23 @@ impl ErrorMessage {
 
 /// A rejection triggered when an invalid token is provided
 #[derive(Debug)]
-pub struct Unauthorized;
+pub struct Unauthorized {
+    pub message: String,
+}
 
 impl reject::Reject for Unauthorized {}
 
 /// A rejection triggered for any other error
 #[derive(Debug)]
-pub struct InternalServerError;
+pub struct InternalServerError {
+    pub message: String,
+}
 
 impl reject::Reject for InternalServerError {}
+
+#[derive(Debug)]
+pub struct BadRequest {
+    pub message: String,
+}
+
+impl reject::Reject for BadRequest {}
