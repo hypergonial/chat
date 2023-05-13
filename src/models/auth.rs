@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{snowflake::Snowflake, user::User};
+use super::snowflake::Snowflake;
 use chrono::prelude::*;
 use core::fmt::Debug;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
@@ -132,27 +132,6 @@ impl Debug for Token {
             .field("data", &self.data)
             .field("token", &"**********")
             .finish()
-    }
-}
-
-/// A request to create a new user
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CreateUser {
-    pub username: String,
-}
-
-/// A response to a request to create a new user
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CreateUserResponse {
-    /// The created user
-    user: User,
-    /// The login-token for the created user
-    token: String,
-}
-
-impl CreateUserResponse {
-    pub fn new(user: User, token: String) -> Self {
-        CreateUserResponse { user, token }
     }
 }
 

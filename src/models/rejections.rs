@@ -25,12 +25,6 @@ pub struct Unauthorized;
 
 impl reject::Reject for Unauthorized {}
 
-/// A rejection triggered when the author and token-holder don't match
-#[derive(Debug)]
-pub struct AuthorMismatch;
-
-impl reject::Reject for AuthorMismatch {}
-
 /// A rejection triggered for any other error
 #[derive(Debug)]
 pub struct InternalServerError;

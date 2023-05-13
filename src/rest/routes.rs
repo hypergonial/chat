@@ -1,7 +1,8 @@
 use super::rejections::handle_rejection;
 use crate::gateway::handler::GATEWAY;
-use crate::models::auth::{CreateUser, CreateUserResponse, Token};
-use crate::models::rejections::{AuthorMismatch, InternalServerError, Unauthorized};
+use crate::models::auth::Token;
+use crate::models::rejections::{InternalServerError, Unauthorized};
+use crate::models::rest::{CreateMessage, CreateUser, CreateUserResponse};
 use crate::models::snowflake::{self, Snowflake};
 use crate::models::user::User;
 use crate::models::{gateway_event::GatewayEvent, message::Message};
@@ -65,20 +66,30 @@ async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
 /// ## Arguments
 ///
 /// * `token` - The authorization token
-/// * `message` - The message data
+/// * `payload` - The CreateMessage payload
+/// 
+/// ## Returns
+/// 
+/// * `impl warp::Reply` - A JSON response containing a `Message` object
 ///
 /// ## Endpoint
 ///
 /// POST `/message/create`
 async fn create_message(
     token: String,
-    message: Message,
+    payload: CreateMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let token = validate_token(token).await?;
 
-    if message.author().id() != token.data().user_id().into() {
-        return Err(warp::reject::custom(AuthorMismatch));
-    }
+    let user = User::fetch(token.data().user_id().into())
+        .await
+        .ok_or_else(|| {
+            eprintln!("Failed to fetch user from database");
+            warp::reject::custom(InternalServerError)
+        })?;
+
+    let message_id: Snowflake = snowflake::get_generator(1, 1).real_time_generate().into();
+    let message = Message::new(message_id, user, payload.content().to_string());
 
     if let Err(e) = message.commit().await {
         eprintln!("Failed to commit message to database: {}", e);
@@ -100,6 +111,10 @@ async fn create_message(
 /// ## Arguments
 ///
 /// * `payload` - The CreateUser payload, containing the username
+/// 
+/// ## Returns
+/// 
+/// * `impl warp::Reply` - A JSON response containing a `CreateUserResponse` object
 ///
 /// ## Endpoint
 ///

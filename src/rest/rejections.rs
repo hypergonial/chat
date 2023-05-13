@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 use std::error::Error;
 
-use crate::models::rejections::{AuthorMismatch, ErrorMessage, Unauthorized};
+use crate::models::rejections::{ErrorMessage, Unauthorized};
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 
@@ -27,11 +27,6 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         code = StatusCode::UNAUTHORIZED;
         message = "UNAUTHORIZED";
         description = Some("The provided authorization token is invalid or expired.".into());
-    } else if let Some(AuthorMismatch) = err.find() {
-        code = StatusCode::BAD_REQUEST;
-        message = "AUTHOR_MISMATCH";
-        description =
-            Some("The author of the message must match the currently authorized user.".into());
     } else if let Some(e) = err.find::<warp::filters::body::BodyDeserializeError>() {
         message = "BAD_REQUEST";
         description = e.source().map(|e| e.to_string());
