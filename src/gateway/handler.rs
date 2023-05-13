@@ -27,13 +27,13 @@ lazy_static! {
 /// A singleton representing the gateway state
 pub struct Gateway {
     /// A map of currently connected users
-    users: PeerMap,
+    peers: PeerMap,
 }
 
 impl Gateway {
     pub fn new() -> Self {
         Gateway {
-            users: PeerMap::default(),
+            peers: PeerMap::default(),
         }
     }
 
@@ -46,7 +46,7 @@ impl Gateway {
     /// * `users` - The peermap of all users
     pub fn dispatch(&self, user_id: Snowflake, payload: GatewayEvent) {
         println!("Dispatching event: {:?}", payload);
-        for (&uid, sender) in self.users.iter() {
+        for (&uid, sender) in self.peers.iter() {
             if uid != user_id {
                 if let Err(_disconnected) = sender.send(payload.clone()) {
                     eprintln!("Error dispatching event to user: {}", uid);
@@ -150,7 +150,7 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
     let mut receiver = UnboundedReceiverStream::new(receiver);
 
     // Add user to peermap
-    gateway.write().await.users.insert(user_id.into(), sender);
+    gateway.write().await.peers.insert(user_id.into(), sender);
     gateway.read().await.dispatch(
         user_id.into(),
         GatewayEvent::MemberJoin(user_id.to_string()),
@@ -225,7 +225,7 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
     } */
 
     // Disconnection logic
-    gateway.write().await.users.remove(&user_id.into());
+    gateway.write().await.peers.remove(&user_id.into());
     gateway.read().await.dispatch(
         user_id.into(),
         GatewayEvent::MemberLeave(user_id.to_string()),
