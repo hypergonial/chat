@@ -39,7 +39,7 @@ impl Gateway {
 
     /// Dispatch a new event originating from the given user to all other users
     ///
-    /// # Arguments
+    /// ## Arguments
     ///
     /// * `user_id` - The id of the user that sent the event
     /// * `payload` - The event payload
@@ -64,7 +64,7 @@ impl Default for Gateway {
 
 /// Get routes for handling the gateway
 ///
-/// # Returns
+/// ## Returns
 ///
 /// A boxed filter that can be used to handle the gateway
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
@@ -129,7 +129,7 @@ async fn handle_handshake(
 
 /// Handle a new websocket connection
 ///
-/// # Arguments
+/// ## Arguments
 ///
 /// * `gateway` - The gateway state
 /// * `socket` - The websocket connection to handle
