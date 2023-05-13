@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use lazy_static::lazy_static;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::filters::BoxedFilter;
 use warp::ws::{Message, WebSocket};
@@ -81,7 +82,10 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 }
 
 /// Validate the token header for an incoming websocket connection
-async fn handle_handshake(ws_sink: &mut SplitSink<WebSocket, Message>, ws_stream: &mut SplitStream<WebSocket>) -> Result<Token, ()> {
+async fn handle_handshake(
+    ws_sink: &mut SplitSink<WebSocket, Message>,
+    ws_stream: &mut SplitStream<WebSocket>,
+) -> Result<Token, ()> {
     // IDENTIFY should be the first message sent
     let Some(Ok(maybe_ident)) = ws_stream.next().await else {
         ws_sink.send(Message::close_with(
@@ -92,10 +96,16 @@ async fn handle_handshake(ws_sink: &mut SplitSink<WebSocket, Message>, ws_stream
     };
 
     if !maybe_ident.is_text() {
-        ws_sink.send(Message::close_with(
-            1003_u16,
-            serde_json::to_string(&GatewayEvent::InvalidSession("Invalid IDENTIFY payload".into())).unwrap(),
-        )).await.ok();
+        ws_sink
+            .send(Message::close_with(
+                1003_u16,
+                serde_json::to_string(&GatewayEvent::InvalidSession(
+                    "Invalid IDENTIFY payload".into(),
+                ))
+                .unwrap(),
+            ))
+            .await
+            .ok();
         return Err(());
     }
 
@@ -146,18 +156,54 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
         GatewayEvent::MemberJoin(user_id.to_string()),
     );
 
-    // Messages sent to this user by others should be sent through the socket to them
-    tokio::spawn(async move {
+    // The sink needs to be shared between two tasks
+    let ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>> = Arc::new(Mutex::new(ws_sink));
+    let ws_sink_clone = ws_sink.clone();
+
+    // Send dispatched events to the user
+    let send_events = tokio::spawn(async move {
         while let Some(payload) = receiver.next().await {
             let message = Message::text(serde_json::to_string(&payload).unwrap());
-            if let Err(e) = ws_sink.send(message).await {
-                eprintln!("Error sending message to user: {}", e);
+            if let Err(e) = ws_sink.lock().await.send(message).await {
+                eprintln!("Error sending event to user {}: {}", user_id, e);
                 break;
             }
         }
     });
 
-    // Messages sent by this user through the socket should be broadcasted to others
+    // Send a ping every 60 seconds to keep the connection alive
+    let keep_alive = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            if let Err(e) = ws_sink_clone.lock().await.send(Message::ping(vec![])).await {
+                eprintln!(
+                    "Failed to keep alive socket connection to {}: {}",
+                    user_id, e
+                );
+                break;
+            }
+        }
+    });
+
+    // Listen for a close socket event
+    let listen_for_close = tokio::spawn(async move {
+        while let Some(msg) = ws_stream.next().await {
+            if let Ok(msg) = msg {
+                if msg.is_close() {
+                    break;
+                }
+            }
+        }
+    });
+
+    // Wait for any of the tasks to finish
+    tokio::select! {
+        _ = send_events => {},
+        _ = listen_for_close => {},
+        _ = keep_alive => {},
+    }
+
+    /* // Messages sent by this user through the socket should be broadcasted to others
     // TODO: Reject payloads once REST api is operational
     while let Some(raw_json) = ws_stream.next().await {
         let raw_json = match raw_json {
@@ -176,7 +222,7 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
                 eprintln!("Error parsing payload: {}", e);
             }
         };
-    }
+    } */
 
     // Disconnection logic
     gateway.write().await.users.remove(&user_id.into());

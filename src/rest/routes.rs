@@ -61,14 +61,14 @@ async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
 }
 
 /// Send a new message and return the message data.
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// * `token` - The authorization token
 /// * `message` - The message data
-/// 
+///
 /// ## Endpoint
-/// 
+///
 /// POST `/message/create`
 async fn create_message(
     token: String,
@@ -96,13 +96,13 @@ async fn create_message(
 }
 
 /// Create a new user and return the user data and token.
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// * `payload` - The CreateUser payload, containing the username
-/// 
+///
 /// ## Endpoint
-/// 
+///
 /// POST `/user/create`
 async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Rejection> {
     let user_id: Snowflake = snowflake::get_generator(1, 1).real_time_generate().into();
@@ -118,8 +118,7 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
         return Err(warp::reject::custom(InternalServerError));
     }
 
-    let user_payload =
-        CreateUserResponse::new(user, token.to_string());
+    let user_payload = CreateUserResponse::new(user, token.to_string());
 
     Ok(warp::reply::with_status(
         warp::reply::json(&user_payload),

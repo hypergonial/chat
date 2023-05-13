@@ -55,7 +55,9 @@ impl Database {
     async fn create_schema(&self) -> Result<PgQueryResult, sqlx::Error> {
         let query = include_str!("../../static/db/schema.sql");
         sqlx::query(query).execute(self.pool()).await?;
-        sqlx::query("SELECT createSchema()").execute(self.pool()).await
+        sqlx::query("SELECT createSchema()")
+            .execute(self.pool())
+            .await
     }
 }
 

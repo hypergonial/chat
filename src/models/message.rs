@@ -1,6 +1,6 @@
-use super::{snowflake::Snowflake, user::User, db::DB};
-use serde::{Deserialize, Serialize};
+use super::{db::DB, snowflake::Snowflake, user::User};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// A chat message.
 #[derive(Serialize, Deserialize, Debug, Clone)]
