@@ -47,10 +47,10 @@ impl Message {
             WHERE id = $1",
             id_i64
         )
-        .fetch_one(db.pool())
+        .fetch_optional(db.pool())
         .await
         .ok()?;
-
+        let row = row?;
         let author = User::fetch(row.user_id.into()).await?;
         Some(Message::new(id, author, row.content))
     }

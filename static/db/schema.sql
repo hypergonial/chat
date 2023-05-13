@@ -40,6 +40,17 @@ BEGIN
                 REFERENCES users(id)
                 ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS secrets
+        (
+            user_id BIGINT NOT NULL,
+            password TEXT NOT NULL,
+            is_valid BOOLEAN NOT NULL,
+            PRIMARY KEY (user_id),
+            FOREIGN KEY (user_id) 
+                REFERENCES users(id)
+                ON DELETE CASCADE
+        );
     END;
     $BODY$
     LANGUAGE plpgsql;

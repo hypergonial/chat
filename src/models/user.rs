@@ -35,10 +35,10 @@ impl User {
             WHERE id = $1",
             id_i64
         )
-        .fetch_one(db.pool())
+        .fetch_optional(db.pool())
         .await
         .ok()?;
-        Some(User::new(id, row.username))
+        Some(User::new(id, row?.username))
     }
 
     /// Commit this user to the database.

@@ -8,6 +8,7 @@ use crate::models::user::User;
 use crate::models::{gateway_event::GatewayEvent, message::Message};
 use std::eprintln;
 use std::time::Duration;
+use secrecy::ExposeSecret;
 use warp::filters::BoxedFilter;
 use warp::http::{header, Method};
 use warp::Filter;
@@ -133,7 +134,7 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
         return Err(warp::reject::custom(InternalServerError));
     }
 
-    let user_payload = CreateUserResponse::new(user, token.to_string());
+    let user_payload = CreateUserResponse::new(user, token.expose_secret().clone());
 
     Ok(warp::reply::with_status(
         warp::reply::json(&user_payload),

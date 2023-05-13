@@ -1,3 +1,4 @@
+use secrecy::{Secret, ExposeSecret};
 use serde::{Deserialize, Serialize};
 
 use super::snowflake::Snowflake;
@@ -50,7 +51,7 @@ pub struct Token {
     /// The data stored in the token
     data: TokenData,
     /// The token string
-    token: String,
+    token: Secret<String>,
 }
 
 impl Token {
@@ -67,11 +68,11 @@ impl Token {
     pub fn new(data: &TokenData, secret: &str) -> Result<Self, jsonwebtoken::errors::Error> {
         Ok(Token {
             data: data.clone(),
-            token: encode(
+            token: Secret::new(encode(
                 &Header::default(),
                 &data,
                 &EncodingKey::from_secret(secret.as_ref()),
-            )?,
+            )?),
         })
     }
 
@@ -110,7 +111,7 @@ impl Token {
         )?;
         Ok(Token {
             data: decoded.claims,
-            token: token.to_string(),
+            token: Secret::new(token.to_string()),
         })
     }
 
@@ -120,9 +121,9 @@ impl Token {
     }
 }
 
-impl ToString for Token {
-    fn to_string(&self) -> String {
-        self.token.to_string()
+impl ExposeSecret<String> for Token {
+    fn expose_secret(&self) -> &String {
+        self.token.expose_secret()
     }
 }
 
@@ -147,7 +148,7 @@ mod tests {
             exp: Utc::now().timestamp() as usize + 1000000,
         };
         let token = Token::new(&data, "among us").unwrap();
-        let decoded_token = Token::decode(&token.to_string(), "among us").unwrap();
+        let decoded_token = Token::decode(token.expose_secret(), "among us").unwrap();
         assert_eq!(decoded_token.data().user_id, 123);
         assert_eq!(decoded_token.data().iat, 123);
     }
@@ -160,7 +161,7 @@ mod tests {
             exp: Utc::now().timestamp() as usize + 1000000,
         };
         let token = Token::new(&data, "among us").unwrap();
-        let err = Token::decode(&token.to_string(), "sussage").unwrap_err();
+        let err = Token::decode(token.expose_secret(), "sussage").unwrap_err();
         assert_eq!(err.to_string(), "InvalidSignature");
     }
 }
