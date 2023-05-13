@@ -20,6 +20,7 @@ chrono = "0.4.24"
 rs-snowflake = "0.6.0"
 dotenv = "0.15.0"
 async-trait = "0.1.68"
+time = "0.3.21" # Updated manually: https://github.com/advisories/GHSA-wcg3-cvx6-7396
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3
