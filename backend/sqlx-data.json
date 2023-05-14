@@ -157,5 +157,37 @@
       }
     },
     "query": "SELECT users.id, secrets.password, secrets.last_changed\n            FROM users JOIN secrets ON users.id = secrets.user_id\n            WHERE users.username = $1"
+  },
+  "fe760e41e72b1883415d06ead81c8e856cc0ea8c98b8e51a020a5df3d5cca79d": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "password",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "last_changed",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT user_id, password, last_changed\n            FROM secrets\n            WHERE user_id = $1"
   }
 }
