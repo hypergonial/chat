@@ -71,11 +71,19 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
         .and_then(user_auth)
+        .with(cors.clone());
+
+    let query_self = warp::path!("user")
+        .and(warp::get())
+        .and(warp::header("authorization"))
+        .and_then(validate_token)
+        .and_then(user_getself)
         .with(cors);
 
     create_msg
         .or(create_user)
         .or(login)
+        .or(query_self)
         .recover(handle_rejection)
         .boxed()
 }
@@ -251,6 +259,20 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
     // Return the cookie in a json response
     Ok(warp::reply::with_status(
         warp::reply::json(&resp),
+        warp::http::StatusCode::OK,
+    ))
+}
+
+async fn user_getself(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+    let user = User::fetch(token.data().user_id()).await.ok_or_else(|| {
+        tracing::error!("Failed to fetch user from database");
+        warp::reject::custom(InternalServerError {
+            message: "A database transaction error occured.".into(),
+        })
+    })?;
+
+    Ok(warp::reply::with_status(
+        warp::reply::json(&user),
         warp::http::StatusCode::OK,
     ))
 }
