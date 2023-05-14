@@ -165,6 +165,7 @@ impl Credentials {
 pub struct StoredCredentials {
     user_id: u64,
     hash: Secret<String>,
+    last_changed: DateTime<Utc>,
 }
 
 impl StoredCredentials {
@@ -173,6 +174,7 @@ impl StoredCredentials {
         StoredCredentials {
             user_id,
             hash: Secret::new(hash),
+            last_changed: Utc::now(),
         }
     }
 
@@ -199,7 +201,7 @@ impl StoredCredentials {
         let db = &APP.read().await.db;
 
         let result = sqlx::query!(
-            "SELECT users.id, secrets.password
+            "SELECT users.id, secrets.password, secrets.last_changed
             FROM users JOIN secrets ON users.id = secrets.user_id
             WHERE users.username = $1",
             username
@@ -214,6 +216,9 @@ impl StoredCredentials {
                 .try_into()
                 .expect("user_id is negative for some reason"),
             hash: Secret::new(result.password),
+            last_changed: DateTime::from_utc(
+                NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
+                Utc),
         })
     }
 
@@ -227,15 +232,22 @@ impl StoredCredentials {
         let db = &APP.read().await.db;
 
         sqlx::query!(
-            "INSERT INTO secrets (user_id, password) VALUES ($1, $2)
-            ON CONFLICT (user_id) DO UPDATE SET password = $2",
+            "INSERT INTO secrets (user_id, password, last_changed) VALUES ($1, $2, $3)
+            ON CONFLICT (user_id) DO UPDATE SET password = $2, last_changed = $3",
             self.user_id as i64,
-            self.hash.expose_secret()
+            self.hash.expose_secret(),
+            self.last_changed.timestamp()
         )
         .execute(db.pool())
         .await?;
 
         Ok(())
+    }
+
+    /// Update the password hash of the credentials, changing the last changed field with it.
+    pub async fn update_hash(&mut self, new_hash: Secret<String>) {
+        self.hash = new_hash;
+        self.last_changed = Utc::now();
     }
 }
 
