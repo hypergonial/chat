@@ -1,8 +1,16 @@
 FROM rust:latest as builder
+# Create a dummy project to cache dependencies
+WORKDIR /usr/src
+RUN cargo new backend
 WORKDIR /usr/src/backend
-COPY . .
+# Copy the Cargo.toml and build the dependencies
+COPY Cargo.toml ./
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
-RUN cargo fetch
+RUN cargo build --release
+# Cleanup
+RUN rm src/*.rs
+# Copy the source files and finish build
+COPY . .
 RUN cargo install --path .
 
 # Copy the binary into a smaller image
