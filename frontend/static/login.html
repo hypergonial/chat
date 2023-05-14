@@ -4,15 +4,20 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="static/styles/main.css">
+    <link rel="stylesheet" href="static/styles/input.css">
+    <link rel="stylesheet" href="static/styles/login.css">
     <title>Login - Chat</title>
 </head>
 <body>
-    <form id="login">
-        <input type="text" name="username" placeholder="Username">
-        <input type="password" name="password" placeholder="Password">
-        <button type="submit">Login</button>
-    </form>
-    <button id="register">Register</button>
+    <div class="center login-form">
+        <form id="login">
+            <input type="text" name="username" placeholder="Username">
+            <input type="password" name="password" placeholder="Password">
+            <button type="submit">Login</button>
+        </form>
+        <button id="register">Register</button>
+    </div>
     <script>
         const form = document.getElementById('login');
         const reg_button = document.getElementById('register');

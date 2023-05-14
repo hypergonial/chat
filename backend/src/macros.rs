@@ -9,6 +9,7 @@
 /// ```rust
 /// dispatch!(GatewayEvent::MessageCreate(message.clone()));
 /// ```
+
 #[macro_export]
 macro_rules! dispatch {
     ($event:expr) => {

@@ -41,3 +41,10 @@ pub struct BadRequest {
 }
 
 impl reject::Reject for BadRequest {}
+
+#[derive(Debug)]
+pub struct RateLimited {
+    pub message: String,
+}
+
+impl reject::Reject for RateLimited {}

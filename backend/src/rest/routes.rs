@@ -8,12 +8,21 @@ use crate::models::rest::{CreateMessage, CreateUser};
 use crate::models::snowflake::Snowflake;
 use crate::models::user::User;
 use crate::models::{gateway_event::GatewayEvent, message::Message};
+use governor::clock::{QuantaClock, QuantaInstant};
+use governor::middleware::NoOpMiddleware;
+use governor::state::keyed::DashMapStateStore;
+use governor::{Quota, RateLimiter};
+use nonzero_ext::nonzero;
 use secrecy::ExposeSecret;
 use std::eprintln;
+use std::sync::Arc;
 use std::time::Duration;
 use warp::filters::BoxedFilter;
 use warp::http::{header, Method};
 use warp::Filter;
+
+type SharedIDLimiter =
+    Arc<RateLimiter<u64, DashMapStateStore<u64>, QuantaClock, NoOpMiddleware<QuantaInstant>>>;
 
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     // https://javascript.info/fetch-crossorigin
@@ -36,11 +45,17 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         ])
         .max_age(Duration::from_secs(3600));
 
+    let message_create_lim: SharedIDLimiter = Arc::new(RateLimiter::keyed(
+        Quota::per_second(nonzero!(5u32)).allow_burst(nonzero!(5u32)),
+    ));
+
     let create_msg = warp::path!("message" / "create")
         .and(warp::post())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::header("authorization"))
         .and_then(validate_token)
+        .and(with_id_limiter(message_create_lim))
+        .and_then(validate_limit)
         .and(warp::body::json())
         .and_then(create_message)
         .with(cors.clone());
@@ -74,6 +89,26 @@ async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
             message: "Invalid or expired token".into(),
         })
     })
+}
+
+// Check the limiter with the key being the token's user_id
+async fn validate_limit(token: Token, limiter: SharedIDLimiter) -> Result<Token, warp::Rejection> {
+    let user_id = token.data().user_id();
+    limiter.check_key(&user_id).map_err(|e| {
+        warp::reject::custom(BadRequest {
+            message: format!(
+                "Rate limit exceeded, try again at: {:?}",
+                e.earliest_possible()
+            ),
+        })
+    })?;
+    Ok(token)
+}
+
+pub fn with_id_limiter(
+    limiter: SharedIDLimiter,
+) -> impl Filter<Extract = (SharedIDLimiter,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || limiter.clone())
 }
 
 /// Send a new message and return the message data.
