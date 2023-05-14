@@ -45,7 +45,7 @@ impl ApplicationState {
     }
 
     /// Closes the application and cleans up resources.
-    pub async fn close(&mut self){
+    pub async fn close(&mut self) {
         self.db.close().await
     }
 }
@@ -60,7 +60,12 @@ pub struct Config {
 
 impl Config {
     /// Creates a new config instance.
-    pub fn new(database_url: String, machine_id: i32, process_id: i32, listen_addr: SocketAddr) -> Self {
+    pub fn new(
+        database_url: String,
+        machine_id: i32,
+        process_id: i32,
+        listen_addr: SocketAddr,
+    ) -> Self {
         Config {
             database_url,
             machine_id,

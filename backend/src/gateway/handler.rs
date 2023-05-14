@@ -194,7 +194,8 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
             if let Err(e) = ws_sink_clone.lock().await.send(Message::ping(vec![])).await {
                 tracing::info!(
                     "Failed to keep alive socket connection to {}: {}",
-                    user_id, e
+                    user_id,
+                    e
                 );
                 break;
             }
