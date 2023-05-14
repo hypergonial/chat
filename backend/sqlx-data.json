@@ -1,18 +1,5 @@
 {
   "db": "PostgreSQL",
-  "16038f4fefd50b66688a120fb7eea744743fbb3dfbdb47ebfcb8705a61d30ee9": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Text"
-        ]
-      }
-    },
-    "query": "INSERT INTO secrets (user_id, password) VALUES ($1, $2)\n            ON CONFLICT (user_id) DO UPDATE SET password = $2"
-  },
   "213bf8d37dbc88b9c222e1b38a78ede528fedcd066e59956ec7547bdc374b502": {
     "describe": {
       "columns": [],
@@ -26,32 +13,6 @@
       }
     },
     "query": "INSERT INTO messages (id, user_id, content)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (id) DO UPDATE\n            SET user_id = $2, content = $3"
-  },
-  "50ba5f0324e8842ba5ad7c2497f8d5c81d514fd5d8a3e07b4a0340608b7b4371": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "password",
-          "ordinal": 1,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "SELECT users.id, secrets.password\n            FROM users JOIN secrets ON users.id = secrets.user_id\n            WHERE users.username = $1"
   },
   "97800f1c8002ae71e100f5bcb60011930eac244b3fc1d2765fa37a1fba6f5920": {
     "describe": {
@@ -92,6 +53,20 @@
       }
     },
     "query": "INSERT INTO users (id, username, display_name)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (id) DO UPDATE\n            SET username = $2, display_name = $3"
+  },
+  "c4fc5cb66c404905a2040d36ddf5e90aacc5763e731c687f42b3601123288489": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Text",
+          "Int8"
+        ]
+      }
+    },
+    "query": "INSERT INTO secrets (user_id, password, last_changed) VALUES ($1, $2, $3)\n            ON CONFLICT (user_id) DO UPDATE SET password = $2, last_changed = $3"
   },
   "ec6ec14c14e0f907aec486a3bd403ca64d52d62cc224dc8e43b4e4ba11527287": {
     "describe": {
@@ -150,5 +125,37 @@
       }
     },
     "query": "SELECT id, username, display_name\n            FROM users\n            WHERE username = $1"
+  },
+  "fc7ecd98dad2144f8f01d9ec80c4d992c017cb00c10c6b6cbc24a091a6260369": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "password",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "last_changed",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "SELECT users.id, secrets.password, secrets.last_changed\n            FROM users JOIN secrets ON users.id = secrets.user_id\n            WHERE users.username = $1"
   }
 }
