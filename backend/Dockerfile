@@ -6,12 +6,13 @@ WORKDIR /usr/src/backend
 # Copy the Cargo.toml and build the dependencies
 COPY Cargo.toml ./
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
-RUN cargo build --release
+ARG BUILD_TYPE=release
+RUN if [ "$BUILD_TYPE" = "release" ]; then cargo build --release; else cargo build; fi
 # Cleanup
 RUN rm src/*.rs
 # Copy the source files and finish build
 COPY . .
-RUN cargo install --path .
+RUN if [ "$BUILD_TYPE" = "release" ]; then cargo install --path .; else cargo install --path . --debug; fi
 
 # Copy the binary into a smaller image
 FROM debian:buster-slim
