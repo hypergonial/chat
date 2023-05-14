@@ -4,7 +4,7 @@ use crate::dispatch;
 use crate::models::appstate::APP;
 use crate::models::auth::{Credentials, StoredCredentials, Token};
 use crate::models::rejections::{BadRequest, InternalServerError, Unauthorized};
-use crate::models::rest::{AuthUserResponse, CreateMessage, CreateUser};
+use crate::models::rest::{CreateMessage, CreateUser};
 use crate::models::snowflake::Snowflake;
 use crate::models::user::User;
 use crate::models::{gateway_event::GatewayEvent, message::Message};
@@ -14,6 +14,7 @@ use governor::state::keyed::DashMapStateStore;
 use governor::{Quota, RateLimiter};
 use nonzero_ext::nonzero;
 use secrecy::ExposeSecret;
+use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use warp::filters::BoxedFilter;
@@ -161,7 +162,7 @@ async fn create_message(
 
     dispatch!(GatewayEvent::MessageCreate(message.clone()));
     Ok(warp::reply::with_status(
-        warp::reply::json(&message),
+        warp::reply::json(&json!({ "message": message })),
         warp::http::StatusCode::CREATED,
     ))
 }
@@ -218,7 +219,7 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
     }
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&user),
+        warp::reply::json(&json!({ "user": user })),
         warp::http::StatusCode::CREATED,
     ))
 }
@@ -251,11 +252,10 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
         tracing::error!("Failed to create token for user: {}", user_id);
         return Err(warp::reject::custom(InternalServerError { message: "Failed to generate session token.".into() }));
     };
-    let resp = AuthUserResponse::new(user_id, token.expose_secret().clone());
 
     // Return the cookie in a json response
     Ok(warp::reply::with_status(
-        warp::reply::json(&resp),
+        warp::reply::json(&json!({"user_id": user_id, "token": token.expose_secret()})),
         warp::http::StatusCode::OK,
     ))
 }
@@ -269,7 +269,7 @@ async fn user_getself(token: Token) -> Result<impl warp::Reply, warp::Rejection>
     })?;
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&user),
+        warp::reply::json(&json!({ "user": user })),
         warp::http::StatusCode::OK,
     ))
 }
