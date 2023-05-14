@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
 use std::time::SystemTime;
 
+use super::appstate::APP;
+
 // Custom epoch of 2023-01-01T00:00:00Z
 pub const EPOCH: u64 = 1672531200;
 
@@ -18,8 +20,16 @@ pub struct Snowflake {
 }
 
 impl Snowflake {
+    /// Create a new snowflake from a 64-bit unsigned integer.
     pub fn new(value: u64) -> Self {
         Snowflake { value }
+    }
+
+    /// Generate a new snowflake using the current time.
+    pub async fn gen_new() -> Self {
+        let app = APP.read().await;
+        let mut gen = get_generator(app.config().machine_id(), app.config().process_id());
+        gen.generate().into()
     }
 
     /// UNIX timestamp representing the time at which this snowflake was created in milliseconds.

@@ -1,4 +1,4 @@
-use super::db::DB;
+use super::appstate::APP;
 use chrono::prelude::*;
 use chrono::DateTime;
 use lazy_static::lazy_static;
@@ -65,7 +65,7 @@ impl User {
 
     /// Retrieve a user from the database by their ID.
     pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = DB.read().await;
+        let db = &APP.read().await.db;
         let id_i64: i64 = id.into();
         let row = sqlx::query!(
             "SELECT username, display_name
@@ -86,7 +86,7 @@ impl User {
 
     /// Retrieve a user from the database by their username.
     pub async fn fetch_by_username(username: &str) -> Option<Self> {
-        let db = DB.read().await;
+        let db = &APP.read().await.db;
         let row = sqlx::query!(
             "SELECT id, username, display_name
             FROM users
@@ -106,7 +106,7 @@ impl User {
 
     /// Commit this user to the database.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = DB.read().await;
+        let db = &APP.read().await.db;
         let id_i64: i64 = self.id.into();
         sqlx::query!(
             "INSERT INTO users (id, username, display_name)

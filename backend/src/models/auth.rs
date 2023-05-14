@@ -1,7 +1,7 @@
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
-use super::db::DB;
+use super::appstate::APP;
 use super::snowflake::Snowflake;
 use chrono::prelude::*;
 use core::fmt::Debug;
@@ -196,7 +196,7 @@ impl StoredCredentials {
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
     pub async fn fetch(username: String) -> Option<StoredCredentials> {
-        let db = DB.read().await;
+        let db = &APP.read().await.db;
 
         let result = sqlx::query!(
             "SELECT users.id, secrets.password
@@ -224,7 +224,7 @@ impl StoredCredentials {
     /// Returns an error if the credentials could not be committed,
     /// this could be due to the user not existing in the database.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = DB.read().await;
+        let db = &APP.read().await.db;
 
         sqlx::query!(
             "INSERT INTO secrets (user_id, password) VALUES ($1, $2)

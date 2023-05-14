@@ -1,13 +1,4 @@
-use lazy_static::lazy_static;
 use sqlx::postgres::{PgPool, PgQueryResult};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-pub type SharedDatabase = Arc<RwLock<Database>>;
-
-lazy_static! {
-    pub static ref DB: SharedDatabase = SharedDatabase::default();
-}
 
 pub struct Database {
     pool: Option<PgPool>,
@@ -18,7 +9,7 @@ impl Database {
     /// Creates a new database instance
     ///
     /// Note: The database is not connected by default
-    fn new() -> Self {
+    pub fn new() -> Self {
         Database {
             pool: None,
             is_connected: false,

@@ -4,14 +4,15 @@ use std::time::Duration;
 
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use lazy_static::lazy_static;
 use secrecy::ExposeSecret;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::filters::BoxedFilter;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
+use crate::dispatch;
+use crate::models::appstate::APP;
 use crate::models::auth::Token;
 use crate::models::gateway_event::{GatewayEvent, GatewayMessage};
 use crate::models::snowflake::Snowflake;
@@ -19,11 +20,6 @@ use crate::models::user::User;
 
 /// Mapping of <user_id, sender>
 pub type PeerMap = HashMap<Snowflake, mpsc::UnboundedSender<GatewayEvent>>;
-pub type SharedGateway = Arc<RwLock<Gateway>>;
-
-lazy_static! {
-    pub static ref GATEWAY: SharedGateway = Arc::new(RwLock::new(Gateway::new()));
-}
 
 /// A singleton representing the gateway state
 pub struct Gateway {
@@ -42,16 +38,12 @@ impl Gateway {
     ///
     /// ## Arguments
     ///
-    /// * `user_id` - The id of the user that sent the event
     /// * `payload` - The event payload
-    /// * `users` - The peermap of all users
-    pub fn dispatch(&self, user_id: Snowflake, payload: GatewayEvent) {
+    pub fn dispatch(&self, payload: GatewayEvent) {
         println!("Dispatching event: {:?}", payload);
-        for (&uid, sender) in self.peers.iter() {
-            if uid != user_id {
-                if let Err(_disconnected) = sender.send(payload.clone()) {
-                    eprintln!("Error dispatching event to user: {}", uid);
-                }
+        for (uid, sender) in self.peers.iter() {
+            if let Err(_disconnected) = sender.send(payload.clone()) {
+                eprintln!("Error dispatching event to user: {}", uid);
             }
         }
     }
@@ -69,13 +61,13 @@ impl Default for Gateway {
 ///
 /// A boxed filter that can be used to handle the gateway
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
-    let gateway_filter = warp::any().map(move || GATEWAY.clone());
+    let inject_app = warp::any().map(move || &APP);
 
     let gateway = warp::path("gateway")
         .and(warp::ws()) // <- The `ws()` filter will prepare Websocket handshake...
-        .and(gateway_filter) // <- Use our shared state...
-        .map(|ws: warp::ws::Ws, gateway: SharedGateway| {
-            ws.on_upgrade(move |socket| handle_connection(gateway, socket))
+        .and(inject_app) // <- Use our shared state...
+        .map(|ws: warp::ws::Ws, app: &'static _| {
+            ws.on_upgrade(move |socket| handle_connection(app, socket))
             // <- call our handler
         });
 
@@ -159,9 +151,9 @@ async fn handle_handshake(
 ///
 /// * `gateway` - The gateway state
 /// * `socket` - The websocket connection to handle
-async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
+async fn handle_connection(app: &'static APP, socket: WebSocket) {
     let (mut ws_sink, mut ws_stream) = socket.split();
-     // Handle handshake and get user
+    // Handle handshake and get user
     let Ok(user) = handle_handshake(&mut ws_sink, &mut ws_stream).await else {
         ws_sink.reunite(ws_stream).unwrap().close().await.ok();
         return;
@@ -174,11 +166,8 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
     let mut receiver = UnboundedReceiverStream::new(receiver);
 
     // Add user to peermap
-    gateway.write().await.peers.insert(user.id(), sender);
-    gateway
-        .read()
-        .await
-        .dispatch(user.id(), GatewayEvent::MemberJoin(user.id().to_string()));
+    app.write().await.gateway.peers.insert(user.id(), sender);
+    dispatch!(GatewayEvent::MemberJoin(user.id().to_string()));
 
     // The sink needs to be shared between two tasks
     let ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>> = Arc::new(Mutex::new(ws_sink));
@@ -231,10 +220,7 @@ async fn handle_connection(gateway: SharedGateway, socket: WebSocket) {
     }
 
     // Disconnection logic
-    gateway.write().await.peers.remove(&user.id());
-    gateway
-        .read()
-        .await
-        .dispatch(user.id(), GatewayEvent::MemberLeave(user.id().to_string()));
+    app.write().await.gateway.peers.remove(&user.id());
+    dispatch!(GatewayEvent::MemberLeave(user.id().to_string()));
     println!("Disconnected: {} ({})", user.username(), user.id());
 }

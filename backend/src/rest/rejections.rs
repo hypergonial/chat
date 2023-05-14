@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 use std::error::Error;
 
-use crate::models::rejections::{BadRequest, ErrorMessage, Unauthorized, InternalServerError};
+use crate::models::rejections::{BadRequest, ErrorMessage, InternalServerError, Unauthorized};
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
 

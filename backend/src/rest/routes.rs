@@ -1,10 +1,11 @@
 use super::auth::{generate_hash, validate_credentials};
 use super::rejections::handle_rejection;
-use crate::gateway::handler::GATEWAY;
+use crate::dispatch;
+use crate::models::appstate::APP;
 use crate::models::auth::{Credentials, StoredCredentials, Token};
 use crate::models::rejections::{BadRequest, InternalServerError, Unauthorized};
 use crate::models::rest::{CreateMessage, CreateUser};
-use crate::models::snowflake::{self, Snowflake};
+use crate::models::snowflake::Snowflake;
 use crate::models::user::User;
 use crate::models::{gateway_event::GatewayEvent, message::Message};
 use secrecy::ExposeSecret;
@@ -68,7 +69,11 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 // Note: Needs to be async for the `and_then` combinator
 /// Validate a token and return the parsed token data if successful.
 async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
-    Token::decode(&token, "among us").map_err(|_| warp::reject::custom(Unauthorized {message: "Invalid or expired token".into() }))
+    Token::decode(&token, "among us").map_err(|_| {
+        warp::reject::custom(Unauthorized {
+            message: "Invalid or expired token".into(),
+        })
+    })
 }
 
 /// Send a new message and return the message data.
@@ -93,21 +98,26 @@ async fn create_message(
         .await
         .ok_or_else(|| {
             eprintln!("Failed to fetch user from database");
-            warp::reject::custom(InternalServerError { message: "A database transaction error occured.".into() })
+            warp::reject::custom(InternalServerError {
+                message: "A database transaction error occured.".into(),
+            })
         })?;
 
-    let message_id: Snowflake = snowflake::get_generator(1, 1).real_time_generate().into();
-    let message = Message::new(message_id, user, payload.content().to_string());
+    let message = Message::new(
+        Snowflake::gen_new().await,
+        user,
+        payload.content().to_string(),
+        payload.nonce().clone(),
+    );
 
     if let Err(e) = message.commit().await {
         eprintln!("Failed to commit message to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError { message: "A database transaction error occured.".into() }));
+        return Err(warp::reject::custom(InternalServerError {
+            message: "A database transaction error occured.".into(),
+        }));
     }
 
-    GATEWAY.read().await.dispatch(
-        message.author().id(),
-        GatewayEvent::MessageCreate(message.clone()),
-    );
+    dispatch!(GatewayEvent::MessageCreate(message.clone()));
     Ok(warp::reply::with_status(
         warp::reply::json(&message),
         warp::http::StatusCode::CREATED,
@@ -128,7 +138,7 @@ async fn create_message(
 ///
 /// POST `/user/create`
 async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Rejection> {
-    let user_id: Snowflake = snowflake::get_generator(1, 1).real_time_generate().into();
+    let user_id: Snowflake = Snowflake::gen_new().await;
 
     let user = match User::new(user_id, payload.username.clone()) {
         Ok(user) => user,
@@ -155,10 +165,14 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
     // User needs to be committed before credentials to avoid foreign key constraint
     if let Err(e) = user.commit().await {
         eprintln!("Failed to commit user to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError { message: "A database transaction error occured.".into() }));
+        return Err(warp::reject::custom(InternalServerError {
+            message: "A database transaction error occured.".into(),
+        }));
     } else if let Err(e) = credentials.commit().await {
         eprintln!("Failed to commit credentials to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError { message: "A database transaction error occured.".into() }));
+        return Err(warp::reject::custom(InternalServerError {
+            message: "A database transaction error occured.".into(),
+        }));
     }
 
     Ok(warp::reply::with_status(
@@ -185,7 +199,9 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
         Ok(user_id) => user_id,
         Err(e) => {
             eprintln!("Failed to validate credentials: {}", e);
-            return Err(warp::reject::custom(Unauthorized { message: "Invalid credentials".into() }));
+            return Err(warp::reject::custom(Unauthorized {
+                message: "Invalid credentials".into(),
+            }));
         }
     };
 

@@ -14,14 +14,19 @@ pub struct CreateUser {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateMessage {
     content: String,
+    nonce: Option<String>,
 }
 
 impl CreateMessage {
-    pub fn new(content: String) -> Self {
-        CreateMessage { content }
+    pub fn new(content: String, nonce: Option<String>) -> Self {
+        CreateMessage { content, nonce }
     }
 
     pub fn content(&self) -> &str {
         &self.content
+    }
+
+    pub fn nonce(&self) -> &Option<String> {
+        &self.nonce
     }
 }

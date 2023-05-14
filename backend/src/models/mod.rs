@@ -1,3 +1,4 @@
+pub mod appstate;
 pub mod auth;
 pub mod db;
 pub mod gateway_event;
