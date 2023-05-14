@@ -16,6 +16,7 @@ lazy_static! {
     };
 }
 
+/// Application configuration
 pub struct Config {
     database_url: String,
     machine_id: i32,
