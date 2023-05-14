@@ -43,6 +43,11 @@ impl ApplicationState {
     pub async fn init(&mut self) -> Result<(), sqlx::Error> {
         self.db.connect(self.config.database_url()).await
     }
+
+    /// Closes the application and cleans up resources.
+    pub async fn close(&mut self){
+        self.db.close().await
+    }
 }
 
 /// Application configuration
