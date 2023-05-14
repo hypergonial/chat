@@ -121,19 +121,21 @@ impl Token {
     }
 
     /// Decode and validate an existing token and return it.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `token` - The token to decode
     /// * `secret` - The secret to decode the token with
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the token could not be decoded or the secret was invalid.
     /// Returns an error if the token was issued before the last password change.
     pub async fn validate(token: &str, secret: &str) -> Result<Self, anyhow::Error> {
         let token = Self::decode(token, secret)?;
-        let stored_creds = StoredCredentials::fetch(token.data().user_id()).await.ok_or(anyhow::anyhow!("User credentials not found"))?;
+        let stored_creds = StoredCredentials::fetch(token.data().user_id())
+            .await
+            .ok_or(anyhow::anyhow!("User credentials not found"))?;
         // Check that the token's iat is after the last changed time of the stored credentials
         if token.data().iat() < stored_creds.last_changed.timestamp() as usize {
             return Err(anyhow::anyhow!("Token issued before last password change"));
@@ -187,14 +189,14 @@ impl Credentials {
 }
 
 pub struct StoredCredentials {
-    user_id: u64,
+    user_id: Snowflake,
     hash: Secret<String>,
     last_changed: DateTime<Utc>,
 }
 
 impl StoredCredentials {
     /// Create a new set of stored credentials.
-    pub fn new(user_id: u64, hash: String) -> Self {
+    pub fn new(user_id: Snowflake, hash: String) -> Self {
         StoredCredentials {
             user_id,
             hash: Secret::new(hash),
@@ -203,7 +205,7 @@ impl StoredCredentials {
     }
 
     /// The user id of the user that owns the credentials.
-    pub fn user_id(&self) -> u64 {
+    pub fn user_id(&self) -> Snowflake {
         self.user_id
     }
 
@@ -234,7 +236,8 @@ impl StoredCredentials {
             hash: Secret::new(result.password),
             last_changed: DateTime::from_utc(
                 NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
-                Utc),
+                Utc,
+            ),
         })
     }
 
@@ -281,11 +284,12 @@ impl StoredCredentials {
     /// this could be due to the user not existing in the database.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
         let db = &APP.read().await.db;
+        let user_id: i64 = self.user_id.into();
 
         sqlx::query!(
             "INSERT INTO secrets (user_id, password, last_changed) VALUES ($1, $2, $3)
             ON CONFLICT (user_id) DO UPDATE SET password = $2, last_changed = $3",
-            self.user_id as i64,
+            user_id,
             self.hash.expose_secret(),
             self.last_changed.timestamp()
         )

@@ -3,6 +3,7 @@ use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use secrecy::{ExposeSecret, Secret};
 
 use crate::models::auth::{Credentials, StoredCredentials};
+use crate::models::snowflake::Snowflake;
 
 /// Verify a set of credentials against the database in constant time.
 ///
@@ -12,10 +13,10 @@ use crate::models::auth::{Credentials, StoredCredentials};
 ///
 /// # Returns
 ///
-/// * `Ok(u64)` - The user id of the user that owns the credentials.
+/// * `Ok(Snowflake)` - The user id of the user that owns the credentials.
 /// * `Err(anyhow::Error)` - If the credentials are invalid or the user was not found.
-pub async fn validate_credentials(credentials: Credentials) -> Result<u64, anyhow::Error> {
-    let mut user_id: Option<u64> = None;
+pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake, anyhow::Error> {
+    let mut user_id: Option<Snowflake> = None;
     // We set up a dummy hash here so verify_password_hash is always run.
     // This is to prevent timing attacks.
     let mut expected_hash = Secret::new(

@@ -4,7 +4,7 @@ use crate::dispatch;
 use crate::models::appstate::APP;
 use crate::models::auth::{Credentials, StoredCredentials, Token};
 use crate::models::rejections::{BadRequest, InternalServerError, Unauthorized};
-use crate::models::rest::{CreateMessage, CreateUser};
+use crate::models::rest::{AuthUserResponse, CreateMessage, CreateUser};
 use crate::models::snowflake::Snowflake;
 use crate::models::user::User;
 use crate::models::{gateway_event::GatewayEvent, message::Message};
@@ -104,6 +104,11 @@ async fn validate_limit(token: Token, limiter: SharedIDLimiter) -> Result<Token,
     Ok(token)
 }
 
+/// Add a new ID-based ratelimiter to the filter.
+///
+/// ## Arguments
+///
+/// * `limiter` - The ratelimiter to add
 pub fn with_id_limiter(
     limiter: SharedIDLimiter,
 ) -> impl Filter<Extract = (SharedIDLimiter,), Error = std::convert::Infallible> + Clone {
@@ -128,14 +133,12 @@ async fn create_message(
     token: Token,
     payload: CreateMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let user = User::fetch(token.data().user_id())
-        .await
-        .ok_or_else(|| {
-            tracing::error!("Failed to fetch user from database");
-            warp::reject::custom(InternalServerError {
-                message: "A database transaction error occured.".into(),
-            })
-        })?;
+    let user = User::fetch(token.data().user_id()).await.ok_or_else(|| {
+        tracing::error!("Failed to fetch user from database");
+        warp::reject::custom(InternalServerError {
+            message: "A database transaction error occured.".into(),
+        })
+    })?;
 
     let message = Message::new(
         Snowflake::gen_new().await,
@@ -192,7 +195,7 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
     }
 
     let credentials = StoredCredentials::new(
-        user_id.into(),
+        user_id,
         generate_hash(&payload.password).expect("Failed to generate password hash"),
     );
 
@@ -239,14 +242,15 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
         }
     };
 
-    let Ok(token) = Token::new_for(user_id.into(), "among us") else {
+    let Ok(token) = Token::new_for(user_id, "among us") else {
         tracing::error!("Failed to create token for user: {}", user_id);
         return Err(warp::reject::custom(InternalServerError { message: "Failed to generate session token.".into() }));
     };
+    let resp = AuthUserResponse::new(user_id, token.expose_secret().clone());
 
     // Return the cookie in a json response
     Ok(warp::reply::with_status(
-        warp::reply::json(&token.expose_secret()),
+        warp::reply::json(&resp),
         warp::http::StatusCode::OK,
     ))
 }

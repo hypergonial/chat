@@ -1,6 +1,8 @@
 use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 
+use super::snowflake::Snowflake;
+
 /// A request to create a new user
 #[derive(Deserialize, Debug, Clone)]
 pub struct CreateUser {
@@ -28,5 +30,25 @@ impl CreateMessage {
 
     pub fn nonce(&self) -> &Option<String> {
         &self.nonce
+    }
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct AuthUserResponse {
+    user_id: Snowflake,
+    token: String,
+}
+
+impl AuthUserResponse {
+    pub fn new(user_id: Snowflake, token: String) -> Self {
+        AuthUserResponse { user_id, token }
+    }
+
+    pub fn user_id(&self) -> Snowflake {
+        self.user_id
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
     }
 }
