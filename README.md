@@ -13,8 +13,8 @@ Once done, running the server should be as simple as running it using `cargo run
 
 ## TODO
 
-- [ ] Nonces to handle message sending state
-- [ ] Unify global app state in backend
+- [x] Nonces to handle message sending state
+- [x] Unify global app state in backend
 - [ ] Proper frontend
 
 ## Contributing
