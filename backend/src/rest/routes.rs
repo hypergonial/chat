@@ -56,35 +56,32 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(with_id_limiter(message_create_lim))
         .and_then(validate_limit)
         .and(warp::body::json())
-        .and_then(create_message)
-        .with(cors.clone());
+        .and_then(create_message);
 
     let create_user = warp::path!("user" / "create")
         .and(warp::post())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
-        .and_then(user_create)
-        .with(cors.clone());
+        .and_then(user_create);
 
     let login = warp::path!("user" / "auth")
         .and(warp::post())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
-        .and_then(user_auth)
-        .with(cors.clone());
+        .and_then(user_auth);
 
     let query_self = warp::path!("user")
         .and(warp::get())
         .and(warp::header("authorization"))
         .and_then(validate_token)
-        .and_then(user_getself)
-        .with(cors);
+        .and_then(user_getself);
 
     create_msg
         .or(create_user)
         .or(login)
         .or(query_self)
         .recover(handle_rejection)
+        .with(cors)
         .boxed()
 }
 
