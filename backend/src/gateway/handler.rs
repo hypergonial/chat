@@ -119,7 +119,7 @@ async fn handle_handshake(
         return Err(());
     };
 
-    let Ok(token) = Token::decode(payload.token.expose_secret(), "among us") else {
+    let Ok(token) = Token::validate(payload.token.expose_secret(), "among us").await else {
         ws_sink.send(Message::close_with(
             1008_u16,
             serde_json::to_string(&GatewayEvent::InvalidSession("Invalid token".into())).unwrap(),
@@ -128,7 +128,7 @@ async fn handle_handshake(
     };
 
     let user_id = token.data().user_id();
-    let Some(user) = User::fetch(user_id.into()).await else {
+    let Some(user) = User::fetch(user_id).await else {
         ws_sink.send(Message::close_with(
             1008_u16,
             serde_json::to_string(&GatewayEvent::InvalidSession("User not found".into())).unwrap(),

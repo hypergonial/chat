@@ -83,7 +83,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 // Note: Needs to be async for the `and_then` combinator
 /// Validate a token and return the parsed token data if successful.
 async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
-    Token::decode(&token, "among us").map_err(|_| {
+    Token::validate(&token, "among us").await.map_err(|_| {
         warp::reject::custom(Unauthorized {
             message: "Invalid or expired token".into(),
         })
@@ -93,7 +93,7 @@ async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
 // Check the limiter with the key being the token's user_id
 async fn validate_limit(token: Token, limiter: SharedIDLimiter) -> Result<Token, warp::Rejection> {
     let user_id = token.data().user_id();
-    limiter.check_key(&user_id).map_err(|e| {
+    limiter.check_key(&user_id.into()).map_err(|e| {
         warp::reject::custom(BadRequest {
             message: format!(
                 "Rate limit exceeded, try again at: {:?}",
@@ -128,7 +128,7 @@ async fn create_message(
     token: Token,
     payload: CreateMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let user = User::fetch(token.data().user_id().into())
+    let user = User::fetch(token.data().user_id())
         .await
         .ok_or_else(|| {
             tracing::error!("Failed to fetch user from database");

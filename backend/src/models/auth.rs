@@ -9,10 +9,13 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TokenData {
-    user_id: u64,
+    /// The user id of the token owner
+    user_id: Snowflake,
     /// The expiration time of the token in seconds
+    /// Note: This field is validated by the jsonwebtoken crate
     exp: usize,
     /// Issued at time of the token in seconds
+    /// Note: This field is validated by the jsonwebtoken crate
     iat: usize,
 }
 
@@ -23,7 +26,7 @@ impl TokenData {
     ///
     /// * `user_id` - The user id to store in the token
     /// * `iat` - The issuer time of the token
-    pub fn new(user_id: u64, iat: usize) -> Self {
+    pub fn new(user_id: Snowflake, iat: usize) -> Self {
         TokenData {
             user_id,
             iat,
@@ -31,8 +34,8 @@ impl TokenData {
         }
     }
 
-    /// Returns the user id of the token
-    pub fn user_id(&self) -> u64 {
+    /// Returns the user id of the token owner
+    pub fn user_id(&self) -> Snowflake {
         self.user_id
     }
 
@@ -90,12 +93,12 @@ impl Token {
     /// Returns an error if the token could not be generated or contains invalid data.
     pub fn new_for(user_id: Snowflake, secret: &str) -> Result<Self, jsonwebtoken::errors::Error> {
         Self::new(
-            &TokenData::new(user_id.into(), Utc::now().timestamp() as usize),
+            &TokenData::new(user_id, Utc::now().timestamp() as usize),
             secret,
         )
     }
 
-    /// Decode an existing token and return it
+    /// Decode an existing token and return it. This will not validate the token.
     ///
     /// # Arguments
     ///
@@ -105,7 +108,7 @@ impl Token {
     /// # Errors
     ///
     /// Returns an error if the token could not be decoded or the secret was invalid.
-    pub fn decode(token: &str, secret: &str) -> Result<Self, jsonwebtoken::errors::Error> {
+    fn decode(token: &str, secret: &str) -> Result<Self, jsonwebtoken::errors::Error> {
         let decoded = decode::<TokenData>(
             token,
             &DecodingKey::from_secret(secret.as_ref()),
@@ -115,6 +118,27 @@ impl Token {
             data: decoded.claims,
             token: Secret::new(token.to_string()),
         })
+    }
+
+    /// Decode and validate an existing token and return it.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `token` - The token to decode
+    /// * `secret` - The secret to decode the token with
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the token could not be decoded or the secret was invalid.
+    /// Returns an error if the token was issued before the last password change.
+    pub async fn validate(token: &str, secret: &str) -> Result<Self, anyhow::Error> {
+        let token = Self::decode(token, secret)?;
+        let stored_creds = StoredCredentials::fetch(token.data().user_id()).await.ok_or(anyhow::anyhow!("User credentials not found"))?;
+        // Check that the token's iat is after the last changed time of the stored credentials
+        if token.data().iat() < stored_creds.last_changed.timestamp() as usize {
+            return Err(anyhow::anyhow!("Token issued before last password change"));
+        }
+        Ok(token)
     }
 
     /// Returns the token data
@@ -188,6 +212,32 @@ impl StoredCredentials {
         &self.hash
     }
 
+    pub async fn fetch(id: Snowflake) -> Option<StoredCredentials> {
+        let db = &APP.read().await.db;
+        let user_id: i64 = id.into();
+
+        let result = sqlx::query!(
+            "SELECT user_id, password, last_changed
+            FROM secrets
+            WHERE user_id = $1",
+            user_id
+        )
+        .fetch_optional(db.pool())
+        .await
+        .ok()??;
+
+        Some(Self {
+            user_id: result
+                .user_id
+                .try_into()
+                .expect("user_id is negative for some reason"),
+            hash: Secret::new(result.password),
+            last_changed: DateTime::from_utc(
+                NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
+                Utc),
+        })
+    }
+
     /// Fetch a set of credentials from the database.
     ///
     /// # Arguments
@@ -197,7 +247,7 @@ impl StoredCredentials {
     /// # Returns
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
-    pub async fn fetch(username: String) -> Option<StoredCredentials> {
+    pub async fn fetch_by_username(username: String) -> Option<StoredCredentials> {
         let db = &APP.read().await.db;
 
         let result = sqlx::query!(
@@ -259,20 +309,20 @@ mod tests {
     #[test]
     fn test_decode_token() {
         let data = TokenData {
-            user_id: 123,
+            user_id: 123_u64.into(),
             iat: 123,
             exp: Utc::now().timestamp() as usize + 1000000,
         };
         let token = Token::new(&data, "among us").unwrap();
         let decoded_token = Token::decode(token.expose_secret(), "among us").unwrap();
-        assert_eq!(decoded_token.data().user_id, 123);
+        assert_eq!(decoded_token.data().user_id, 123_u64.into());
         assert_eq!(decoded_token.data().iat, 123);
     }
 
     #[test]
     fn test_different_secret_fail() {
         let data = TokenData {
-            user_id: 123,
+            user_id: 123_u64.into(),
             iat: 123,
             exp: Utc::now().timestamp() as usize + 1000000,
         };

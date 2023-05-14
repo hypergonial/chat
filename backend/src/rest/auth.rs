@@ -26,7 +26,7 @@ pub async fn validate_credentials(credentials: Credentials) -> Result<u64, anyho
     );
 
     if let Some(stored_credentials) =
-        StoredCredentials::fetch(credentials.username().to_string()).await
+        StoredCredentials::fetch_by_username(credentials.username().to_string()).await
     {
         user_id = Some(stored_credentials.user_id());
         expected_hash = stored_credentials.hash().clone();
