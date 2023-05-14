@@ -16,6 +16,33 @@ lazy_static! {
     };
 }
 
+/// Contains all the application state and manages application state changes.
+pub struct ApplicationState {
+    pub db: Database,
+    pub gateway: Gateway,
+    config: Config,
+}
+
+impl ApplicationState {
+    fn new(db: Database, gateway: Gateway, config: Config) -> Self {
+        ApplicationState {
+            db,
+            gateway,
+            config,
+        }
+    }
+
+    /// The application config.
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    /// Initializes the application
+    pub async fn init(&mut self) -> Result<(), sqlx::Error> {
+        self.db.connect(self.config.database_url()).await
+    }
+}
+
 /// Application configuration
 pub struct Config {
     database_url: String,
@@ -67,32 +94,5 @@ impl Config {
             .parse::<i32>()
             .expect("PROCESS_ID must be a valid integer");
         Config::new(database_url, machine_id, process_id)
-    }
-}
-
-/// Contains all the application state and manages application state changes.
-pub struct ApplicationState {
-    pub db: Database,
-    pub gateway: Gateway,
-    config: Config,
-}
-
-impl ApplicationState {
-    fn new(db: Database, gateway: Gateway, config: Config) -> Self {
-        ApplicationState {
-            db,
-            gateway,
-            config,
-        }
-    }
-
-    /// The application config.
-    pub fn config(&self) -> &Config {
-        &self.config
-    }
-
-    /// Initializes the application
-    pub async fn init(&mut self) -> Result<(), sqlx::Error> {
-        self.db.connect(self.config.database_url()).await
     }
 }
