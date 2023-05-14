@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use lazy_static::lazy_static;
 use tokio::sync::RwLock;
 
@@ -46,17 +48,19 @@ impl ApplicationState {
 /// Application configuration
 pub struct Config {
     database_url: String,
+    listen_addr: SocketAddr,
     machine_id: i32,
     process_id: i32,
 }
 
 impl Config {
     /// Creates a new config instance.
-    pub fn new(database_url: String, machine_id: i32, process_id: i32) -> Self {
+    pub fn new(database_url: String, machine_id: i32, process_id: i32, listen_addr: SocketAddr) -> Self {
         Config {
             database_url,
             machine_id,
             process_id,
+            listen_addr,
         }
     }
 
@@ -73,6 +77,11 @@ impl Config {
     /// The process id.
     pub fn process_id(&self) -> i32 {
         self.process_id
+    }
+
+    /// The addres for the backend server to listen on.
+    pub fn listen_addr(&self) -> SocketAddr {
+        self.listen_addr
     }
 
     /// Creates a new config from environment variables
@@ -93,6 +102,10 @@ impl Config {
             .expect("PROCESS_ID environment variable must be set")
             .parse::<i32>()
             .expect("PROCESS_ID must be a valid integer");
-        Config::new(database_url, machine_id, process_id)
+        let listen_addr = std::env::var("LISTEN_ADDR")
+            .expect("LISTEN_ADDR environment variable must be set")
+            .parse::<SocketAddr>()
+            .expect("LISTEN_ADDR must be a valid socket address");
+        Config::new(database_url, machine_id, process_id, listen_addr)
     }
 }

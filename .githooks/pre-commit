@@ -1,0 +1,6 @@
+#!/bin/sh
+
+REPO_PATH=$(/usr/bin/git rev-parse --show-toplevel)
+cd REPO_PATH/backend
+cargo sqlx prepare
+/usr/bin/git update-index --again :/:

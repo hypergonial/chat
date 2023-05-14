@@ -14,7 +14,6 @@ use governor::state::keyed::DashMapStateStore;
 use governor::{Quota, RateLimiter};
 use nonzero_ext::nonzero;
 use secrecy::ExposeSecret;
-use std::eprintln;
 use std::sync::Arc;
 use std::time::Duration;
 use warp::filters::BoxedFilter;
@@ -132,7 +131,7 @@ async fn create_message(
     let user = User::fetch(token.data().user_id().into())
         .await
         .ok_or_else(|| {
-            eprintln!("Failed to fetch user from database");
+            tracing::error!("Failed to fetch user from database");
             warp::reject::custom(InternalServerError {
                 message: "A database transaction error occured.".into(),
             })
@@ -146,7 +145,7 @@ async fn create_message(
     );
 
     if let Err(e) = message.commit().await {
-        eprintln!("Failed to commit message to database: {}", e);
+        tracing::error!("Failed to commit message to database: {}", e);
         return Err(warp::reject::custom(InternalServerError {
             message: "A database transaction error occured.".into(),
         }));
@@ -178,7 +177,7 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
     let user = match User::new(user_id, payload.username.clone()) {
         Ok(user) => user,
         Err(e) => {
-            eprintln!("Invalid user payload: {}", e);
+            tracing::debug!("Invalid user payload: {}", e);
             return Err(warp::reject::custom(BadRequest {
                 message: e.to_string(),
             }));
@@ -186,7 +185,7 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
     };
 
     if User::fetch_by_username(&payload.username).await.is_some() {
-        eprintln!("User with username {} already exists", payload.username);
+        tracing::debug!("User with username {} already exists", payload.username);
         return Err(warp::reject::custom(BadRequest {
             message: format!("User with username {} already exists", payload.username),
         }));
@@ -199,12 +198,12 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
 
     // User needs to be committed before credentials to avoid foreign key constraint
     if let Err(e) = user.commit().await {
-        eprintln!("Failed to commit user to database: {}", e);
+        tracing::error!("Failed to commit user to database: {}", e);
         return Err(warp::reject::custom(InternalServerError {
             message: "A database transaction error occured.".into(),
         }));
     } else if let Err(e) = credentials.commit().await {
-        eprintln!("Failed to commit credentials to database: {}", e);
+        tracing::error!("Failed to commit credentials to database: {}", e);
         return Err(warp::reject::custom(InternalServerError {
             message: "A database transaction error occured.".into(),
         }));
@@ -233,7 +232,7 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
     let user_id = match validate_credentials(credentials).await {
         Ok(user_id) => user_id,
         Err(e) => {
-            eprintln!("Failed to validate credentials: {}", e);
+            tracing::debug!("Failed to validate credentials: {}", e);
             return Err(warp::reject::custom(Unauthorized {
                 message: "Invalid credentials".into(),
             }));
@@ -241,7 +240,7 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
     };
 
     let Ok(token) = Token::new_for(user_id.into(), "among us") else {
-        eprintln!("Failed to create token for user: {}", user_id);
+        tracing::error!("Failed to create token for user: {}", user_id);
         return Err(warp::reject::custom(InternalServerError { message: "Failed to generate session token.".into() }));
     };
 

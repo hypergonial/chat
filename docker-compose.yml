@@ -1,0 +1,42 @@
+services:
+
+  chat-db:
+    image: postgres:14
+    restart: always
+    expose:
+      - 5432
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chat}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?err}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      
+    volumes:
+     - postgres_data:/var/lib/postgresql/data
+    networks:
+      - private
+
+  chat-backend:
+    build:
+        context: ./backend
+        dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL:?err}
+      - MACHINE_ID=${MACHINE_ID:?err}
+      - PROCESS_ID=${PROCESS_ID:?err}
+      - LISTEN_ADDR=0.0.0.0:8080
+    ports:
+      - 8080:8080
+    command: ["backend"]
+    depends_on:
+      - chat-db
+    restart: always
+    networks:
+      - private
+
+networks:
+  private:
+    external: false
+
+volumes:
+  postgres_data:

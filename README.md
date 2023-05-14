@@ -16,3 +16,7 @@ Once done, running the server should be as simple as running it using `cargo run
 - [ ] Nonces to handle message sending state
 - [ ] Unify global app state in backend
 - [ ] Proper frontend
+
+## Contributing
+
+Set the git hooks directory to `.githooks` using `git config core.hooksPath .githooks`. This ensures that the snapshot for sqlx is up to date.

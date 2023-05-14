@@ -40,10 +40,10 @@ impl Gateway {
     ///
     /// * `payload` - The event payload
     pub fn dispatch(&self, payload: GatewayEvent) {
-        println!("Dispatching event: {:?}", payload);
+        tracing::info!("Dispatching event: {:?}", payload);
         for (uid, sender) in self.peers.iter() {
             if let Err(_disconnected) = sender.send(payload.clone()) {
-                eprintln!("Error dispatching event to user: {}", uid);
+                tracing::warn!("Error dispatching event to user: {}", uid);
             }
         }
     }
@@ -159,7 +159,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         return;
     };
 
-    println!("Connected: {} ({})", user.username(), user.id());
+    tracing::info!("Connected: {} ({})", user.username(), user.id());
 
     let (sender, receiver) = mpsc::unbounded_channel::<GatewayEvent>();
     // turn receiver into a stream for easier handling
@@ -181,7 +181,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         while let Some(payload) = receiver.next().await {
             let message = Message::text(serde_json::to_string(&payload).unwrap());
             if let Err(e) = ws_sink.lock().await.send(message).await {
-                eprintln!("Error sending event to user {}: {}", user_id, e);
+                tracing::warn!("Error sending event to user {}: {}", user_id, e);
                 break;
             }
         }
@@ -192,7 +192,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
             if let Err(e) = ws_sink_clone.lock().await.send(Message::ping(vec![])).await {
-                eprintln!(
+                tracing::info!(
                     "Failed to keep alive socket connection to {}: {}",
                     user_id, e
                 );
@@ -222,5 +222,5 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     // Disconnection logic
     app.write().await.gateway.peers.remove(&user.id());
     dispatch!(GatewayEvent::MemberLeave(user.id().to_string()));
-    println!("Disconnected: {} ({})", user.username(), user.id());
+    tracing::info!("Disconnected: {} ({})", user.username(), user.id());
 }

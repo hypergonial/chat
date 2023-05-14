@@ -1,0 +1,154 @@
+{
+  "db": "PostgreSQL",
+  "16038f4fefd50b66688a120fb7eea744743fbb3dfbdb47ebfcb8705a61d30ee9": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Text"
+        ]
+      }
+    },
+    "query": "INSERT INTO secrets (user_id, password) VALUES ($1, $2)\n            ON CONFLICT (user_id) DO UPDATE SET password = $2"
+  },
+  "213bf8d37dbc88b9c222e1b38a78ede528fedcd066e59956ec7547bdc374b502": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Text"
+        ]
+      }
+    },
+    "query": "INSERT INTO messages (id, user_id, content)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (id) DO UPDATE\n            SET user_id = $2, content = $3"
+  },
+  "50ba5f0324e8842ba5ad7c2497f8d5c81d514fd5d8a3e07b4a0340608b7b4371": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "password",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "SELECT users.id, secrets.password\n            FROM users JOIN secrets ON users.id = secrets.user_id\n            WHERE users.username = $1"
+  },
+  "97800f1c8002ae71e100f5bcb60011930eac244b3fc1d2765fa37a1fba6f5920": {
+    "describe": {
+      "columns": [
+        {
+          "name": "username",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT username, display_name\n            FROM users\n            WHERE id = $1"
+  },
+  "a820efa0679701672eb52b5469c0e2ee49beb2115c7389b8c481eeadfb03a5d3": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "INSERT INTO users (id, username, display_name)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (id) DO UPDATE\n            SET username = $2, display_name = $3"
+  },
+  "ec6ec14c14e0f907aec486a3bd403ca64d52d62cc224dc8e43b4e4ba11527287": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT user_id, content\n            FROM messages\n            WHERE id = $1"
+  },
+  "f693ff27c21576f4749e4763f8be8dba1048cd930b9dbba5b4b4206101f1a2e1": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "username",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 2,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "SELECT id, username, display_name\n            FROM users\n            WHERE username = $1"
+  }
+}

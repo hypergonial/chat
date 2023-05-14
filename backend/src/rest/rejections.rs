@@ -50,12 +50,12 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         description = Some(e.to_string());
         code = StatusCode::METHOD_NOT_ALLOWED;
     } else if let Some(e) = err.find::<InternalServerError>() {
-        eprintln!("Internal Server Error: {}", e.message);
+        tracing::error!("Internal Server Error: {}", e.message);
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "INTERNAL_SERVER_ERROR";
         description = Some(format!("Internal Server Error: {}", e.message));
     } else {
-        eprintln!("Unhandled rejection: {:?}", err);
+        tracing::error!("Unhandled rejection: {:?}", err);
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "INTERNAL_SERVER_ERROR";
     }
