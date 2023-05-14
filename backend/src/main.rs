@@ -28,7 +28,9 @@ async fn handle_signals() {
 
 #[cfg(not(unix))]
 async fn handle_signals() {
-    ctrl_c().await.expect("Failed to create CTRL+C signal listener");
+    ctrl_c()
+        .await
+        .expect("Failed to create CTRL+C signal listener");
 }
 
 #[tokio::main]

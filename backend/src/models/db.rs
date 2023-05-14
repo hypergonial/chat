@@ -1,4 +1,7 @@
-use sqlx::postgres::{PgPool, PgQueryResult};
+use sqlx::{
+    migrate,
+    postgres::{PgPool, PgQueryResult},
+};
 
 pub struct Database {
     pool: Option<PgPool>,
@@ -32,6 +35,7 @@ impl Database {
         self.pool = Some(PgPool::connect(url).await?);
         self.is_connected = true;
         self.create_schema().await?;
+        migrate!("./migrations").run(self.pool()).await?;
         Ok(())
     }
 
