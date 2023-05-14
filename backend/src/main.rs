@@ -6,9 +6,12 @@ use std::process::ExitCode;
 
 use models::appstate::APP;
 use tokio::signal::ctrl_c;
-use tokio::signal::unix::{signal, SignalKind};
 use warp::Filter;
 
+#[cfg(unix)]
+use tokio::signal::unix::{signal, SignalKind};
+
+#[cfg(unix)]
 async fn handle_signals() {
     let mut sigterm =
         signal(SignalKind::terminate()).expect("Failed to create SIGTERM signal listener");
@@ -21,6 +24,11 @@ async fn handle_signals() {
             tracing::info!("Received keyboard interrupt, terminating...");
         }
     };
+}
+
+#[cfg(not(unix))]
+async fn handle_signals() {
+    ctrl_c().await.expect("Failed to create CTRL+C signal listener");
 }
 
 #[tokio::main]
