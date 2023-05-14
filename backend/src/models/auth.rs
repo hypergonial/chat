@@ -218,7 +218,8 @@ impl StoredCredentials {
             hash: Secret::new(result.password),
             last_changed: DateTime::from_utc(
                 NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
-                Utc),
+                Utc,
+            ),
         })
     }
 
