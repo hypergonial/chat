@@ -162,7 +162,7 @@ async fn create_message(
 
     dispatch!(GatewayEvent::MessageCreate(message.clone()));
     Ok(warp::reply::with_status(
-        warp::reply::json(&json!({ "message": message })),
+        warp::reply::json(&message),
         warp::http::StatusCode::CREATED,
     ))
 }
@@ -219,7 +219,7 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
     }
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&json!({ "user": user })),
+        warp::reply::json(&user),
         warp::http::StatusCode::CREATED,
     ))
 }
@@ -269,7 +269,7 @@ async fn user_getself(token: Token) -> Result<impl warp::Reply, warp::Rejection>
     })?;
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&json!({ "user": user })),
+        warp::reply::json(&user),
         warp::http::StatusCode::OK,
     ))
 }

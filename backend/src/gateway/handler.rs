@@ -167,7 +167,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
 
     // Add user to peermap
     app.write().await.gateway.peers.insert(user.id(), sender);
-    dispatch!(GatewayEvent::MemberJoin(user.id().to_string()));
+    dispatch!(GatewayEvent::MemberJoin(user.clone()));
 
     // The sink needs to be shared between two tasks
     let ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>> = Arc::new(Mutex::new(ws_sink));
@@ -222,6 +222,6 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
 
     // Disconnection logic
     app.write().await.gateway.peers.remove(&user.id());
-    dispatch!(GatewayEvent::MemberLeave(user.id().to_string()));
+    dispatch!(GatewayEvent::MemberLeave(user.clone()));
     tracing::info!("Disconnected: {} ({})", user.username(), user.id());
 }
