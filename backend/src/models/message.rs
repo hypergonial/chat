@@ -1,4 +1,4 @@
-use super::{appstate::APP, snowflake::Snowflake, user::User};
+use super::{appstate::APP, snowflake::Snowflake, user::User, rest::CreateMessage};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -17,12 +17,23 @@ pub struct Message {
 }
 
 impl Message {
+    /// Create a new message with the given id, author, content, and nonce.
     pub fn new(id: Snowflake, author: User, content: String, nonce: Option<String>) -> Self {
         Message {
             id,
             author,
             content,
             nonce,
+        }
+    }
+
+    /// Create a new message from the given payload. Assigns a new snowflake to the message.
+    pub async fn from_payload(author: User, payload: CreateMessage) -> Self {
+        Message {
+            id: Snowflake::gen_new().await,
+            author,
+            content: payload.content().to_string(),
+            nonce: payload.nonce().clone(),
         }
     }
 

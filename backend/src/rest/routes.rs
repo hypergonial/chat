@@ -5,7 +5,6 @@ use crate::models::appstate::APP;
 use crate::models::auth::{Credentials, StoredCredentials, Token};
 use crate::models::rejections::{BadRequest, InternalServerError, Unauthorized};
 use crate::models::rest::{CreateMessage, CreateUser};
-use crate::models::snowflake::Snowflake;
 use crate::models::user::User;
 use crate::models::{gateway_event::GatewayEvent, message::Message};
 use governor::clock::{QuantaClock, QuantaInstant};
@@ -146,12 +145,7 @@ async fn create_message(
         })
     })?;
 
-    let message = Message::new(
-        Snowflake::gen_new().await,
-        user,
-        payload.content().to_string(),
-        payload.nonce().clone(),
-    );
+    let message = Message::from_payload(user, payload).await;
 
     if let Err(e) = message.commit().await {
         tracing::error!("Failed to commit message to database: {}", e);
@@ -181,9 +175,9 @@ async fn create_message(
 ///
 /// POST `/user/create`
 async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Rejection> {
-    let user_id: Snowflake = Snowflake::gen_new().await;
+    let password = payload.password.clone();
 
-    let user = match User::new(user_id, payload.username.clone()) {
+    let user = match User::from_payload(payload).await {
         Ok(user) => user,
         Err(e) => {
             tracing::debug!("Invalid user payload: {}", e);
@@ -193,16 +187,16 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
         }
     };
 
-    if User::fetch_by_username(&payload.username).await.is_some() {
-        tracing::debug!("User with username {} already exists", payload.username);
+    if User::fetch_by_username(user.username()).await.is_some() {
+        tracing::debug!("User with username {} already exists", user.username());
         return Err(warp::reject::custom(BadRequest {
-            message: format!("User with username {} already exists", payload.username),
+            message: format!("User with username {} already exists", user.username()),
         }));
     }
 
     let credentials = StoredCredentials::new(
-        user_id,
-        generate_hash(&payload.password).expect("Failed to generate password hash"),
+        user.id(),
+        generate_hash(&password).expect("Failed to generate password hash"),
     );
 
     // User needs to be committed before credentials to avoid foreign key constraint

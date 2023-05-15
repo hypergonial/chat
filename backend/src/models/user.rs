@@ -1,4 +1,5 @@
 use super::appstate::APP;
+use super::rest::CreateUser;
 use chrono::prelude::*;
 use chrono::DateTime;
 use lazy_static::lazy_static;
@@ -28,6 +29,15 @@ impl User {
             id,
             username: username.clone(),
             display_name: username,
+        })
+    }
+
+    pub async fn from_payload(payload: CreateUser) -> Result<Self, anyhow::Error> {
+        Self::validate_username(&payload.username)?;
+        Ok(User {
+            id: Snowflake::gen_new().await,
+            username: payload.username.clone(),
+            display_name: payload.username,
         })
     }
 
