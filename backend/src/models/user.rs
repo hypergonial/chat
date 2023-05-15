@@ -70,6 +70,9 @@ impl User {
                 USERNAME_REGEX.to_string()
             );
         }
+        if username.len() > 32 || username.len() < 3 {
+            anyhow::bail!("Invalid username, must be between 3 and 32 characters long");
+        }
         Ok(())
     }
 

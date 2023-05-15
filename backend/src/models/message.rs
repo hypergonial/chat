@@ -1,4 +1,4 @@
-use super::{appstate::APP, snowflake::Snowflake, user::User, rest::CreateMessage};
+use super::{appstate::APP, rest::CreateMessage, snowflake::Snowflake, user::User};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
