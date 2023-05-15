@@ -18,6 +18,7 @@ pub struct Member {
     /// UNIX timestmap of when the user joined the guild
     joined_at: i64,
     /// Used to check if the user was mutated and needs re-committing when calling commit()
+    #[serde(skip)]
     _user_hash: u64,
 }
 

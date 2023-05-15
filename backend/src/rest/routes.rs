@@ -398,7 +398,7 @@ async fn create_guild(
 ///
 /// * `token` - The user's session token, already validated
 /// * `guild_id` - The ID of the guild to create the channel in
-/// * `payload` - The CreateChannel payload, containing the channel name
+/// * `payload` - The [`CreateChannel`] payload, containing the channel name
 ///
 /// ## Returns
 ///
@@ -608,7 +608,7 @@ async fn fetch_member_self(
 ///
 /// ## Endpoint
 ///
-/// GET `/users/@me/guilds`
+/// GET `/users/@self/guilds`
 async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let guilds = Guild::fetch_all_for_user(token.data().user_id()).await.map_err(|e| {
         tracing::error!(message = "Failed to fetch user guilds from database", user = %token.data().user_id(), error = %e);
