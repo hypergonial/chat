@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, num::ParseIntError, str::FromStr};
 
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -7,8 +7,8 @@ use std::time::SystemTime;
 
 use super::appstate::APP;
 
-// Custom epoch of 2023-01-01T00:00:00Z
-pub const EPOCH: u64 = 1672531200;
+// Custom epoch of 2023-01-01T00:00:00Z in miliseconds
+pub const EPOCH: u64 = 1672531200000;
 
 /// A snowflake ID used to identify entities.
 ///
@@ -86,6 +86,14 @@ impl Display for Snowflake {
     }
 }
 
+impl FromStr for Snowflake {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        u64::from_str(s).map(Snowflake::new)
+    }
+}
+
 impl sqlx::Type<sqlx::Postgres> for Snowflake {
     fn type_info() -> sqlx::postgres::PgTypeInfo {
         <i64 as sqlx::Type<sqlx::Postgres>>::type_info()
@@ -121,6 +129,6 @@ pub fn get_generator(worker_id: i32, process_id: i32) -> SnowflakeIdGenerator {
     SnowflakeIdGenerator::with_epoch(
         worker_id,
         process_id,
-        SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(EPOCH),
+        SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(EPOCH),
     )
 }

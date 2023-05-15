@@ -48,3 +48,10 @@ pub struct RateLimited {
 }
 
 impl reject::Reject for RateLimited {}
+
+#[derive(Debug)]
+pub struct Forbidden {
+    pub message: String,
+}
+
+impl reject::Reject for Forbidden {}

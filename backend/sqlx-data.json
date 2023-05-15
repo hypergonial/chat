@@ -1,6 +1,6 @@
 {
   "db": "PostgreSQL",
-  "213bf8d37dbc88b9c222e1b38a78ede528fedcd066e59956ec7547bdc374b502": {
+  "1e4ae5b21ea0466dc2e3c0d48c065efe4f281a263e51b43ef9d309a6725cd824": {
     "describe": {
       "columns": [],
       "nullable": [],
@@ -8,11 +8,98 @@
         "Left": [
           "Int8",
           "Int8",
+          "Text",
+          "Int8"
+        ]
+      }
+    },
+    "query": "INSERT INTO members (user_id, guild_id, nickname, joined_at)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (user_id, guild_id) DO UPDATE\n            SET nickname = $3, joined_at = $4"
+  },
+  "39e8fde5df56b0b7c78345de646e2cf390b0175dc5ea7fa9d9748fd32e29232e": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "owner_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT id, name, owner_id FROM guilds WHERE id = $1"
+  },
+  "86a33818712b19571f827b0170e904af26ee08d1d8f38fbc92332a49fb2c0808": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
           "Text"
         ]
       }
     },
-    "query": "INSERT INTO messages (id, user_id, content)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (id) DO UPDATE\n            SET user_id = $2, content = $3"
+    "query": "INSERT INTO messages (id, user_id, channel_id, content)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (id) DO UPDATE\n            SET user_id = $2, channel_id = $3, content = $4"
+  },
+  "8e40920032f5c84153113b35f969cdc917ebf3e12b51dbaa231338e25abbb3eb": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "guild_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "nickname",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "joined_at",
+          "ordinal": 3,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        true,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT * FROM members WHERE user_id = $1 AND guild_id = $2"
   },
   "97800f1c8002ae71e100f5bcb60011930eac244b3fc1d2765fa37a1fba6f5920": {
     "describe": {
@@ -40,6 +127,34 @@
     },
     "query": "SELECT username, display_name\n            FROM users\n            WHERE id = $1"
   },
+  "a1fbaac7941f8dc321c32e36f8caf2fec098f23317cc20bce9f8847a624c24e7": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Text",
+          "Int8"
+        ]
+      }
+    },
+    "query": "INSERT INTO guilds (id, name, owner_id)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (id) DO UPDATE\n            SET name = $2, owner_id = $3"
+  },
+  "a5014e723135181f3986c1e8e8d7c794b5be681a3073edce0b9f4964b0021bcd": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "INSERT INTO members (user_id, guild_id, joined_at)\n            VALUES ($1, $2, $3) ON CONFLICT (user_id, guild_id) DO NOTHING"
+  },
   "a820efa0679701672eb52b5469c0e2ee49beb2115c7389b8c481eeadfb03a5d3": {
     "describe": {
       "columns": [],
@@ -53,6 +168,19 @@
       }
     },
     "query": "INSERT INTO users (id, username, display_name)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (id) DO UPDATE\n            SET username = $2, display_name = $3"
+  },
+  "abd9523bebda8c6b6f4c17ed520bf6e351b25d48483855097bab9e367c1c9164": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "DELETE FROM members WHERE user_id = $1 AND guild_id = $2"
   },
   "c4fc5cb66c404905a2040d36ddf5e90aacc5763e731c687f42b3601123288489": {
     "describe": {
@@ -68,7 +196,21 @@
     },
     "query": "INSERT INTO secrets (user_id, password, last_changed) VALUES ($1, $2, $3)\n            ON CONFLICT (user_id) DO UPDATE SET password = $2, last_changed = $3"
   },
-  "ec6ec14c14e0f907aec486a3bd403ca64d52d62cc224dc8e43b4e4ba11527287": {
+  "c7c9477df9bed741f9404aa8312f3abc5332224f0e9252ce42cdd88e824b6853": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Text"
+        ]
+      }
+    },
+    "query": "INSERT INTO channels (id, guild_id, name, channel_type)\n            VALUES ($1, $2, $3, 'TEXT_CHANNEL')\n            ON CONFLICT (id) DO UPDATE\n            SET name = $3"
+  },
+  "dacc4e7025ed07e25f8728618ee74b210d9f501fba436a635a06474e14190a19": {
     "describe": {
       "columns": [
         {
@@ -77,12 +219,18 @@
           "type_info": "Int8"
         },
         {
-          "name": "content",
+          "name": "channel_id",
           "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 2,
           "type_info": "Text"
         }
       ],
       "nullable": [
+        true,
         false,
         false
       ],
@@ -92,7 +240,45 @@
         ]
       }
     },
-    "query": "SELECT user_id, content\n            FROM messages\n            WHERE id = $1"
+    "query": "SELECT user_id, channel_id, content\n            FROM messages\n            WHERE id = $1"
+  },
+  "e9f8d85417fdc81bd2dbfe749c7da303738ef2b5b1bd2f4fc1a22947108d93a2": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_type",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "guild_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 3,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT * FROM channels WHERE id = $1"
   },
   "f693ff27c21576f4749e4763f8be8dba1048cd930b9dbba5b4b4206101f1a2e1": {
     "describe": {
@@ -125,6 +311,38 @@
       }
     },
     "query": "SELECT id, username, display_name\n            FROM users\n            WHERE username = $1"
+  },
+  "f895d442c658bcf9634c8b1188857dc104451a1579523e93ac87982decfd4c48": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "owner_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT guilds.id, guilds.name, guilds.owner_id \n            FROM guilds JOIN members ON guilds.id = members.guild_id \n            WHERE members.user_id = $1"
   },
   "fc7ecd98dad2144f8f01d9ec80c4d992c017cb00c10c6b6cbc24a091a6260369": {
     "describe": {

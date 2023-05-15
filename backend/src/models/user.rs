@@ -5,7 +5,6 @@ use chrono::DateTime;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
 
 use super::snowflake::Snowflake;
 
@@ -15,7 +14,7 @@ lazy_static! {
             .unwrap();
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash)]
 pub struct User {
     id: Snowflake,
     username: String,
@@ -133,11 +132,5 @@ impl User {
         .execute(db.pool())
         .await?;
         Ok(())
-    }
-}
-
-impl Hash for User {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
     }
 }

@@ -30,3 +30,14 @@ impl CreateMessage {
         &self.nonce
     }
 }
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct CreateGuild {
+    pub name: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CreateChannel {
+    GuildText { name: String },
+}

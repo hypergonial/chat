@@ -1,7 +1,4 @@
-use sqlx::{
-    migrate,
-    postgres::{PgPool, PgQueryResult},
-};
+use sqlx::{migrate, postgres::PgPool};
 
 pub struct Database {
     pool: Option<PgPool>,
@@ -34,7 +31,6 @@ impl Database {
     pub async fn connect(&mut self, url: &str) -> Result<(), sqlx::Error> {
         self.pool = Some(PgPool::connect(url).await?);
         self.is_connected = true;
-        self.create_schema().await?;
         migrate!("./migrations").run(self.pool()).await?;
         Ok(())
     }
@@ -44,15 +40,6 @@ impl Database {
         self.pool().close().await;
         self.pool = None;
         self.is_connected = false;
-    }
-
-    /// Creates the database schema if it doesn't exist, otherwise does nothing
-    async fn create_schema(&self) -> Result<PgQueryResult, sqlx::Error> {
-        let query = include_str!("../../static/db/schema.sql");
-        sqlx::query(query).execute(self.pool()).await?;
-        sqlx::query("SELECT createSchema()")
-            .execute(self.pool())
-            .await
     }
 }
 

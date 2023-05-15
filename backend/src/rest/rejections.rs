@@ -2,7 +2,7 @@ use std::convert::Infallible;
 use std::error::Error;
 
 use crate::models::rejections::{
-    BadRequest, ErrorMessage, InternalServerError, RateLimited, Unauthorized,
+    BadRequest, ErrorMessage, Forbidden, InternalServerError, RateLimited, Unauthorized,
 };
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
@@ -37,6 +37,14 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         code = StatusCode::TOO_MANY_REQUESTS;
         message = "TOO_MANY_REQUESTS";
         description = Some(format!("Rate Limited: {}", e.message));
+    } else if let Some(e) = err.find::<Forbidden>() {
+        code = StatusCode::FORBIDDEN;
+        message = "FORBIDDEN";
+        description = Some(format!("Forbidden: {}", e.message));
+    } else if let Some(e) = err.find::<warp::reject::MissingHeader>() {
+        code = StatusCode::BAD_REQUEST;
+        message = "BAD_REQUEST";
+        description = Some(format!("Missing Header: {}", e.name()));
     } else if let Some(e) = err.find::<warp::reject::PayloadTooLarge>() {
         code = StatusCode::PAYLOAD_TOO_LARGE;
         message = "PAYLOAD_TOO_LARGE";

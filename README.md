@@ -20,4 +20,4 @@ Once done, running the server should be as simple as running it using `cargo run
 
 ## Contributing
 
-Set the git hooks directory to `.githooks` using `git config core.hooksPath .githooks`. This ensures that the snapshot for sqlx is up to date.
+If you're working with database-related code, set the git hooks directory to `.githooks` using `git config core.hooksPath .githooks`. This ensures that the snapshot for sqlx is up to date.
