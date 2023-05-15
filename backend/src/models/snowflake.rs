@@ -101,14 +101,16 @@ impl sqlx::Encode<'_, sqlx::Postgres> for Snowflake {
 // implement serialization as a u64
 impl Serialize for Snowflake {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.value.serialize(serializer)
+        self.value.to_string().serialize(serializer)
     }
 }
 
 // implement deserialization from a u64
 impl<'de> Deserialize<'de> for Snowflake {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = u64::deserialize(deserializer)?;
+        let value = String::deserialize(deserializer)?
+            .parse()
+            .map_err(|_| serde::de::Error::custom("failed parsing snowflake from string"))?;
         Ok(Snowflake::new(value))
     }
 }
