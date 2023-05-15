@@ -44,7 +44,7 @@
                 alert('Invalid username or password');
                 return;
             }
-            const token = await response.json();
+            const token = await response.json().token;
             localStorage.setItem('token', token);
             window.location.href = "/";
             

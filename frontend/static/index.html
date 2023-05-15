@@ -34,7 +34,8 @@
         gateway.onopen = () => {
             // Send IDENTIFY payload on connect with session token
             sendGatewayData(JSON.stringify({
-                "Identify": {
+                "event": "IDENTIFY",
+                "data": {
                     "token": token
                 }
             }));
@@ -48,20 +49,20 @@
         gateway.onmessage = (event) => {
             const payload = JSON.parse(event.data);
 
-            switch (Object.keys(payload)[0]) {
-                case "Ready":
-                    handleReady(payload.Ready);
+            switch (payload.event) {
+                case "READY":
+                    handleReady(payload.data);
                     break;
-                case "MessageCreate":
-                    handleMessageReceive(payload.MessageCreate);
+                case "MESSAGE_CREATE":
+                    handleMessageReceive(payload.data);
                     break;
-                case "MemberJoin":
-                    handleMemberJoin(payload.MemberJoin);
+                case "MEMBER_JOIN":
+                    handleMemberJoin(payload.data);
                     break;
-                case "MemberLeave":
-                    handleMemberLeave(payload.MemberLeave);
+                case "MEMBER_LEAVE":
+                    handleMemberLeave(payload.data);
                     break;
-                case "InvalidSession":
+                case "INVALID_SESSION":
                     window.location.href = "/login";
                     break;
                 default:
