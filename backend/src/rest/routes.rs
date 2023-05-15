@@ -71,7 +71,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::body::json())
         .and_then(user_auth);
 
-    let query_self = warp::path!("user")
+    let query_self = warp::path!("user" / "@self")
         .and(warp::get())
         .and(warp::header("authorization"))
         .and_then(validate_token)
@@ -232,11 +232,11 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
 ///
 /// ## Returns
 ///
-/// * `impl warp::Reply` - A JSON response containing the session token
+/// * `impl warp::Reply` - A JSON response containing the session token and user_id
 ///
 /// ## Endpoint
 ///
-/// GET `/user/auth`
+/// POST `/user/auth`
 async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::Rejection> {
     let user_id = match validate_credentials(credentials).await {
         Ok(user_id) => user_id,
@@ -253,13 +253,25 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
         return Err(warp::reject::custom(InternalServerError { message: "Failed to generate session token.".into() }));
     };
 
-    // Return the cookie in a json response
     Ok(warp::reply::with_status(
         warp::reply::json(&json!({"user_id": user_id, "token": token.expose_secret()})),
         warp::http::StatusCode::OK,
     ))
 }
 
+/// Get the current user's data.
+/// 
+/// ## Arguments
+/// 
+/// * `token` - The user's session token, already validated
+/// 
+/// ## Returns
+/// 
+/// * `impl warp::Reply` - A JSON response containing the user's data
+/// 
+/// ## Endpoint
+/// 
+/// GET `/user/@self`
 async fn user_getself(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let user = User::fetch(token.data().user_id()).await.ok_or_else(|| {
         tracing::error!("Failed to fetch user from database");
