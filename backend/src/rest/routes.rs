@@ -260,17 +260,17 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
 }
 
 /// Get the current user's data.
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// * `token` - The user's session token, already validated
-/// 
+///
 /// ## Returns
-/// 
+///
 /// * `impl warp::Reply` - A JSON response containing the user's data
-/// 
+///
 /// ## Endpoint
-/// 
+///
 /// GET `/user/@self`
 async fn user_getself(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let user = User::fetch(token.data().user_id()).await.ok_or_else(|| {

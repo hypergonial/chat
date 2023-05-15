@@ -20,7 +20,6 @@ pub enum GatewayEvent {
     InvalidSession(String),
 }
 
-
 /// A JSON payload that can be sent over the websocket by clients.
 #[derive(Deserialize, Debug, Clone)]
 #[non_exhaustive]
