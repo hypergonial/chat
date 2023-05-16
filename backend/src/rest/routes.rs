@@ -131,6 +131,11 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::get())
         .and_then(fetch_member_self);
 
+    let add_member = warp::path!("guilds" / Snowflake / "members")
+        .and(needs_token())
+        .and(warp::post())
+        .and_then(create_member);
+
     create_msg
         .or(create_user)
         .or(login)
@@ -142,6 +147,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .or(fetch_member)
         .or(fetch_member_self)
         .or(fetch_self_guilds)
+        .or(add_member)
         .recover(handle_rejection)
         .with(cors)
         .boxed()
@@ -620,5 +626,52 @@ async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejec
     Ok(warp::reply::with_status(
         warp::reply::json(&guilds),
         warp::http::StatusCode::OK,
+    ))
+}
+
+/// Add the token-holder to a guild.
+///
+/// ## Arguments
+///
+/// * `token` - The user's session token, already validated
+/// * `guild_id` - The ID of the guild to add the user to
+///
+/// ## Returns
+///
+/// * [`Member`] - A JSON response containing the created [`Member`] object
+///
+/// ## Endpoint
+///
+/// POST `/guilds/{guild_id}/members`
+async fn create_member(
+    guild_id: Snowflake,
+    token: Token,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let guild = Guild::fetch(guild_id)
+        .await
+        .ok_or_else(warp::reject::not_found)?;
+
+    if let Err(e) = guild.add_member(token.data().user_id()).await {
+        tracing::error!(message = "Failed to add user to guild", user = %token.data().user_id(), guild = %guild_id, error = %e);
+        return Err(warp::reject::custom(InternalServerError {
+            message: "A database transaction error occured.".into(),
+        }));
+    }
+
+    let member = Member::fetch(token.data().user_id(), guild_id)
+        .await
+        .expect("A member should have been created");
+
+    // Add the member to the gateway's cache
+    APP.write()
+        .await
+        .gateway
+        .add_member(member.user().id(), guild_id);
+    // Dispatch the member create event
+    dispatch!(GatewayEvent::MemberCreate(member.clone()));
+
+    Ok(warp::reply::with_status(
+        warp::reply::json(&member),
+        warp::http::StatusCode::CREATED,
     ))
 }

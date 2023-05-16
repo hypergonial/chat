@@ -47,6 +47,26 @@
     },
     "query": "SELECT id, name, owner_id FROM guilds WHERE id = $1"
   },
+  "79a40009b7e09a7b443779142a8022f65c38ab7d75a362c5c1a1ab1052840234": {
+    "describe": {
+      "columns": [
+        {
+          "name": "guild_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT guild_id FROM members WHERE user_id = $1"
+  },
   "86a33818712b19571f827b0170e904af26ee08d1d8f38fbc92332a49fb2c0808": {
     "describe": {
       "columns": [],

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,15 +11,48 @@ use warp::filters::BoxedFilter;
 use warp::ws::{Message, WebSocket};
 use warp::Filter;
 
-use crate::dispatch;
 use crate::models::appstate::APP;
 use crate::models::auth::Token;
-use crate::models::gateway_event::{GatewayEvent, GatewayMessage};
+use crate::models::gateway_event::{EventLike, GatewayEvent, GatewayMessage};
 use crate::models::snowflake::Snowflake;
 use crate::models::user::User;
 
-/// Mapping of <user_id, sender>
-pub type PeerMap = HashMap<Snowflake, mpsc::UnboundedSender<GatewayEvent>>;
+/// Mapping of <user_id, handle>
+pub type PeerMap = HashMap<Snowflake, ConnectionHandle>;
+
+/// A struct containing connection details for a user
+pub struct ConnectionHandle {
+    sender: mpsc::UnboundedSender<GatewayEvent>,
+    guilds: HashSet<Snowflake>,
+}
+
+impl ConnectionHandle {
+    /// Create a new connection handle with the given sender and guilds
+    ///
+    /// ## Arguments
+    ///
+    /// * `sender` - The sender for sending messages to the client
+    /// * `guilds` - The guilds the user is a member of
+    pub fn new(sender: mpsc::UnboundedSender<GatewayEvent>, guilds: HashSet<Snowflake>) -> Self {
+        ConnectionHandle { sender, guilds }
+    }
+
+    /// Send a message to the client
+    #[allow(clippy::result_large_err)]
+    pub fn send(&self, message: GatewayEvent) -> Result<(), mpsc::error::SendError<GatewayEvent>> {
+        self.sender.send(message)
+    }
+
+    /// Get the guilds the user is a member of
+    pub fn guilds(&self) -> &HashSet<Snowflake> {
+        &self.guilds
+    }
+
+    /// Get a mutable handle to the guilds the user is a member of
+    pub fn guilds_mut(&mut self) -> &mut HashSet<Snowflake> {
+        &mut self.guilds
+    }
+}
 
 /// A singleton representing the gateway state
 pub struct Gateway {
@@ -39,12 +72,32 @@ impl Gateway {
     /// ## Arguments
     ///
     /// * `payload` - The event payload
-    pub fn dispatch(&self, payload: GatewayEvent) {
-        tracing::info!("Dispatching event: {:?}", payload);
-        for (uid, sender) in self.peers.iter() {
-            if let Err(_disconnected) = sender.send(payload.clone()) {
+    pub fn dispatch(&self, event: GatewayEvent) {
+        tracing::info!("Dispatching event: {:?}", event);
+        for (uid, handle) in self.peers.iter() {
+            // If the event is guild-specific, only send it to users that are members of that guild
+            if let Some(event_guild) = event.extract_guild_id() {
+                if !handle.guilds().contains(&event_guild) {
+                    continue;
+                }
+            }
+            if let Err(_disconnected) = handle.send(event.clone()) {
                 tracing::warn!("Error dispatching event to user: {}", uid);
             }
+        }
+    }
+
+    /// Registers a new guild member instance to an existing connection
+    pub fn add_member(&mut self, user_id: Snowflake, guild_id: Snowflake) {
+        if let Some(handle) = self.peers.get_mut(&user_id) {
+            handle.guilds_mut().insert(guild_id);
+        }
+    }
+
+    /// Removes a guild member instance from an existing connection
+    pub fn remove_member(&mut self, user_id: Snowflake, guild_id: Snowflake) {
+        if let Some(handle) = self.peers.get_mut(&user_id) {
+            handle.guilds_mut().remove(&guild_id);
         }
     }
 }
@@ -165,9 +218,26 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     // turn receiver into a stream for easier handling
     let mut receiver = UnboundedReceiverStream::new(receiver);
 
+    let db = &APP.read().await.db;
+    let user_id_i64: i64 = user.id().into();
+
+    let guild_ids = sqlx::query!(
+        "SELECT guild_id FROM members WHERE user_id = $1",
+        user_id_i64
+    )
+    .fetch_all(db.pool())
+    .await
+    .expect("Failed to fetch guilds during socket connection handling")
+    .into_iter()
+    .map(|row| row.guild_id.into())
+    .collect::<HashSet<Snowflake>>();
+
     // Add user to peermap
-    app.write().await.gateway.peers.insert(user.id(), sender);
-    dispatch!(GatewayEvent::MemberJoin(user.clone()));
+    app.write()
+        .await
+        .gateway
+        .peers
+        .insert(user.id(), ConnectionHandle::new(sender, guild_ids));
 
     // The sink needs to be shared between two tasks
     let ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>> = Arc::new(Mutex::new(ws_sink));
@@ -222,6 +292,5 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
 
     // Disconnection logic
     app.write().await.gateway.peers.remove(&user.id());
-    dispatch!(GatewayEvent::MemberLeave(user.clone()));
     tracing::info!("Disconnected: {} ({})", user.username(), user.id());
 }
