@@ -21,9 +21,14 @@ use crate::models::user::User;
 pub type PeerMap = HashMap<Snowflake, ConnectionHandle>;
 
 /// A struct containing connection details for a user
+/// 
+/// ## Fields
+/// 
+/// * `sender` - The sender for sending messages to the client
+/// * `guild_ids` - The guilds the user is a member of, this is used to filter events
 pub struct ConnectionHandle {
     sender: mpsc::UnboundedSender<GatewayEvent>,
-    guilds: HashSet<Snowflake>,
+    guild_ids: HashSet<Snowflake>,
 }
 
 impl ConnectionHandle {
@@ -34,7 +39,7 @@ impl ConnectionHandle {
     /// * `sender` - The sender for sending messages to the client
     /// * `guilds` - The guilds the user is a member of
     pub fn new(sender: mpsc::UnboundedSender<GatewayEvent>, guilds: HashSet<Snowflake>) -> Self {
-        ConnectionHandle { sender, guilds }
+        ConnectionHandle { sender, guild_ids: guilds }
     }
 
     /// Send a message to the client
@@ -44,13 +49,13 @@ impl ConnectionHandle {
     }
 
     /// Get the guilds the user is a member of
-    pub fn guilds(&self) -> &HashSet<Snowflake> {
-        &self.guilds
+    pub fn guild_ids(&self) -> &HashSet<Snowflake> {
+        &self.guild_ids
     }
 
     /// Get a mutable handle to the guilds the user is a member of
-    pub fn guilds_mut(&mut self) -> &mut HashSet<Snowflake> {
-        &mut self.guilds
+    pub fn guild_ids_mut(&mut self) -> &mut HashSet<Snowflake> {
+        &mut self.guild_ids
     }
 }
 
@@ -77,7 +82,7 @@ impl Gateway {
         for (uid, handle) in self.peers.iter() {
             // If the event is guild-specific, only send it to users that are members of that guild
             if let Some(event_guild) = event.extract_guild_id() {
-                if !handle.guilds().contains(&event_guild) {
+                if !handle.guild_ids().contains(&event_guild) {
                     continue;
                 }
             }
@@ -90,14 +95,14 @@ impl Gateway {
     /// Registers a new guild member instance to an existing connection
     pub fn add_member(&mut self, user_id: Snowflake, guild_id: Snowflake) {
         if let Some(handle) = self.peers.get_mut(&user_id) {
-            handle.guilds_mut().insert(guild_id);
+            handle.guild_ids_mut().insert(guild_id);
         }
     }
 
     /// Removes a guild member instance from an existing connection
     pub fn remove_member(&mut self, user_id: Snowflake, guild_id: Snowflake) {
         if let Some(handle) = self.peers.get_mut(&user_id) {
-            handle.guilds_mut().remove(&guild_id);
+            handle.guild_ids_mut().remove(&guild_id);
         }
     }
 }
@@ -258,6 +263,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     });
 
     // Send a ping every 60 seconds to keep the connection alive
+    // TODO: Rework to HEARTBEAT system
     let keep_alive = tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
