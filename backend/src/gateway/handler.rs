@@ -21,9 +21,9 @@ use crate::models::user::User;
 pub type PeerMap = HashMap<Snowflake, ConnectionHandle>;
 
 /// A struct containing connection details for a user
-/// 
+///
 /// ## Fields
-/// 
+///
 /// * `sender` - The sender for sending messages to the client
 /// * `guild_ids` - The guilds the user is a member of, this is used to filter events
 pub struct ConnectionHandle {
@@ -39,7 +39,10 @@ impl ConnectionHandle {
     /// * `sender` - The sender for sending messages to the client
     /// * `guilds` - The guilds the user is a member of
     pub fn new(sender: mpsc::UnboundedSender<GatewayEvent>, guilds: HashSet<Snowflake>) -> Self {
-        ConnectionHandle { sender, guild_ids: guilds }
+        ConnectionHandle {
+            sender,
+            guild_ids: guilds,
+        }
     }
 
     /// Send a message to the client

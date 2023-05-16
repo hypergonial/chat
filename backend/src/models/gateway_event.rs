@@ -1,4 +1,6 @@
 use super::{
+    channel::{Channel, ChannelLike},
+    guild::Guild,
     member::{Member, UserLike},
     message::Message,
     snowflake::Snowflake,
@@ -19,6 +21,14 @@ pub enum GatewayEvent {
     MemberCreate(Member),
     /// A peer has left the chat.
     MemberRemove(Member),
+    /// A guild was created.
+    GuildCreate(Guild),
+    /// A guild was deleted.
+    GuildRemove(Guild),
+    /// A channel was created.
+    ChannelCreate(Channel),
+    /// A channel was deleted.
+    ChannelRemove(Channel),
     /// The server is ready to accept messages.
     Ready(User),
     /// The server has closed the connection.
@@ -31,6 +41,10 @@ impl EventLike for GatewayEvent {
             Self::MessageCreate(message) => message.extract_guild_id(),
             Self::MemberCreate(member) => member.extract_guild_id(),
             Self::MemberRemove(member) => member.extract_guild_id(),
+            Self::GuildCreate(guild) => guild.extract_guild_id(),
+            Self::GuildRemove(guild) => guild.extract_guild_id(),
+            Self::ChannelCreate(channel) => channel.extract_guild_id(),
+            Self::ChannelRemove(channel) => channel.extract_guild_id(),
             Self::Ready(_) => None,
             Self::InvalidSession(_) => None,
         }
@@ -54,6 +68,18 @@ impl EventLike for Message {
 impl EventLike for Member {
     fn extract_guild_id(&self) -> Option<Snowflake> {
         Some(self.guild_id())
+    }
+}
+
+impl EventLike for Channel {
+    fn extract_guild_id(&self) -> Option<Snowflake> {
+        Some(self.guild_id())
+    }
+}
+
+impl EventLike for Guild {
+    fn extract_guild_id(&self) -> Option<Snowflake> {
+        Some(self.id())
     }
 }
 

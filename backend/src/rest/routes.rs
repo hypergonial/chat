@@ -392,6 +392,18 @@ async fn create_guild(
         }));
     }
 
+    APP.write()
+        .await
+        .gateway
+        .add_member(token.data().user_id(), guild.id());
+
+    dispatch!(GatewayEvent::GuildCreate(guild.clone()));
+    dispatch!(GatewayEvent::MemberCreate(
+        Member::fetch(token.data().user_id(), guild.id())
+            .await
+            .expect("Member should have been created")
+    ));
+
     Ok(warp::reply::with_status(
         warp::reply::json(&guild),
         warp::http::StatusCode::CREATED,
@@ -445,6 +457,8 @@ async fn create_channel(
             message: "A database transaction error occured.".into(),
         }));
     }
+
+    dispatch!(GatewayEvent::ChannelCreate(channel.clone()));
 
     Ok(warp::reply::with_status(
         warp::reply::json(&channel),

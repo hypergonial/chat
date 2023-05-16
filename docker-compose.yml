@@ -23,7 +23,7 @@ services:
         args:
           - BUILD_TYPE=${BUILD_TYPE:-release}
     environment:
-      - DATABASE_URL=${DATABASE_URL:?err}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?err}@chat-db:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-chat}
       - MACHINE_ID=${MACHINE_ID:?err}
       - PROCESS_ID=${PROCESS_ID:?err}
       - LISTEN_ADDR=0.0.0.0:8080
