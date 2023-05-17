@@ -15,10 +15,33 @@ lazy_static! {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash)]
+#[serde(tag = "presence", rename_all = "SCREAMING_SNAKE_CASE")]
+#[repr(i16)]
+pub enum Presence {
+    Online = 0,
+    Away = 1,
+    Busy = 2,
+    Offline = 3,
+}
+
+impl From<i16> for Presence {
+    fn from(presence: i16) -> Self {
+        if presence < 0 || presence > 3 {
+            Self::Offline
+        } else {
+            // SAFETY: We checked bounds
+            unsafe { std::mem::transmute(presence) }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Hash)]
 pub struct User {
     id: Snowflake,
     username: String,
     pub display_name: String,
+    #[serde(skip)]
+    last_presence: Presence,
 }
 
 impl User {
@@ -28,6 +51,7 @@ impl User {
             id,
             username: username.clone(),
             display_name: username,
+            last_presence: Presence::Online,
         })
     }
 
@@ -37,6 +61,7 @@ impl User {
             id: Snowflake::gen_new().await,
             username: payload.username.clone(),
             display_name: payload.username,
+            last_presence: Presence::Online,
         })
     }
 
@@ -54,6 +79,14 @@ impl User {
 
     pub fn display_name(&self) -> &str {
         &self.display_name
+    }
+
+    pub async fn presence(&self) -> &Presence {
+        if APP.read().await.gateway.is_connected(self.id()) {
+            &self.last_presence
+        } else {
+            &Presence::Offline
+        }
     }
 
     pub fn set_username(&mut self, username: String) -> Result<(), anyhow::Error> {
@@ -80,7 +113,7 @@ impl User {
         let db = &APP.read().await.db;
         let id_i64: i64 = id.into();
         let row = sqlx::query!(
-            "SELECT username, display_name
+            "SELECT username, display_name, last_presence
             FROM users
             WHERE id = $1",
             id_i64
@@ -93,6 +126,7 @@ impl User {
             id,
             username: row.username,
             display_name: row.display_name,
+            last_presence: Presence::from(row.last_presence),
         })
     }
 
@@ -100,7 +134,7 @@ impl User {
     pub async fn fetch_by_username(username: &str) -> Option<Self> {
         let db = &APP.read().await.db;
         let row = sqlx::query!(
-            "SELECT id, username, display_name
+            "SELECT id, username, display_name, last_presence
             FROM users
             WHERE username = $1",
             username
@@ -113,6 +147,7 @@ impl User {
             id: row.id.into(),
             username: row.username,
             display_name: row.display_name,
+            last_presence: Presence::from(row.last_presence),
         })
     }
 
@@ -121,13 +156,14 @@ impl User {
         let db = &APP.read().await.db;
         let id_i64: i64 = self.id.into();
         sqlx::query!(
-            "INSERT INTO users (id, username, display_name)
-            VALUES ($1, $2, $3)
+            "INSERT INTO users (id, username, display_name, last_presence)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (id) DO UPDATE
-            SET username = $2, display_name = $3",
+            SET username = $2, display_name = $3, last_presence = $4",
             id_i64,
             self.username,
-            self.display_name
+            self.display_name,
+            self.last_presence as i16
         )
         .execute(db.pool())
         .await?;

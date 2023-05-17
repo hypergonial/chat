@@ -108,6 +108,11 @@ impl Gateway {
             handle.guild_ids_mut().remove(&guild_id);
         }
     }
+
+    // Query if a given user is connected
+    pub fn is_connected(&self, user_id: Snowflake) -> bool {
+        self.peers.contains_key(&user_id)
+    }
 }
 
 impl Default for Gateway {

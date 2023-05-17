@@ -4,12 +4,13 @@ use crate::dispatch;
 use crate::models::appstate::APP;
 use crate::models::auth::{Credentials, StoredCredentials, Token};
 use crate::models::channel::{Channel, ChannelLike};
+use crate::models::gateway_event::PresenceUpdatePayload;
 use crate::models::guild::Guild;
 use crate::models::member::{Member, UserLike};
 use crate::models::rejections::{BadRequest, Forbidden, InternalServerError, Unauthorized};
 use crate::models::rest::{CreateChannel, CreateGuild, CreateMessage, CreateUser};
 use crate::models::snowflake::Snowflake;
-use crate::models::user::User;
+use crate::models::user::{Presence, User};
 use crate::models::{gateway_event::GatewayEvent, message::Message};
 use governor::clock::{QuantaClock, QuantaInstant};
 use governor::middleware::NoOpMiddleware;
@@ -136,6 +137,13 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::post())
         .and_then(create_member);
 
+    let update_presence = warp::path!("users" / "@self" / "presence")
+        .and(needs_token())
+        .and(warp::patch())
+        .and(warp::body::content_length_limit(1024 * 16))
+        .and(warp::body::json())
+        .and_then(update_presence);
+
     create_msg
         .or(create_user)
         .or(login)
@@ -148,6 +156,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .or(fetch_member_self)
         .or(fetch_self_guilds)
         .or(add_member)
+        .or(update_presence)
         .recover(handle_rejection)
         .with(cors)
         .boxed()
@@ -687,5 +696,47 @@ async fn create_member(
     Ok(warp::reply::with_status(
         warp::reply::json(&member),
         warp::http::StatusCode::CREATED,
+    ))
+}
+
+/// Update the token-holder's presence.
+///
+/// ## Arguments
+///
+/// * `token` - The user's session token, already validated
+/// * `new_presence` - The new presence to set
+///
+/// ## Returns
+///
+/// * [`Presence`] - A JSON response containing the updated [`Presence`] object
+pub async fn update_presence(
+    token: Token,
+    new_presence: Presence,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let user_id_i64: i64 = token.data().user_id().into();
+    let db = &APP.read().await.db;
+
+    sqlx::query!(
+        "UPDATE users SET last_presence = $1 WHERE id = $2",
+        new_presence as i16,
+        user_id_i64
+    ).fetch(db.pool()).await.map_err(|e| {
+        tracing::error!(message = "Failed to update user presence", user = %token.data().user_id(), error = %e);
+        warp::reject::custom(InternalServerError {
+            message: "A database transaction error occured.".into(),
+        })
+    })?;
+
+    if APP.read().await.gateway.is_connected(token.data().user_id()) {
+        dispatch!(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
+            guild_id: None,
+            presence: new_presence,
+            user_id: token.data().user_id(),
+        }));
+    }
+
+    Ok(warp::reply::with_status(
+        warp::reply::json(&new_presence),
+        warp::http::StatusCode::OK,
     ))
 }

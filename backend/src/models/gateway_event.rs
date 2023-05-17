@@ -4,7 +4,7 @@ use super::{
     member::{Member, UserLike},
     message::Message,
     snowflake::Snowflake,
-    user::User,
+    user::{Presence, User},
 };
 use secrecy::Secret;
 use serde::{Deserialize, Serialize};
@@ -29,6 +29,8 @@ pub enum GatewayEvent {
     ChannelCreate(Channel),
     /// A channel was deleted.
     ChannelRemove(Channel),
+    // A user's presence was updated.
+    PresenceUpdate(PresenceUpdatePayload),
     /// The server is ready to accept messages.
     Ready(User),
     /// The server has closed the connection.
@@ -45,6 +47,7 @@ impl EventLike for GatewayEvent {
             Self::GuildRemove(guild) => guild.extract_guild_id(),
             Self::ChannelCreate(channel) => channel.extract_guild_id(),
             Self::ChannelRemove(channel) => channel.extract_guild_id(),
+            Self::PresenceUpdate(payload) => payload.extract_guild_id(),
             Self::Ready(_) => None,
             Self::InvalidSession(_) => None,
         }
@@ -80,6 +83,19 @@ impl EventLike for Channel {
 impl EventLike for Guild {
     fn extract_guild_id(&self) -> Option<Snowflake> {
         Some(self.id())
+    }
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PresenceUpdatePayload {
+    pub user_id: Snowflake,
+    pub presence: Presence,
+    pub guild_id: Snowflake,
+}
+
+impl EventLike for PresenceUpdatePayload {
+    fn extract_guild_id(&self) -> Option<Snowflake> {
+        Some(self.guild_id)
     }
 }
 
