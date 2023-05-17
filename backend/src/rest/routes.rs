@@ -727,7 +727,12 @@ pub async fn update_presence(
         })
     })?;
 
-    if APP.read().await.gateway.is_connected(token.data().user_id()) {
+    if APP
+        .read()
+        .await
+        .gateway
+        .is_connected(token.data().user_id())
+    {
         dispatch!(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
             guild_id: None,
             presence: new_presence,

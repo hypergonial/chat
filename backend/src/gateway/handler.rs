@@ -113,6 +113,20 @@ impl Gateway {
     pub fn is_connected(&self, user_id: Snowflake) -> bool {
         self.peers.contains_key(&user_id)
     }
+
+    /// Determines if a given user shares any guilds with another user
+    pub fn shares_guilds_with(&self, a: Snowflake, b: Snowflake) -> bool {
+        if let Some(a_handle) = self.peers.get(&a) {
+            if let Some(b_handle) = self.peers.get(&b) {
+                return a_handle
+                    .guild_ids()
+                    .intersection(b_handle.guild_ids())
+                    .next()
+                    .is_some();
+            }
+        }
+        false
+    }
 }
 
 impl Default for Gateway {
