@@ -89,6 +89,12 @@ impl Gateway {
                     continue;
                 }
             }
+            // Avoid sending events to users that don't share any guilds with the event originator
+            else if let Some(user_id) = event.extract_user_id() {
+                if !self.shares_guilds_with(*uid, user_id) {
+                    continue;
+                }
+            }
             if let Err(_disconnected) = handle.send(event.clone()) {
                 tracing::warn!("Error dispatching event to user: {}", uid);
             }

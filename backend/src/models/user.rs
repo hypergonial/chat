@@ -14,7 +14,7 @@ lazy_static! {
             .unwrap();
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash)]
 #[serde(tag = "presence", rename_all = "SCREAMING_SNAKE_CASE")]
 #[repr(i16)]
 pub enum Presence {
@@ -26,12 +26,18 @@ pub enum Presence {
 
 impl From<i16> for Presence {
     fn from(presence: i16) -> Self {
-        if presence < 0 || presence > 3 {
+        if !(0..=3).contains(&presence) {
             Self::Offline
         } else {
             // SAFETY: We checked bounds
             unsafe { std::mem::transmute(presence) }
         }
+    }
+}
+
+impl Default for Presence {
+    fn default() -> Self {
+        Self::Online
     }
 }
 
@@ -51,7 +57,7 @@ impl User {
             id,
             username: username.clone(),
             display_name: username,
-            last_presence: Presence::Online,
+            last_presence: Presence::default(),
         })
     }
 
@@ -61,7 +67,7 @@ impl User {
             id: Snowflake::gen_new().await,
             username: payload.username.clone(),
             display_name: payload.username,
-            last_presence: Presence::Online,
+            last_presence: Presence::default(),
         })
     }
 

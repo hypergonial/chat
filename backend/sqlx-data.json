@@ -1,5 +1,50 @@
 {
   "db": "PostgreSQL",
+  "054781bc8c5f8c3af87ad1fa49120ff6d24460984f1479cd6fcf4cb2d624f715": {
+    "describe": {
+      "columns": [
+        {
+          "name": "username",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "last_presence",
+          "ordinal": 2,
+          "type_info": "Int2"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT username, display_name, last_presence\n            FROM users\n            WHERE id = $1"
+  },
+  "0f3e3f4e44dd313289052d71a884f96b7494451d9a6fa3687d08a3c69975c5ef": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int2",
+          "Int8"
+        ]
+      }
+    },
+    "query": "UPDATE users SET last_presence = $1 WHERE id = $2"
+  },
   "1e4ae5b21ea0466dc2e3c0d48c065efe4f281a263e51b43ef9d309a6725cd824": {
     "describe": {
       "columns": [],
@@ -46,6 +91,44 @@
       }
     },
     "query": "SELECT id, name, owner_id FROM guilds WHERE id = $1"
+  },
+  "5d7bc6bd8805058a40ef0f00becd280c8c7bda6fe35434c1ae6dd4f163ee3b78": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "username",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "last_presence",
+          "ordinal": 3,
+          "type_info": "Int2"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "SELECT id, username, display_name, last_presence\n            FROM users\n            WHERE username = $1"
   },
   "79a40009b7e09a7b443779142a8022f65c38ab7d75a362c5c1a1ab1052840234": {
     "describe": {
@@ -121,32 +204,6 @@
     },
     "query": "SELECT * FROM members WHERE user_id = $1 AND guild_id = $2"
   },
-  "97800f1c8002ae71e100f5bcb60011930eac244b3fc1d2765fa37a1fba6f5920": {
-    "describe": {
-      "columns": [
-        {
-          "name": "username",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "display_name",
-          "ordinal": 1,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT username, display_name\n            FROM users\n            WHERE id = $1"
-  },
   "a1fbaac7941f8dc321c32e36f8caf2fec098f23317cc20bce9f8847a624c24e7": {
     "describe": {
       "columns": [],
@@ -174,20 +231,6 @@
       }
     },
     "query": "INSERT INTO members (user_id, guild_id, joined_at)\n            VALUES ($1, $2, $3) ON CONFLICT (user_id, guild_id) DO NOTHING"
-  },
-  "a820efa0679701672eb52b5469c0e2ee49beb2115c7389b8c481eeadfb03a5d3": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Text",
-          "Text"
-        ]
-      }
-    },
-    "query": "INSERT INTO users (id, username, display_name)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (id) DO UPDATE\n            SET username = $2, display_name = $3"
   },
   "abd9523bebda8c6b6f4c17ed520bf6e351b25d48483855097bab9e367c1c9164": {
     "describe": {
@@ -262,6 +305,21 @@
     },
     "query": "SELECT user_id, channel_id, content\n            FROM messages\n            WHERE id = $1"
   },
+  "df1a91f6044cfde859a8530888ca6eb808bd0e6764d4493adc808a587bdba605": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Text",
+          "Text",
+          "Int2"
+        ]
+      }
+    },
+    "query": "INSERT INTO users (id, username, display_name, last_presence)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (id) DO UPDATE\n            SET username = $2, display_name = $3, last_presence = $4"
+  },
   "e9f8d85417fdc81bd2dbfe749c7da303738ef2b5b1bd2f4fc1a22947108d93a2": {
     "describe": {
       "columns": [
@@ -299,38 +357,6 @@
       }
     },
     "query": "SELECT * FROM channels WHERE id = $1"
-  },
-  "f693ff27c21576f4749e4763f8be8dba1048cd930b9dbba5b4b4206101f1a2e1": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "username",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "display_name",
-          "ordinal": 2,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "SELECT id, username, display_name\n            FROM users\n            WHERE username = $1"
   },
   "f895d442c658bcf9634c8b1188857dc104451a1579523e93ac87982decfd4c48": {
     "describe": {

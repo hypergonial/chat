@@ -720,7 +720,7 @@ pub async fn update_presence(
         "UPDATE users SET last_presence = $1 WHERE id = $2",
         new_presence as i16,
         user_id_i64
-    ).fetch(db.pool()).await.map_err(|e| {
+    ).execute(db.pool()).await.map_err(|e| {
         tracing::error!(message = "Failed to update user presence", user = %token.data().user_id(), error = %e);
         warp::reject::custom(InternalServerError {
             message: "A database transaction error occured.".into(),
@@ -734,7 +734,6 @@ pub async fn update_presence(
         .is_connected(token.data().user_id())
     {
         dispatch!(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
-            guild_id: None,
             presence: new_presence,
             user_id: token.data().user_id(),
         }));
