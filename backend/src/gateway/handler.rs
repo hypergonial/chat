@@ -9,7 +9,10 @@ use futures_util::{
     SinkExt, StreamExt,
 };
 use secrecy::ExposeSecret;
-use tokio::sync::{mpsc::{self, error::SendError}, Mutex};
+use tokio::sync::{
+    mpsc::{self, error::SendError},
+    Mutex,
+};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::{
     filters::BoxedFilter,

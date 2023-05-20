@@ -49,6 +49,27 @@ pub fn needs_limit(id_limiter: SharedIDLimiter) -> impl Filter<Extract = (Token,
         .and_then(validate_limit)
 }
 
+// Note: Needs to be async for the `and_then` combinator
+/// Validate a token and return the parsed token data if successful.
+#[inline]
+async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
+    Token::validate(&token, "among us")
+        .await
+        .or_reject(Unauthorized::new("Invalid or expired token"))
+}
+
+// Check the limiter with the key being the token's user_id
+#[inline]
+async fn validate_limit(token: Token, limiter: SharedIDLimiter) -> Result<Token, warp::Rejection> {
+    let user_id = token.data().user_id();
+    limiter.check_key(&user_id.into()).map_err(|e| {
+        warp::reject::custom(BadRequest::new(
+            format!("Rate limit exceeded, try again at: {:?}", e.earliest_possible()).as_ref(),
+        ))
+    })?;
+    Ok(token)
+}
+
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     // https://javascript.info/fetch-crossorigin
     // https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
@@ -78,18 +99,18 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::post())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
-        .and_then(user_create);
+        .and_then(create_user);
 
     let login = warp::path!("users" / "auth")
         .and(warp::post())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
-        .and_then(user_auth);
+        .and_then(auth_user);
 
     let query_self = warp::path!("users" / "@self")
         .and(needs_token())
         .and(warp::get())
-        .and_then(user_getself);
+        .and_then(fetch_self);
 
     let create_msg = warp::path!("channels" / Snowflake / "messages")
         .and(needs_limit(message_create_lim))
@@ -167,25 +188,6 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .boxed()
 }
 
-// Note: Needs to be async for the `and_then` combinator
-/// Validate a token and return the parsed token data if successful.
-async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
-    Token::validate(&token, "among us")
-        .await
-        .or_reject(Unauthorized::new("Invalid or expired token"))
-}
-
-// Check the limiter with the key being the token's user_id
-async fn validate_limit(token: Token, limiter: SharedIDLimiter) -> Result<Token, warp::Rejection> {
-    let user_id = token.data().user_id();
-    limiter.check_key(&user_id.into()).map_err(|e| {
-        warp::reject::custom(BadRequest::new(
-            format!("Rate limit exceeded, try again at: {:?}", e.earliest_possible()).as_ref(),
-        ))
-    })?;
-    Ok(token)
-}
-
 /// Add a new ID-based ratelimiter to the filter.
 ///
 /// ## Arguments
@@ -251,7 +253,7 @@ async fn create_message(
 /// ## Endpoint
 ///
 /// POST `/users`
-async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Rejection> {
+async fn create_user(payload: CreateUser) -> Result<impl warp::Reply, warp::Rejection> {
     let password = payload.password.clone();
 
     let user = match User::from_payload(payload).await {
@@ -305,7 +307,7 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
 /// ## Endpoint
 ///
 /// POST `/users/auth`
-async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::Rejection> {
+async fn auth_user(credentials: Credentials) -> Result<impl warp::Reply, warp::Rejection> {
     let user_id = validate_credentials(credentials)
         .await
         .or_reject(Unauthorized::new("Invalid credentials"))?;
@@ -334,7 +336,7 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
 /// ## Endpoint
 ///
 /// GET `/users/@self`
-async fn user_getself(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+async fn fetch_self(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let user = User::fetch(token.data().user_id())
         .await
         .or_reject_and_log(InternalServerError::db(), "Failed to fetch user from database")?;
@@ -627,6 +629,10 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
 /// ## Returns
 ///
 /// * [`Presence`] - A JSON response containing the updated [`Presence`] object
+///
+/// ## Endpoint
+///
+/// PATCH `/users/@self/presence`
 pub async fn update_presence(token: Token, new_presence: Presence) -> Result<impl warp::Reply, warp::Rejection> {
     let user_id_i64: i64 = token.data().user_id().into();
     let db = &APP.read().await.db;
