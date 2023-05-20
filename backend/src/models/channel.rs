@@ -1,9 +1,10 @@
-use super::snowflake::Snowflake;
-use super::{appstate::APP, rest::CreateChannel};
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
+
+use super::snowflake::Snowflake;
+use super::{appstate::APP, rest::CreateChannel};
 
 #[async_trait]
 #[enum_dispatch(Channel)]

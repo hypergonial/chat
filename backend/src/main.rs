@@ -2,6 +2,7 @@ pub mod gateway;
 pub mod macros;
 pub mod models;
 pub mod rest;
+pub mod utils;
 use std::process::ExitCode;
 
 use models::appstate::APP;
@@ -13,8 +14,7 @@ use tokio::signal::unix::{signal, SignalKind};
 
 #[cfg(unix)]
 async fn handle_signals() {
-    let mut sigterm =
-        signal(SignalKind::terminate()).expect("Failed to create SIGTERM signal listener");
+    let mut sigterm = signal(SignalKind::terminate()).expect("Failed to create SIGTERM signal listener");
 
     tokio::select! {
         _ = sigterm.recv() => {
@@ -28,9 +28,7 @@ async fn handle_signals() {
 
 #[cfg(not(unix))]
 async fn handle_signals() {
-    ctrl_c()
-        .await
-        .expect("Failed to create CTRL+C signal listener");
+    ctrl_c().await.expect("Failed to create CTRL+C signal listener");
 }
 
 #[tokio::main]

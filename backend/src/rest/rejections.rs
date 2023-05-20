@@ -2,7 +2,7 @@ use std::convert::Infallible;
 use std::error::Error;
 
 use crate::models::rejections::{
-    BadRequest, ErrorMessage, Forbidden, InternalServerError, RateLimited, Unauthorized,
+    BadRequest, ErrorMessage, Forbidden, InternalServerError, NotFound, RateLimited, Unauthorized,
 };
 use warp::http::StatusCode;
 use warp::{Rejection, Reply};
@@ -25,6 +25,10 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         code = StatusCode::NOT_FOUND;
         message = "NOT_FOUND";
         description = Some("The requested resource could not be found.".into());
+    } else if let Some(e) = err.find::<NotFound>() {
+        code = StatusCode::NOT_FOUND;
+        message = "NOT_FOUND";
+        description = Some(format!("Not Found: {}", e.message));
     } else if let Some(e) = err.find::<Unauthorized>() {
         code = StatusCode::UNAUTHORIZED;
         message = "UNAUTHORIZED";

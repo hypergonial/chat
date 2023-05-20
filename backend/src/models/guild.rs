@@ -1,8 +1,7 @@
-use super::member::Member;
-use super::snowflake::Snowflake;
-use super::{appstate::APP, rest::CreateGuild};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+
+use super::{appstate::APP, member::Member, rest::CreateGuild, snowflake::Snowflake};
 
 /// Represents a guild.
 #[derive(Serialize, Deserialize, Debug, Clone)]

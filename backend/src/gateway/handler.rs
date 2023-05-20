@@ -1,21 +1,29 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 
-use futures_util::stream::{SplitSink, SplitStream};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use secrecy::ExposeSecret;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::filters::BoxedFilter;
-use warp::ws::{Message, WebSocket};
-use warp::Filter;
+use warp::{
+    filters::BoxedFilter,
+    ws::{Message, WebSocket},
+    Filter,
+};
 
-use crate::models::appstate::APP;
-use crate::models::auth::Token;
-use crate::models::gateway_event::{EventLike, GatewayEvent, GatewayMessage};
-use crate::models::snowflake::Snowflake;
-use crate::models::user::User;
+use crate::models::{
+    appstate::APP,
+    auth::Token,
+    gateway_event::{EventLike, GatewayEvent, GatewayMessage},
+    snowflake::Snowflake,
+    user::User,
+};
 
 /// Mapping of <user_id, handle>
 pub type PeerMap = HashMap<Snowflake, ConnectionHandle>;
@@ -124,11 +132,7 @@ impl Gateway {
     pub fn shares_guilds_with(&self, a: Snowflake, b: Snowflake) -> bool {
         if let Some(a_handle) = self.peers.get(&a) {
             if let Some(b_handle) = self.peers.get(&b) {
-                return a_handle
-                    .guild_ids()
-                    .intersection(b_handle.guild_ids())
-                    .next()
-                    .is_some();
+                return a_handle.guild_ids().intersection(b_handle.guild_ids()).next().is_some();
             }
         }
         false
@@ -187,10 +191,7 @@ async fn handle_handshake(
         ws_sink
             .send(Message::close_with(
                 1003_u16,
-                serde_json::to_string(&GatewayEvent::InvalidSession(
-                    "Invalid IDENTIFY payload".into(),
-                ))
-                .unwrap(),
+                serde_json::to_string(&GatewayEvent::InvalidSession("Invalid IDENTIFY payload".into())).unwrap(),
             ))
             .await
             .ok();
@@ -254,16 +255,13 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     let db = &APP.read().await.db;
     let user_id_i64: i64 = user.id().into();
 
-    let guild_ids = sqlx::query!(
-        "SELECT guild_id FROM members WHERE user_id = $1",
-        user_id_i64
-    )
-    .fetch_all(db.pool())
-    .await
-    .expect("Failed to fetch guilds during socket connection handling")
-    .into_iter()
-    .map(|row| row.guild_id.into())
-    .collect::<HashSet<Snowflake>>();
+    let guild_ids = sqlx::query!("SELECT guild_id FROM members WHERE user_id = $1", user_id_i64)
+        .fetch_all(db.pool())
+        .await
+        .expect("Failed to fetch guilds during socket connection handling")
+        .into_iter()
+        .map(|row| row.guild_id.into())
+        .collect::<HashSet<Snowflake>>();
 
     // Add user to peermap
     app.write()
@@ -296,11 +294,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
             if let Err(e) = ws_sink_clone.lock().await.send(Message::ping(vec![])).await {
-                tracing::info!(
-                    "Failed to keep alive socket connection to {}: {}",
-                    user_id,
-                    e
-                );
+                tracing::info!("Failed to keep alive socket connection to {}: {}", user_id, e);
                 break;
             }
         }

@@ -26,18 +26,14 @@ pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake,
             .to_string(),
     );
 
-    if let Some(stored_credentials) =
-        StoredCredentials::fetch_by_username(credentials.username().to_string()).await
-    {
+    if let Some(stored_credentials) = StoredCredentials::fetch_by_username(credentials.username().to_string()).await {
         user_id = Some(stored_credentials.user_id());
         expected_hash = stored_credentials.hash().clone();
     }
 
-    tokio::task::spawn_blocking(move || {
-        verify_password_hash(expected_hash, credentials.password().clone())
-    })
-    .await
-    .map_err(|_| anyhow::anyhow!("Invalid credentials"))??;
+    tokio::task::spawn_blocking(move || verify_password_hash(expected_hash, credentials.password().clone()))
+        .await
+        .map_err(|_| anyhow::anyhow!("Invalid credentials"))??;
 
     // If the user doesn't actually exist, we bail.
     if user_id.is_none() {
@@ -63,10 +59,7 @@ pub fn verify_password_hash(
     password_candidate: Secret<String>,
 ) -> Result<(), argon2::password_hash::Error> {
     let expected_hash = PasswordHash::new(expected_hash.expose_secret())?;
-    Argon2::default().verify_password(
-        password_candidate.expose_secret().as_bytes(),
-        &expected_hash,
-    )
+    Argon2::default().verify_password(password_candidate.expose_secret().as_bytes(), &expected_hash)
 }
 
 /// Generate a hash for a new password.

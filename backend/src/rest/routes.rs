@@ -1,47 +1,52 @@
-use super::auth::{generate_hash, validate_credentials};
-use super::rejections::handle_rejection;
-use crate::dispatch;
-use crate::models::appstate::APP;
-use crate::models::auth::{Credentials, StoredCredentials, Token};
-use crate::models::channel::{Channel, ChannelLike};
-use crate::models::gateway_event::PresenceUpdatePayload;
-use crate::models::guild::Guild;
-use crate::models::member::{Member, UserLike};
-use crate::models::rejections::{BadRequest, Forbidden, InternalServerError, Unauthorized};
-use crate::models::rest::{CreateChannel, CreateGuild, CreateMessage, CreateUser};
-use crate::models::snowflake::Snowflake;
-use crate::models::user::{Presence, User};
-use crate::models::{gateway_event::GatewayEvent, message::Message};
-use governor::clock::{QuantaClock, QuantaInstant};
-use governor::middleware::NoOpMiddleware;
-use governor::state::keyed::DashMapStateStore;
-use governor::{Quota, RateLimiter};
+use std::{sync::Arc, time::Duration};
+
+use governor::{
+    clock::{QuantaClock, QuantaInstant},
+    middleware::NoOpMiddleware,
+    state::keyed::DashMapStateStore,
+    Quota, RateLimiter,
+};
 use nonzero_ext::nonzero;
 use secrecy::ExposeSecret;
 use serde_json::json;
-use std::sync::Arc;
-use std::time::Duration;
-use warp::filters::BoxedFilter;
-use warp::http::{header, Method};
-use warp::Filter;
+use warp::{
+    filters::BoxedFilter,
+    http::{header, Method},
+    Filter,
+};
 
-type SharedIDLimiter =
-    Arc<RateLimiter<u64, DashMapStateStore<u64>, QuantaClock, NoOpMiddleware<QuantaInstant>>>;
+use super::auth::{generate_hash, validate_credentials};
+use super::rejections::handle_rejection;
+use crate::dispatch;
+use crate::models::{
+    appstate::APP,
+    auth::{Credentials, StoredCredentials, Token},
+    channel::{Channel, ChannelLike},
+    gateway_event::{GatewayEvent, PresenceUpdatePayload},
+    guild::Guild,
+    member::{Member, UserLike},
+    message::Message,
+    rejections::{BadRequest, Forbidden, InternalServerError, NotFound, Unauthorized},
+    rest::{CreateChannel, CreateGuild, CreateMessage, CreateUser},
+    snowflake::Snowflake,
+    user::{Presence, User},
+};
+use crate::utils::traits::{OptionExt, ResultExt};
+
+type SharedIDLimiter = Arc<RateLimiter<u64, DashMapStateStore<u64>, QuantaClock, NoOpMiddleware<QuantaInstant>>>;
 
 /// A filter that checks for and validates a token.
-pub fn needs_token() -> BoxedFilter<(Token,)> {
-    let token_auth = warp::header("authorization").and_then(validate_token);
-    token_auth.boxed()
+pub fn needs_token() -> impl Filter<Extract = (Token,), Error = warp::Rejection> + Clone {
+    warp::header("authorization").and_then(validate_token)
 }
 
 /// A filter that checks for and validates a token, and enforces a rate limit.
-pub fn needs_limit(id_limiter: SharedIDLimiter) -> BoxedFilter<(Token,)> {
-    let limit = needs_token()
+pub fn needs_limit(id_limiter: SharedIDLimiter) -> impl Filter<Extract = (Token,), Error = warp::Rejection> + Clone {
+    needs_token()
         .and(warp::any())
         .map(move |t| (t, id_limiter.clone()))
         .untuple_one()
-        .and_then(validate_limit);
-    limit.boxed()
+        .and_then(validate_limit)
 }
 
 pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
@@ -165,23 +170,18 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 // Note: Needs to be async for the `and_then` combinator
 /// Validate a token and return the parsed token data if successful.
 async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
-    Token::validate(&token, "among us").await.map_err(|_| {
-        warp::reject::custom(Unauthorized {
-            message: "Invalid or expired token".into(),
-        })
-    })
+    Token::validate(&token, "among us")
+        .await
+        .or_reject(Unauthorized::new("Invalid or expired token"))
 }
 
 // Check the limiter with the key being the token's user_id
 async fn validate_limit(token: Token, limiter: SharedIDLimiter) -> Result<Token, warp::Rejection> {
     let user_id = token.data().user_id();
     limiter.check_key(&user_id.into()).map_err(|e| {
-        warp::reject::custom(BadRequest {
-            message: format!(
-                "Rate limit exceeded, try again at: {:?}",
-                e.earliest_possible()
-            ),
-        })
+        warp::reject::custom(BadRequest::new(
+            format!("Rate limit exceeded, try again at: {:?}", e.earliest_possible()).as_ref(),
+        ))
     })?;
     Ok(token)
 }
@@ -216,30 +216,20 @@ async fn create_message(
     token: Token,
     payload: CreateMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let channel = Channel::fetch(channel_id).await.ok_or_else(|| {
-        tracing::error!("Failed to fetch channel from database");
-        warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        })
-    })?;
+    let channel = Channel::fetch(channel_id)
+        .await
+        .or_reject_and_log(InternalServerError::db(), "Failed to fetch channel from database")?;
 
     let member = Member::fetch(token.data().user_id(), channel.guild_id())
         .await
-        .ok_or_else(|| {
-            tracing::error!("Failed to fetch member from database");
-            warp::reject::custom(InternalServerError {
-                message: "A database transaction error occured.".into(),
-            })
-        })?;
+        .or_reject_and_log(InternalServerError::db(), "Failed to fetch member from database")?;
 
     let message = Message::from_payload(UserLike::Member(member), channel_id, payload).await;
 
-    if let Err(e) = message.commit().await {
-        tracing::error!("Failed to commit message to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        }));
-    }
+    message
+        .commit()
+        .await
+        .or_reject_and_log(InternalServerError::db(), "Failed to commit message to database")?;
 
     dispatch!(GatewayEvent::MessageCreate(message.clone()));
     Ok(warp::reply::with_status(
@@ -268,35 +258,32 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
         Ok(user) => user,
         Err(e) => {
             tracing::debug!("Invalid user payload: {}", e);
-            return Err(warp::reject::custom(BadRequest {
-                message: e.to_string(),
-            }));
+            return Err(warp::reject::custom(BadRequest::new(e.to_string().as_ref())));
         }
     };
 
     if User::fetch_by_username(user.username()).await.is_some() {
         tracing::debug!("User with username {} already exists", user.username());
-        return Err(warp::reject::custom(BadRequest {
-            message: format!("User with username {} already exists", user.username()),
-        }));
+        return Err(warp::reject::custom(BadRequest::new(
+            format!("User with username {} already exists", user.username()).as_ref(),
+        )));
     }
 
     let credentials = StoredCredentials::new(
         user.id(),
-        generate_hash(&password).expect("Failed to generate password hash"),
+        generate_hash(&password).or_reject_and_log(
+            InternalServerError::new("Credential generation failed"),
+            "Failed to generate password hash",
+        )?,
     );
 
     // User needs to be committed before credentials to avoid foreign key constraint
     if let Err(e) = user.commit().await {
         tracing::error!("Failed to commit user to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        }));
+        return Err(warp::reject::custom(InternalServerError::db()));
     } else if let Err(e) = credentials.commit().await {
         tracing::error!("Failed to commit credentials to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        }));
+        return Err(warp::reject::custom(InternalServerError::db()));
     }
 
     Ok(warp::reply::with_status(
@@ -319,20 +306,14 @@ async fn user_create(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
 ///
 /// POST `/users/auth`
 async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::Rejection> {
-    let user_id = match validate_credentials(credentials).await {
-        Ok(user_id) => user_id,
-        Err(e) => {
-            tracing::debug!("Failed to validate credentials: {}", e);
-            return Err(warp::reject::custom(Unauthorized {
-                message: "Invalid credentials".into(),
-            }));
-        }
-    };
+    let user_id = validate_credentials(credentials)
+        .await
+        .or_reject(Unauthorized::new("Invalid credentials"))?;
 
-    let Ok(token) = Token::new_for(user_id, "among us") else {
-        tracing::error!("Failed to create token for user: {}", user_id);
-        return Err(warp::reject::custom(InternalServerError { message: "Failed to generate session token.".into() }));
-    };
+    let token = Token::new_for(user_id, "among us").or_reject_and_log(
+        InternalServerError::new("Failed to generate token"),
+        format!("Failed to generate token for user {}", user_id).as_ref(),
+    )?;
 
     Ok(warp::reply::with_status(
         warp::reply::json(&json!({"user_id": user_id, "token": token.expose_secret()})),
@@ -354,12 +335,9 @@ async fn user_auth(credentials: Credentials) -> Result<impl warp::Reply, warp::R
 ///
 /// GET `/users/@self`
 async fn user_getself(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
-    let user = User::fetch(token.data().user_id()).await.ok_or_else(|| {
-        tracing::error!("Failed to fetch user from database");
-        warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        })
-    })?;
+    let user = User::fetch(token.data().user_id())
+        .await
+        .or_reject_and_log(InternalServerError::db(), "Failed to fetch user from database")?;
 
     Ok(warp::reply::with_status(
         warp::reply::json(&user),
@@ -381,30 +359,20 @@ async fn user_getself(token: Token) -> Result<impl warp::Reply, warp::Rejection>
 /// ## Endpoint
 ///
 /// POST `/guilds`
-async fn create_guild(
-    token: Token,
-    payload: CreateGuild,
-) -> Result<impl warp::Reply, warp::Rejection> {
+async fn create_guild(token: Token, payload: CreateGuild) -> Result<impl warp::Reply, warp::Rejection> {
     let guild = Guild::from_payload(payload, token.data().user_id()).await;
 
     if let Err(e) = guild.commit().await {
         tracing::error!("Failed to commit guild to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        }));
+        return Err(warp::reject::custom(InternalServerError::db()));
     }
 
     if let Err(e) = guild.add_member(token.data().user_id()).await {
         tracing::error!("Failed to add guild owner to guild: {}", e);
-        return Err(warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        }));
+        return Err(warp::reject::custom(InternalServerError::db()));
     }
 
-    APP.write()
-        .await
-        .gateway
-        .add_member(token.data().user_id(), guild.id());
+    APP.write().await.gateway.add_member(token.data().user_id(), guild.id());
 
     dispatch!(GatewayEvent::GuildCreate(guild.clone()));
     dispatch!(GatewayEvent::MemberCreate(
@@ -439,33 +407,26 @@ async fn create_channel(
     token: Token,
     payload: CreateChannel,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let user = User::fetch(token.data().user_id()).await.ok_or_else(|| {
-        tracing::error!(message = "Failed to fetch user from database", user = %token.data().user_id());
-        warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        })
-    })?;
+    let user = User::fetch(token.data().user_id())
+        .await
+        .or_reject_and_log(InternalServerError::db(), "Failed to fetch user from database")?;
 
-    let guild = Guild::fetch(guild_id).await.ok_or_else(|| {
-        warp::reject::custom(BadRequest {
-            message: "The requested guild does not exist.".into(),
-        })
-    })?;
+    let guild = Guild::fetch(guild_id)
+        .await
+        .or_reject(NotFound::new("The requested guild does not exist."))?;
 
     if guild.owner_id() != user.id() {
-        return Err(warp::reject::custom(Forbidden {
-            message: "You are not the owner of this guild.".into(),
-        }));
+        return Err(warp::reject::custom(Forbidden::new(
+            "You are not the owner of this guild.",
+        )));
     }
 
     let channel = Channel::from_payload(payload, guild_id).await;
 
-    if let Err(e) = channel.commit().await {
-        tracing::error!("Failed to commit channel to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        }));
-    }
+    channel
+        .commit()
+        .await
+        .or_reject_and_log(InternalServerError::db(), "Failed to commit channel to database")?;
 
     dispatch!(GatewayEvent::ChannelCreate(channel.clone()));
 
@@ -489,23 +450,14 @@ async fn create_channel(
 /// ## Endpoint
 ///
 /// GET `/guilds/{guild_id}`
-async fn fetch_guild(
-    guild_id: Snowflake,
-    token: Token,
-) -> Result<impl warp::Reply, warp::Rejection> {
+async fn fetch_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     Member::fetch(token.data().user_id(), guild_id)
         .await
-        .ok_or_else(|| {
-            warp::reject::custom(Forbidden {
-                message: "Not permitted to view resource.".into(),
-            })
-        })?;
+        .or_reject(Forbidden::new("You are not a member of this guild."))?;
 
     let guild = Guild::fetch(guild_id).await.ok_or_else(|| {
         tracing::error!("Failed to fetch guild from database");
-        warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        })
+        warp::reject::custom(InternalServerError::db())
     })?;
 
     Ok(warp::reply::with_status(
@@ -528,24 +480,15 @@ async fn fetch_guild(
 /// ## Endpoint
 ///
 /// GET `/channels/{channel_id}`
-async fn fetch_channel(
-    channel_id: Snowflake,
-    token: Token,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let channel = Channel::fetch(channel_id).await.ok_or_else(|| {
-        warp::reject::custom(BadRequest {
-            message: "Channel does not exist or is not available.".into(),
-        })
-    })?;
+async fn fetch_channel(channel_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+    let channel = Channel::fetch(channel_id)
+        .await
+        .or_reject(BadRequest::new("Channel does not exist or is not available."))?;
 
     // Check if the user is in the channel's guild
     Member::fetch(token.data().user_id(), channel.guild_id())
         .await
-        .ok_or_else(|| {
-            warp::reject::custom(Forbidden {
-                message: "Not permitted to view resource.".into(),
-            })
-        })?;
+        .or_reject(Forbidden::new("Not permitted to view resource."))?;
 
     Ok(warp::reply::with_status(
         warp::reply::json(&channel),
@@ -572,20 +515,14 @@ async fn fetch_member(
     member_id: Snowflake,
     token: Token,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let member = Member::fetch(member_id, guild_id).await.ok_or_else(|| {
-        warp::reject::custom(BadRequest {
-            message: "Member does not exist or is not available.".into(),
-        })
-    })?;
+    let member = Member::fetch(member_id, guild_id)
+        .await
+        .or_reject(BadRequest::new("Member does not exist or is not available."))?;
 
     // Check if the user is in the channel's guild
     Member::fetch(token.data().user_id(), guild_id)
         .await
-        .ok_or_else(|| {
-            warp::reject::custom(Forbidden {
-                message: "Not permitted to view resource.".into(),
-            })
-        })?;
+        .or_reject(Forbidden::new("Not permitted to view resource"))?;
 
     Ok(warp::reply::with_status(
         warp::reply::json(&member),
@@ -607,17 +544,10 @@ async fn fetch_member(
 /// ## Endpoint
 ///
 /// GET `/guilds/{guild_id}/members/@self`
-async fn fetch_member_self(
-    guild_id: Snowflake,
-    token: Token,
-) -> Result<impl warp::Reply, warp::Rejection> {
+async fn fetch_member_self(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let member = Member::fetch(token.data().user_id(), guild_id)
         .await
-        .ok_or_else(|| {
-            warp::reject::custom(BadRequest {
-                message: "Member does not exist or is not available.".into(),
-            })
-        })?;
+        .ok_or_else(|| warp::reject::custom(BadRequest::new("Member does not exist or is not available.")))?;
 
     Ok(warp::reply::with_status(
         warp::reply::json(&member),
@@ -641,9 +571,7 @@ async fn fetch_member_self(
 async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let guilds = Guild::fetch_all_for_user(token.data().user_id()).await.map_err(|e| {
         tracing::error!(message = "Failed to fetch user guilds from database", user = %token.data().user_id(), error = %e);
-        warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        })
+        warp::reject::custom(InternalServerError::db())
     })?;
 
     Ok(warp::reply::with_status(
@@ -666,19 +594,12 @@ async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejec
 /// ## Endpoint
 ///
 /// POST `/guilds/{guild_id}/members`
-async fn create_member(
-    guild_id: Snowflake,
-    token: Token,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let guild = Guild::fetch(guild_id)
-        .await
-        .ok_or_else(warp::reject::not_found)?;
+async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+    let guild = Guild::fetch(guild_id).await.ok_or_else(warp::reject::not_found)?;
 
     if let Err(e) = guild.add_member(token.data().user_id()).await {
         tracing::error!(message = "Failed to add user to guild", user = %token.data().user_id(), guild = %guild_id, error = %e);
-        return Err(warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        }));
+        return Err(warp::reject::custom(InternalServerError::db()));
     }
 
     let member = Member::fetch(token.data().user_id(), guild_id)
@@ -686,10 +607,7 @@ async fn create_member(
         .expect("A member should have been created");
 
     // Add the member to the gateway's cache
-    APP.write()
-        .await
-        .gateway
-        .add_member(member.user().id(), guild_id);
+    APP.write().await.gateway.add_member(member.user().id(), guild_id);
     // Dispatch the member create event
     dispatch!(GatewayEvent::MemberCreate(member.clone()));
 
@@ -709,10 +627,7 @@ async fn create_member(
 /// ## Returns
 ///
 /// * [`Presence`] - A JSON response containing the updated [`Presence`] object
-pub async fn update_presence(
-    token: Token,
-    new_presence: Presence,
-) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn update_presence(token: Token, new_presence: Presence) -> Result<impl warp::Reply, warp::Rejection> {
     let user_id_i64: i64 = token.data().user_id().into();
     let db = &APP.read().await.db;
 
@@ -720,19 +635,15 @@ pub async fn update_presence(
         "UPDATE users SET last_presence = $1 WHERE id = $2",
         new_presence as i16,
         user_id_i64
-    ).execute(db.pool()).await.map_err(|e| {
+    )
+    .execute(db.pool())
+    .await
+    .map_err(|e| {
         tracing::error!(message = "Failed to update user presence", user = %token.data().user_id(), error = %e);
-        warp::reject::custom(InternalServerError {
-            message: "A database transaction error occured.".into(),
-        })
+        warp::reject::custom(InternalServerError::db())
     })?;
 
-    if APP
-        .read()
-        .await
-        .gateway
-        .is_connected(token.data().user_id())
-    {
+    if APP.read().await.gateway.is_connected(token.data().user_id()) {
         dispatch!(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
             presence: new_presence,
             user_id: token.data().user_id(),

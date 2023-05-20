@@ -1,8 +1,7 @@
-use super::{
-    appstate::APP, member::UserLike, rest::CreateMessage, snowflake::Snowflake, user::User,
-};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+
+use super::{appstate::APP, member::UserLike, rest::CreateMessage, snowflake::Snowflake, user::User};
 
 /// A chat message.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -22,13 +21,7 @@ pub struct Message {
 
 impl Message {
     /// Create a new message with the given id, author, content, and nonce.
-    pub fn new(
-        id: Snowflake,
-        channel_id: Snowflake,
-        author: UserLike,
-        content: String,
-        nonce: Option<String>,
-    ) -> Self {
+    pub fn new(id: Snowflake, channel_id: Snowflake, author: UserLike, content: String, nonce: Option<String>) -> Self {
         Message {
             id,
             channel_id,
@@ -39,11 +32,7 @@ impl Message {
     }
 
     /// Create a new message from the given payload. Assigns a new snowflake to the message.
-    pub async fn from_payload(
-        author: UserLike,
-        channel_id: Snowflake,
-        payload: CreateMessage,
-    ) -> Self {
+    pub async fn from_payload(author: UserLike, channel_id: Snowflake, payload: CreateMessage) -> Self {
         Message {
             id: Snowflake::gen_new().await,
             channel_id,
@@ -86,9 +75,7 @@ impl Message {
 
         let mut author = None;
         if row.user_id.is_some() {
-            author = Some(UserLike::User(
-                User::fetch(row.user_id.unwrap().into()).await?,
-            ));
+            author = Some(UserLike::User(User::fetch(row.user_id.unwrap().into()).await?));
         }
 
         Some(Self {

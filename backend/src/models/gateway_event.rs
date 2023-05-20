@@ -1,3 +1,6 @@
+use secrecy::Secret;
+use serde::{Deserialize, Serialize};
+
 use super::{
     channel::{Channel, ChannelLike},
     guild::Guild,
@@ -6,8 +9,6 @@ use super::{
     snowflake::Snowflake,
     user::{Presence, User},
 };
-use secrecy::Secret;
-use serde::{Deserialize, Serialize};
 
 /// A JSON payload that can be received over the websocket by clients.
 /// All events are serialized in a way such that they are wrapped in a "data" field.
@@ -63,7 +64,7 @@ impl EventLike for GatewayEvent {
             Self::ChannelCreate(channel) => channel.extract_user_id(),
             Self::ChannelRemove(channel) => channel.extract_user_id(),
             Self::PresenceUpdate(payload) => Some(payload.user_id),
-            Self::Ready(user) => Some(user.id()),
+            Self::Ready(user) => user.extract_user_id(),
             Self::InvalidSession(_) => None,
         }
     }
@@ -114,12 +115,20 @@ impl EventLike for Guild {
     }
 }
 
+impl EventLike for User {
+    fn extract_guild_id(&self) -> Option<Snowflake> {
+        None
+    }
+    fn extract_user_id(&self) -> Option<Snowflake> {
+        Some(self.id())
+    }
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct PresenceUpdatePayload {
     pub user_id: Snowflake,
     pub presence: Presence,
 }
-
 
 /// A JSON payload that can be sent over the websocket by clients.
 #[derive(Deserialize, Debug, Clone)]

@@ -1,11 +1,11 @@
 use std::net::SocketAddr;
 
+use dotenv::dotenv;
 use lazy_static::lazy_static;
 use tokio::sync::RwLock;
 
 use super::db::Database;
 use crate::gateway::handler::Gateway;
-use dotenv::dotenv;
 
 pub type SharedAppState = RwLock<ApplicationState>;
 
@@ -27,11 +27,7 @@ pub struct ApplicationState {
 
 impl ApplicationState {
     fn new(db: Database, gateway: Gateway, config: Config) -> Self {
-        ApplicationState {
-            db,
-            gateway,
-            config,
-        }
+        ApplicationState { db, gateway, config }
     }
 
     /// The application config.
@@ -60,12 +56,7 @@ pub struct Config {
 
 impl Config {
     /// Creates a new config instance.
-    pub fn new(
-        database_url: String,
-        machine_id: i32,
-        process_id: i32,
-        listen_addr: SocketAddr,
-    ) -> Self {
+    pub fn new(database_url: String, machine_id: i32, process_id: i32, listen_addr: SocketAddr) -> Self {
         Config {
             database_url,
             machine_id,
@@ -102,8 +93,7 @@ impl Config {
     /// or if they are not in a valid format.
     pub fn from_env() -> Self {
         dotenv().ok();
-        let database_url =
-            std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set");
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set");
         let machine_id = std::env::var("MACHINE_ID")
             .expect("MACHINE_ID environment variable must be set")
             .parse::<i32>()

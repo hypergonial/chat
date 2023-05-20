@@ -1,9 +1,10 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use super::appstate::APP;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+
+use super::appstate::APP;
 
 use super::{snowflake::Snowflake, user::User};
 

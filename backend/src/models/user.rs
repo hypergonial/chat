@@ -1,17 +1,14 @@
-use super::appstate::APP;
-use super::rest::CreateUser;
 use chrono::prelude::*;
 use chrono::DateTime;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::snowflake::Snowflake;
+use super::{appstate::APP, rest::CreateUser, snowflake::Snowflake};
 
 lazy_static! {
     static ref USERNAME_REGEX: Regex =
-        Regex::new(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*[a-zA-Z0-9])$")
-            .unwrap();
+        Regex::new(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*[a-zA-Z0-9])$").unwrap();
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash)]
@@ -103,10 +100,7 @@ impl User {
 
     fn validate_username(username: &str) -> Result<(), anyhow::Error> {
         if !USERNAME_REGEX.is_match(username) {
-            anyhow::bail!(
-                "Invalid username, must match regex: {}",
-                USERNAME_REGEX.to_string()
-            );
+            anyhow::bail!("Invalid username, must match regex: {}", USERNAME_REGEX.to_string());
         }
         if username.len() > 32 || username.len() < 3 {
             anyhow::bail!("Invalid username, must be between 3 and 32 characters long");

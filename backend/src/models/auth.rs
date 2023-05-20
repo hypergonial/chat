@@ -1,11 +1,11 @@
+use core::fmt::Debug;
+
+use chrono::prelude::*;
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
-use super::appstate::APP;
-use super::snowflake::Snowflake;
-use chrono::prelude::*;
-use core::fmt::Debug;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use super::{appstate::APP, snowflake::Snowflake};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TokenData {
@@ -92,10 +92,7 @@ impl Token {
     ///
     /// Returns an error if the token could not be generated or contains invalid data.
     pub fn new_for(user_id: Snowflake, secret: &str) -> Result<Self, jsonwebtoken::errors::Error> {
-        Self::new(
-            &TokenData::new(user_id, Utc::now().timestamp() as usize),
-            secret,
-        )
+        Self::new(&TokenData::new(user_id, Utc::now().timestamp() as usize), secret)
     }
 
     /// Decode an existing token and return it. This will not validate the token.
@@ -229,15 +226,9 @@ impl StoredCredentials {
         .ok()??;
 
         Some(Self {
-            user_id: result
-                .user_id
-                .try_into()
-                .expect("user_id is negative for some reason"),
+            user_id: result.user_id.try_into().expect("user_id is negative for some reason"),
             hash: Secret::new(result.password),
-            last_changed: DateTime::from_utc(
-                NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
-                Utc,
-            ),
+            last_changed: DateTime::from_utc(NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(), Utc),
         })
     }
 
@@ -264,15 +255,9 @@ impl StoredCredentials {
         .ok()??;
 
         Some(Self {
-            user_id: result
-                .id
-                .try_into()
-                .expect("user_id is negative for some reason"),
+            user_id: result.id.try_into().expect("user_id is negative for some reason"),
             hash: Secret::new(result.password),
-            last_changed: DateTime::from_utc(
-                NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
-                Utc,
-            ),
+            last_changed: DateTime::from_utc(NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(), Utc),
         })
     }
 
