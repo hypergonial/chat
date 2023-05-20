@@ -9,7 +9,7 @@ use futures_util::{
     SinkExt, StreamExt,
 };
 use secrecy::ExposeSecret;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc::{self, error::SendError}, Mutex};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::{
     filters::BoxedFilter,
@@ -55,7 +55,7 @@ impl ConnectionHandle {
 
     /// Send a message to the client
     #[allow(clippy::result_large_err)]
-    pub fn send(&self, message: GatewayEvent) -> Result<(), mpsc::error::SendError<GatewayEvent>> {
+    pub fn send(&self, message: GatewayEvent) -> Result<(), SendError<GatewayEvent>> {
         self.sender.send(message)
     }
 
@@ -89,7 +89,7 @@ impl Gateway {
     ///
     /// * `payload` - The event payload
     pub fn dispatch(&self, event: GatewayEvent) {
-        tracing::info!("Dispatching event: {:?}", event);
+        tracing::debug!("Dispatching event: {:?}", event);
         for (uid, handle) in self.peers.iter() {
             // If the event is guild-specific, only send it to users that are members of that guild
             if let Some(event_guild) = event.extract_guild_id() {
@@ -246,7 +246,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         return;
     };
 
-    tracing::info!("Connected: {} ({})", user.username(), user.id());
+    tracing::debug!("Connected: {} ({})", user.username(), user.id());
 
     let (sender, receiver) = mpsc::unbounded_channel::<GatewayEvent>();
     // turn receiver into a stream for easier handling
@@ -294,7 +294,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
             if let Err(e) = ws_sink_clone.lock().await.send(Message::ping(vec![])).await {
-                tracing::info!("Failed to keep alive socket connection to {}: {}", user_id, e);
+                tracing::debug!("Failed to keep alive socket connection to {}: {}", user_id, e);
                 break;
             }
         }
@@ -320,5 +320,5 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
 
     // Disconnection logic
     app.write().await.gateway.peers.remove(&user.id());
-    tracing::info!("Disconnected: {} ({})", user.username(), user.id());
+    tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 }
