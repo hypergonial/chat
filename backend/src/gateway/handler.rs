@@ -15,7 +15,6 @@ use tokio::sync::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use warp::{
-    filters::BoxedFilter,
     ws::{Message, WebSocket},
     Filter,
 };
@@ -152,19 +151,17 @@ impl Default for Gateway {
 ///
 /// ## Returns
 ///
-/// A boxed filter that can be used to handle the gateway
-pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
+/// A filter that can be used to handle the gateway
+pub fn get_routes() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     let inject_app = warp::any().map(move || &APP);
 
-    let gateway = warp::path("gateway")
+    warp::path("gateway")
         .and(warp::ws()) // <- The `ws()` filter will prepare Websocket handshake...
         .and(inject_app) // <- Use our shared state...
         .map(|ws: warp::ws::Ws, app: &'static _| {
             ws.on_upgrade(move |socket| handle_connection(app, socket))
             // <- call our handler
-        });
-
-    gateway.boxed()
+        })
 }
 
 /// Wait for and validate the IDENTIFY payload
