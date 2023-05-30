@@ -10,7 +10,12 @@ pub trait ResultExt<T, E, R>
 where
     R: warp::reject::Reject,
 {
+    /// Converts a `Result<T, E>` to a `Result<T, warp::Rejection>` 
+    /// by rejecting with the given `rejection` if the result is an `Err`.
     fn or_reject(self, rejection: R) -> Result<T, warp::Rejection>;
+    /// Converts a `Result<T, E>` to a `Result<T, warp::Rejection>` 
+    /// by rejecting with the given `rejection` if the result is an `Err` 
+    /// and logging the error with the given `err` message.
     fn or_reject_and_log(self, rejection: R, err: &str) -> Result<T, warp::Rejection>;
 }
 

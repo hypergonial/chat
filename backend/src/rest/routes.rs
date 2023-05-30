@@ -668,6 +668,14 @@ pub async fn update_presence(token: Token, new_presence: Presence) -> Result<imp
 }
 
 /// Check for the existence of a user with the given username.
+/// 
+/// ## Arguments
+/// 
+/// * `username` - The username to check for
+/// 
+/// ## Endpoint
+/// 
+/// GET `/users/{username}`
 pub async fn query_username(username: String) -> Result<impl warp::Reply, warp::Rejection> {
     let db = &APP.read().await.db;
 
