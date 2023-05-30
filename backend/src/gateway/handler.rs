@@ -125,6 +125,15 @@ impl Gateway {
         }
     }
 
+    /// Send an event to a specific user. If they are not connected, the event is dropped.
+    pub fn send_to(&mut self, user_id: Snowflake, event: GatewayEvent) {
+        if let Some(handle) = self.peers.get_mut(&user_id) {
+            if let Err(_disconnected) = handle.send(event) {
+                tracing::warn!("Error sending event to user: {}", user_id);
+            }
+        }
+    }
+
     // Query if a given user is connected
     pub fn is_connected(&self, user_id: Snowflake) -> bool {
         self.peers.contains_key(&user_id)
