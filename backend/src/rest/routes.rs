@@ -669,6 +669,13 @@ pub async fn update_presence(token: Token, new_presence: Presence) -> Result<imp
 
 /// Check for the existence of a user with the given username.
 pub async fn query_username(username: String) -> Result<impl warp::Reply, warp::Rejection> {
-    User::fetch_by_username(username.as_str()).await.or_reject(NotFound::new("No user exists with the given username."))?;
+    let db = &APP.read().await.db;
+
+    sqlx::query!("SELECT id FROM users WHERE username = $1", username)
+        .fetch_optional(db.pool())
+        .await
+        .ok()
+        .or_reject(NotFound::new("User not found"))?;
+
     Ok(warp::reply::reply())
 }

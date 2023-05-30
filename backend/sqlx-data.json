@@ -305,6 +305,26 @@
     },
     "query": "SELECT user_id, channel_id, content\n            FROM messages\n            WHERE id = $1"
   },
+  "dd99e48b1572e25db38f03da95984fda1072913b29bb6b3753a0d351583dfff6": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "SELECT id FROM users WHERE username = $1"
+  },
   "df1a91f6044cfde859a8530888ca6eb808bd0e6764d4493adc808a587bdba605": {
     "describe": {
       "columns": [],
