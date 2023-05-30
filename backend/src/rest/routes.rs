@@ -170,6 +170,10 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::body::json())
         .and_then(update_presence);
 
+    let query_username = warp::path!("usernames" / String)
+        .and(warp::get())
+        .and_then(query_username);
+
     create_msg
         .or(create_user)
         .or(login)
@@ -183,6 +187,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .or(fetch_self_guilds)
         .or(add_member)
         .or(update_presence)
+        .or(query_username)
         .recover(handle_rejection)
         .with(cors)
         .boxed()
@@ -660,4 +665,10 @@ pub async fn update_presence(token: Token, new_presence: Presence) -> Result<imp
         warp::reply::json(&new_presence),
         warp::http::StatusCode::OK,
     ))
+}
+
+/// Check for the existence of a user with the given username.
+pub async fn query_username(username: String) -> Result<impl warp::Reply, warp::Rejection> {
+    User::fetch_by_username(username.as_str()).await.or_reject(NotFound::new("No user exists with the given username."))?;
+    Ok(warp::reply::reply())
 }
