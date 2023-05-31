@@ -38,13 +38,33 @@ impl reject::Reject for NotFound {}
 #[derive(Debug)]
 pub struct Unauthorized {
     pub message: String,
+    pub header: String,
 }
 
 impl Unauthorized {
-    pub fn new(message: &str) -> Self {
+    /// Create a new Unauthorized rejection with a custom message and header parameters.
+    /// The scheme and realm parameters are used to set the `WWW-Authenticate` header.
+    ///
+    /// ## Arguments
+    ///
+    /// * `message` - The message to return in the response body
+    /// * `scheme` - The authentication scheme to use in the `WWW-Authenticate` header
+    /// * `realm` - The realm to use in the `WWW-Authenticate` header
+    pub fn new(message: &str, scheme: &str, realm: &str) -> Self {
         Unauthorized {
             message: message.to_string(),
+            header: format!("{} realm=\"{}\"", scheme, realm),
         }
+    }
+
+    /// Create a new Unauthorized rejection with a custom message and the `Bearer` scheme.
+    pub fn bearer(realm: &str) -> Self {
+        Unauthorized::new("Invalid token provided.", "Bearer", realm)
+    }
+
+    /// Create a new Unauthorized rejection with a custom message and the `Basic` scheme.
+    pub fn basic(realm: &str) -> Self {
+        Unauthorized::new("Invalid credentials provided.", "Basic", realm)
     }
 }
 

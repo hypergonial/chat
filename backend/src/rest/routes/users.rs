@@ -130,7 +130,7 @@ async fn create_user(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
 async fn auth_user(credentials: Credentials) -> Result<impl warp::Reply, warp::Rejection> {
     let user_id = validate_credentials(credentials)
         .await
-        .or_reject(Unauthorized::new("Invalid credentials"))?;
+        .or_reject(Unauthorized::basic("login"))?;
 
     let token = Token::new_for(user_id, "among us").or_reject_and_log(
         InternalServerError::new("Failed to generate token"),

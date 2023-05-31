@@ -75,7 +75,7 @@ pub fn needs_limit(id_limiter: SharedIDLimiter) -> impl Filter<Extract = (Token,
 async fn validate_token(token: String) -> Result<Token, warp::Rejection> {
     Token::validate(&token, "among us")
         .await
-        .or_reject(Unauthorized::new("Invalid or expired token"))
+        .or_reject(Unauthorized::bearer("app"))
 }
 
 /// Check the limiter with the key being the token's user_id

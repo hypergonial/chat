@@ -16,7 +16,7 @@ use warp::{Rejection, Reply};
 /// # Returns
 ///
 /// A JSON response with the appropriate status code.
-pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
+pub async fn handle_rejection(err: Rejection) -> Result<Box<dyn Reply>, Infallible> {
     let code;
     let message;
     let mut description = None;
@@ -29,10 +29,18 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         code = StatusCode::NOT_FOUND;
         message = "NOT_FOUND";
         description = Some(format!("Not Found: {}", e.message));
+    // Unauthorized rejections are handled separately to allow for the `WWW-Authenticate` header
     } else if let Some(e) = err.find::<Unauthorized>() {
         code = StatusCode::UNAUTHORIZED;
         message = "UNAUTHORIZED";
         description = Some(format!("Unauthorized: {}", e.message));
+
+        let json = warp::reply::json(&ErrorMessage::new(code.into(), message.into(), description));
+        return Ok(Box::new(warp::reply::with_header(
+            warp::reply::with_status(json, code),
+            "WWW-Authenticate",
+            e.header.clone(),
+        )));
     } else if let Some(e) = err.find::<BadRequest>() {
         code = StatusCode::BAD_REQUEST;
         message = "BAD_REQUEST";
@@ -74,5 +82,5 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
 
     let json = warp::reply::json(&ErrorMessage::new(code.into(), message.into(), description));
 
-    Ok(warp::reply::with_status(json, code))
+    Ok(Box::new(warp::reply::with_status(json, code)))
 }
