@@ -92,8 +92,12 @@ impl Gateway {
     /// ## Arguments
     ///
     /// * `payload` - The event payload
-    pub fn dispatch(&self, event: GatewayEvent) {
+    pub fn dispatch(&mut self, event: GatewayEvent) {
         tracing::debug!("Dispatching event: {:?}", event);
+
+        // TODO: Figure out how to use the `HashMap::retain` method here without killing borrowck
+        let mut to_drop: Vec<Snowflake> = Vec::new();
+
         for (uid, handle) in self.peers.iter() {
             // If the event is guild-specific, only send it to users that are members of that guild
             if let Some(event_guild) = event.extract_guild_id() {
@@ -109,7 +113,12 @@ impl Gateway {
             }
             if let Err(_disconnected) = handle.send(event.clone()) {
                 tracing::warn!("Error dispatching event to user: {}", uid);
+                to_drop.push(*uid);
             }
+        }
+
+        for uid in to_drop {
+            self.peers.remove(&uid);
         }
     }
 
@@ -128,10 +137,11 @@ impl Gateway {
     }
 
     /// Send an event to a specific user. If they are not connected, the event is dropped.
-    pub fn send_to(&self, user_id: Snowflake, event: GatewayEvent) {
+    pub fn send_to(&mut self, user_id: Snowflake, event: GatewayEvent) {
         if let Some(handle) = self.peers.get(&user_id) {
             if let Err(_disconnected) = handle.send(event) {
                 tracing::warn!("Error sending event to user: {}", user_id);
+                self.peers.remove(&user_id);
             }
         }
     }
@@ -303,7 +313,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     match presence {
         Presence::Offline => {}
         _ => {
-            app.read()
+            app.write()
                 .await
                 .gateway
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
@@ -369,7 +379,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     match presence {
         Presence::Offline => {}
         _ => {
-            app.read()
+            app.write()
                 .await
                 .gateway
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {

@@ -298,7 +298,7 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
         .expect("A member should have been created");
 
     // Send GUILD_CREATE to the user who joined
-    APP.read().await.gateway.send_to(
+    APP.write().await.gateway.send_to(
         member.user().id(),
         GatewayEvent::GuildCreate(
             GuildCreatePayload::from_guild(guild)
@@ -363,7 +363,7 @@ async fn leave_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
     dispatch!(GatewayEvent::MemberRemove(member.clone()));
 
     // Send GUILD_REMOVE to the user who left
-    APP.read()
+    APP.write()
         .await
         .gateway
         .send_to(member.user().id(), GatewayEvent::GuildRemove(guild));
