@@ -22,10 +22,10 @@ use warp::{
 use crate::models::{
     appstate::APP,
     auth::Token,
-    gateway_event::{EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload},
+    gateway_event::{EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, PresenceUpdatePayload},
     guild::Guild,
     snowflake::Snowflake,
-    user::User,
+    user::{Presence, User},
 };
 
 /// Mapping of <user_id, handle>
@@ -296,6 +296,21 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
             .ok();
     }
 
+    // Send the presence update for the user if they are not invisible
+    let presence = user.presence().await;
+    match presence {
+        Presence::Offline => {}
+        _ => {
+            app.read()
+                .await
+                .gateway
+                .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
+                    user_id: user.id(),
+                    presence: *user.presence().await,
+                }));
+        }
+    }
+
     // The sink needs to be shared between two tasks
     let ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>> = Arc::new(Mutex::new(ws_sink));
     let ws_sink_clone = ws_sink.clone();
@@ -347,4 +362,18 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     // Disconnection logic
     app.write().await.gateway.peers.remove(&user.id());
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
+
+    // Send presence update to OFFLINE
+    match presence {
+        Presence::Offline => {}
+        _ => {
+            app.read()
+                .await
+                .gateway
+                .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
+                    user_id: user.id(),
+                    presence: Presence::Offline,
+                }));
+        }
+    }
 }
