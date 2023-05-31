@@ -22,7 +22,8 @@ use warp::{
 use crate::models::{
     appstate::APP,
     auth::Token,
-    gateway_event::{EventLike, GatewayEvent, GatewayMessage},
+    gateway_event::{EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload},
+    guild::Guild,
     snowflake::Snowflake,
     user::User,
 };
@@ -126,8 +127,8 @@ impl Gateway {
     }
 
     /// Send an event to a specific user. If they are not connected, the event is dropped.
-    pub fn send_to(&mut self, user_id: Snowflake, event: GatewayEvent) {
-        if let Some(handle) = self.peers.get_mut(&user_id) {
+    pub fn send_to(&self, user_id: Snowflake, event: GatewayEvent) {
+        if let Some(handle) = self.peers.get(&user_id) {
             if let Err(_disconnected) = handle.send(event) {
                 tracing::warn!("Error sending event to user: {}", user_id);
             }
@@ -277,7 +278,23 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         .await
         .gateway
         .peers
-        .insert(user.id(), ConnectionHandle::new(sender, guild_ids));
+        .insert(user.id(), ConnectionHandle::new(sender, guild_ids.clone()));
+
+    // Send GUILD_CREATE events for all guilds the user is in
+    for guild_id in guild_ids {
+        let guild = Guild::fetch(guild_id)
+            .await
+            .expect("Failed to fetch guild during socket connection handling");
+        let payload = GuildCreatePayload::from_guild(guild)
+            .await
+            .expect("Failed to fetch guild payload data");
+        ws_sink
+            .send(Message::text(
+                serde_json::to_string(&GatewayEvent::GuildCreate(payload)).unwrap(),
+            ))
+            .await
+            .ok();
+    }
 
     // The sink needs to be shared between two tasks
     let ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>> = Arc::new(Mutex::new(ws_sink));
