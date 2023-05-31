@@ -34,7 +34,7 @@ impl NotFound {
 
 impl reject::Reject for NotFound {}
 
-/// A rejection triggered when an invalid token is provided
+/// A rejection triggered when an invalid token or credentials are provided.
 #[derive(Debug)]
 pub struct Unauthorized {
     pub message: String,
@@ -63,6 +63,7 @@ impl InternalServerError {
         }
     }
 
+    /// Create a new InternalServerError with a default database error message
     pub fn db() -> Self {
         InternalServerError {
             message: "A database transaction error occured.".to_string(),
@@ -87,6 +88,7 @@ impl BadRequest {
 
 impl reject::Reject for BadRequest {}
 
+/// A rejection triggered when a request is rate limited.
 #[derive(Debug)]
 pub struct RateLimited {
     pub message: String,
@@ -102,6 +104,8 @@ impl RateLimited {
 
 impl reject::Reject for RateLimited {}
 
+/// A rejection triggered when a request is forbidden.
+/// This could be due to missing priviliges or a visibility restriction.
 #[derive(Debug)]
 pub struct Forbidden {
     pub message: String,
