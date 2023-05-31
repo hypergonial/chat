@@ -223,9 +223,9 @@ pub fn with_id_limiter(
 /// ## Returns
 ///
 /// * [`Message`] - A JSON response containing a [`Message`] object
-/// 
+///
 /// ## Dispatches
-/// 
+///
 /// * [`GatewayEvent::MessageCreate`] - To all members who can view the channel
 ///
 /// ## Endpoint
@@ -375,9 +375,9 @@ async fn fetch_self(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
 /// ## Returns
 ///
 /// * [`Guild`] - A JSON response containing the created [`Guild`] object
-/// 
+///
 /// ## Dispatches
-/// 
+///
 /// * [`GatewayEvent::GuildCreate`] - Dispatched when the guild is created
 ///
 /// ## Endpoint
@@ -430,9 +430,9 @@ async fn create_guild(token: Token, payload: CreateGuild) -> Result<impl warp::R
 /// ## Returns
 ///
 /// * [`Channel`] - A JSON response containing the created [`Channel`] object
-/// 
+///
 /// ## Dispatches
-/// 
+///
 /// * [`GatewayEvent::ChannelCreate`] - To all guild members
 ///
 /// ## Endpoint
@@ -626,9 +626,9 @@ async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejec
 /// ## Returns
 ///
 /// * [`Member`] - A JSON response containing the created [`Member`] object
-/// 
+///
 /// ## Dispatches
-/// 
+///
 /// * [`GatewayEvent::GuildCreate`] - For the user who joined the guild
 /// * [`GatewayEvent::MemberCreate`] - For all members already in the guild
 ///
@@ -680,9 +680,9 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
 /// ## Returns
 ///
 /// * `()` - An empty response
-/// 
+///
 /// ## Dispatches
-/// 
+///
 /// * [`GatewayEvent::GuildRemove`] - For the user who left the guild
 /// * [`GatewayEvent::MemberRemove`] - For all members still in the guild
 ///
@@ -713,11 +713,10 @@ async fn leave_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
     dispatch!(GatewayEvent::MemberRemove(member.clone()));
 
     // Send GUILD_REMOVE to the user who left
-    APP.read().await.gateway.send_to(
-        member.user().id(),
-        GatewayEvent::GuildRemove(
-            guild
-    ));
+    APP.read()
+        .await
+        .gateway
+        .send_to(member.user().id(), GatewayEvent::GuildRemove(guild));
 
     Ok(warp::reply::with_status(
         warp::reply(),
@@ -735,9 +734,9 @@ async fn leave_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
 /// ## Returns
 ///
 /// * [`Presence`] - A JSON response containing the updated [`Presence`] object
-/// 
+///
 /// ## Dispatches
-/// 
+///
 /// * [`GatewayEvent::PresenceUpdate`] - For all members in guilds shared with the user
 ///
 /// ## Endpoint
