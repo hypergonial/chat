@@ -16,6 +16,14 @@ pub trait ChannelLike {
     async fn commit(&self) -> Result<(), SqlxError>;
 }
 
+/// Represents a row representing a channel.
+pub struct ChannelRecord {
+    pub id: i64,
+    pub guild_id: i64,
+    pub name: String,
+    pub channel_type: String,
+}
+
 #[non_exhaustive]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
@@ -25,23 +33,27 @@ pub enum Channel {
 }
 
 impl Channel {
+    pub fn from_record(record: ChannelRecord) -> Self {
+        match record.channel_type.as_str() {
+            "TEXT_CHANNEL" => Self::GuildText(TextChannel::new(
+                Snowflake::from(record.id),
+                Snowflake::from(record.guild_id),
+                record.name,
+            )),
+            _ => panic!("Invalid channel type"),
+        }
+    }
+
     pub async fn fetch(id: Snowflake) -> Option<Self> {
         let db = &APP.read().await.db;
         let id_64: i64 = id.into();
 
-        let record = sqlx::query!("SELECT * FROM channels WHERE id = $1", id_64)
+        let record = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE id = $1", id_64)
             .fetch_optional(db.pool())
             .await
             .ok()??;
 
-        match record.channel_type.as_str() {
-            "TEXT_CHANNEL" => Some(Self::GuildText(TextChannel::new(
-                Snowflake::from(record.id),
-                Snowflake::from(record.guild_id),
-                record.name,
-            ))),
-            _ => None,
-        }
+        Some(Self::from_record(record))
     }
 
     pub async fn from_payload(payload: CreateChannel, guild_id: Snowflake) -> Self {
@@ -49,12 +61,6 @@ impl Channel {
             CreateChannel::GuildText { name } => {
                 Self::GuildText(TextChannel::new(Snowflake::gen_new().await, guild_id, name))
             }
-        }
-    }
-
-    pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        match self {
-            Self::GuildText(channel) => channel.commit().await,
         }
     }
 }

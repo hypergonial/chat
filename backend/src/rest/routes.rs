@@ -17,7 +17,6 @@ use warp::{
 
 use super::auth::{generate_hash, validate_credentials};
 use super::rejections::handle_rejection;
-use crate::dispatch;
 use crate::models::{
     appstate::APP,
     auth::{Credentials, StoredCredentials, Token},
@@ -32,6 +31,10 @@ use crate::models::{
     user::{Presence, User},
 };
 use crate::utils::traits::{OptionExt, ResultExt};
+use crate::{
+    dispatch,
+    models::{channel::TextChannel, gateway_event::GuildCreatePayload},
+};
 
 type SharedIDLimiter = Arc<RateLimiter<u64, DashMapStateStore<u64>, QuantaClock, NoOpMiddleware<QuantaInstant>>>;
 
@@ -108,64 +111,69 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and_then(auth_user);
 
     let query_self = warp::path!("users" / "@self")
-        .and(needs_token())
         .and(warp::get())
+        .and(needs_token())
         .and_then(fetch_self);
 
     let create_msg = warp::path!("channels" / Snowflake / "messages")
-        .and(needs_limit(message_create_lim))
         .and(warp::post())
+        .and(needs_limit(message_create_lim))
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
         .and_then(create_message);
 
     let create_channel = warp::path!("guilds" / Snowflake / "channels")
-        .and(needs_token())
         .and(warp::post())
+        .and(needs_token())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
         .and_then(create_channel);
 
     let fetch_channel = warp::path!("channels" / Snowflake)
-        .and(needs_token())
         .and(warp::get())
+        .and(needs_token())
         .and_then(fetch_channel);
 
     let create_guild = warp::path!("guilds")
-        .and(needs_token())
         .and(warp::post())
+        .and(needs_token())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
         .and_then(create_guild);
 
     let fetch_guild = warp::path!("guilds" / Snowflake)
-        .and(needs_token())
         .and(warp::get())
+        .and(needs_token())
         .and_then(fetch_guild);
 
     let fetch_self_guilds = warp::path!("users" / "@self" / "guilds")
-        .and(needs_token())
         .and(warp::get())
+        .and(needs_token())
         .and_then(fetch_self_guilds);
 
     let fetch_member = warp::path!("guilds" / Snowflake / "members" / Snowflake)
-        .and(needs_token())
         .and(warp::get())
+        .and(needs_token())
         .and_then(fetch_member);
 
     let fetch_member_self = warp::path!("guilds" / Snowflake / "members" / "@self")
-        .and(needs_token())
         .and(warp::get())
+        .and(needs_token())
         .and_then(fetch_member_self);
 
     let add_member = warp::path!("guilds" / Snowflake / "members")
-        .and(needs_token())
         .and(warp::post())
+        .and(needs_token())
         .and_then(create_member);
 
-    let update_presence = warp::path!("users" / "@self" / "presence")
+    let leave_guild = warp::path!("guilds" / Snowflake / "members" / "@self")
+        .and(warp::delete())
         .and(needs_token())
+        .and_then(leave_guild);
+
+    let update_presence = warp::path!("users" / "@self" / "presence")
         .and(warp::patch())
+        .and(needs_token())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
         .and_then(update_presence);
@@ -188,6 +196,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .or(add_member)
         .or(update_presence)
         .or(query_username)
+        .or(leave_guild)
         .recover(handle_rejection)
         .with(cors)
         .boxed()
@@ -374,19 +383,27 @@ async fn create_guild(token: Token, payload: CreateGuild) -> Result<impl warp::R
         return Err(warp::reject::custom(InternalServerError::db()));
     }
 
-    if let Err(e) = guild.add_member(token.data().user_id()).await {
+    if let Err(e) = guild.create_member(token.data().user_id()).await {
         tracing::error!("Failed to add guild owner to guild: {}", e);
         return Err(warp::reject::custom(InternalServerError::db()));
     }
 
+    let general = TextChannel::new(Snowflake::gen_new().await, guild.id(), "general".to_string());
+    if let Err(e) = general.commit().await {
+        tracing::error!("Failed to commit channel to database: {}", e);
+        return Err(warp::reject::custom(InternalServerError::db()));
+    }
+    let member = Member::fetch(token.data().user_id(), guild.id())
+        .await
+        .expect("Member should have been created");
+
     APP.write().await.gateway.add_member(token.data().user_id(), guild.id());
 
-    dispatch!(GatewayEvent::GuildCreate(guild.clone()));
-    dispatch!(GatewayEvent::MemberCreate(
-        Member::fetch(token.data().user_id(), guild.id())
-            .await
-            .expect("Member should have been created")
-    ));
+    dispatch!(GatewayEvent::GuildCreate(GuildCreatePayload::new(
+        guild.clone(),
+        vec![member.clone()],
+        vec![general.clone().into()]
+    )));
 
     Ok(warp::reply::with_status(
         warp::reply::json(&guild),
@@ -490,7 +507,7 @@ async fn fetch_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
 async fn fetch_channel(channel_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let channel = Channel::fetch(channel_id)
         .await
-        .or_reject(BadRequest::new("Channel does not exist or is not available."))?;
+        .or_reject(NotFound::new("Channel does not exist or is not available."))?;
 
     // Check if the user is in the channel's guild
     Member::fetch(token.data().user_id(), channel.guild_id())
@@ -524,7 +541,7 @@ async fn fetch_member(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let member = Member::fetch(member_id, guild_id)
         .await
-        .or_reject(BadRequest::new("Member does not exist or is not available."))?;
+        .or_reject(NotFound::new("Member does not exist or is not available."))?;
 
     // Check if the user is in the channel's guild
     Member::fetch(token.data().user_id(), guild_id)
@@ -604,7 +621,7 @@ async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejec
 async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let guild = Guild::fetch(guild_id).await.ok_or_else(warp::reject::not_found)?;
 
-    if let Err(e) = guild.add_member(token.data().user_id()).await {
+    if let Err(e) = guild.create_member(token.data().user_id()).await {
         tracing::error!(message = "Failed to add user to guild", user = %token.data().user_id(), guild = %guild_id, error = %e);
         return Err(warp::reject::custom(InternalServerError::db()));
     }
@@ -621,6 +638,49 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
     Ok(warp::reply::with_status(
         warp::reply::json(&member),
         warp::http::StatusCode::CREATED,
+    ))
+}
+
+/// Remove the token-holder from a guild.
+///
+/// ## Arguments
+///
+/// * `token` - The user's session token, already validated
+/// * `guild_id` - The ID of the guild to remove the user from
+///
+/// ## Returns
+///
+/// * `()` - An empty response
+///
+/// ## Endpoint
+///
+/// DELETE `/guilds/{guild_id}/members/@self`
+async fn leave_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+    let guild = Guild::fetch(guild_id).await.ok_or_else(warp::reject::not_found)?;
+    let member = Member::fetch(token.data().user_id(), guild_id)
+        .await
+        .or_reject(NotFound::new("The requested member was not found."))?;
+
+    if member.user().id() == guild.owner_id() {
+        return Err(warp::reject::custom(Forbidden::new("Cannot leave owned guild.")));
+    }
+
+    if let Err(e) = guild.remove_member(token.data().user_id()).await {
+        tracing::error!(message = "Failed to remove user from guild", user = %token.data().user_id(), guild = %guild_id, error = %e);
+        return Err(warp::reject::custom(InternalServerError::db()));
+    }
+
+    // Remove the member from the gateway's cache
+    APP.write()
+        .await
+        .gateway
+        .remove_member(token.data().user_id(), guild_id);
+    // Dispatch the member remove event
+    dispatch!(GatewayEvent::MemberRemove(member));
+
+    Ok(warp::reply::with_status(
+        warp::reply(),
+        warp::http::StatusCode::NO_CONTENT,
     ))
 }
 
@@ -668,13 +728,13 @@ pub async fn update_presence(token: Token, new_presence: Presence) -> Result<imp
 }
 
 /// Check for the existence of a user with the given username.
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// * `username` - The username to check for
-/// 
+///
 /// ## Endpoint
-/// 
+///
 /// GET `/users/{username}`
 pub async fn query_username(username: String) -> Result<impl warp::Reply, warp::Rejection> {
     let db = &APP.read().await.db;

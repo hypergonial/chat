@@ -1,19 +1,31 @@
 use chrono::{DateTime, Utc};
+use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 
 use super::{appstate::APP, member::UserLike, rest::CreateMessage, snowflake::Snowflake, user::User};
 
+/// Represents a message record stored in the database.
+pub struct MessageRecord {
+    pub id: i64,
+    pub channel_id: i64,
+    pub user_id: Option<i64>,
+    pub content: String,
+}
+
 /// A chat message.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Builder)]
+#[builder(setter(into))]
 pub struct Message {
     /// The id of the message.
     id: Snowflake,
     /// The id of the channel this message was sent in.
     channel_id: Snowflake,
-    /// The author of the message.
+    /// The author of the message. This may be none if the author has been deleted since.
+    #[builder(setter(strip_option))]
     author: Option<UserLike>,
     /// A nonce that can be used by a client to determine if the message was sent.
     /// The nonce is not stored in the database and thus is not returned by REST calls.
+    #[builder(setter(strip_option), default)]
     nonce: Option<String>,
     /// The content of the message.
     pub content: String,
@@ -28,6 +40,30 @@ impl Message {
             author: Some(author),
             content,
             nonce,
+        }
+    }
+
+    /// Create a new builder for a message.
+    pub fn builder() -> MessageBuilder {
+        MessageBuilder::default()
+    }
+
+    pub async fn from_record(record: MessageRecord) -> Self {
+        let mut author = None;
+        if let Some(author_id) = record.user_id {
+            author = Some(UserLike::User(
+                User::fetch(author_id.into())
+                    .await
+                    .expect("Failed to fetch user from database."),
+            ));
+        }
+
+        Self {
+            id: record.id.into(),
+            channel_id: record.channel_id.into(),
+            author,
+            content: record.content,
+            nonce: None,
         }
     }
 
@@ -63,8 +99,9 @@ impl Message {
     pub async fn fetch(id: Snowflake) -> Option<Self> {
         let db = &APP.read().await.db;
         let id_i64: i64 = id.into();
-        let row = sqlx::query!(
-            "SELECT user_id, channel_id, content
+        let row = sqlx::query_as!(
+            MessageRecord,
+            "SELECT id, user_id, channel_id, content
             FROM messages
             WHERE id = $1",
             id_i64
@@ -73,18 +110,7 @@ impl Message {
         .await
         .ok()??;
 
-        let mut author = None;
-        if row.user_id.is_some() {
-            author = Some(UserLike::User(User::fetch(row.user_id.unwrap().into()).await?));
-        }
-
-        Some(Self {
-            id,
-            channel_id: row.channel_id.into(),
-            author,
-            content: row.content,
-            nonce: None,
-        })
+        Some(Self::from_record(row).await)
     }
 
     /// Commit this message to the database.

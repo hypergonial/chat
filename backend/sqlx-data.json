@@ -1,37 +1,5 @@
 {
   "db": "PostgreSQL",
-  "054781bc8c5f8c3af87ad1fa49120ff6d24460984f1479cd6fcf4cb2d624f715": {
-    "describe": {
-      "columns": [
-        {
-          "name": "username",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "display_name",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "last_presence",
-          "ordinal": 2,
-          "type_info": "Int2"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT username, display_name, last_presence\n            FROM users\n            WHERE id = $1"
-  },
   "0f3e3f4e44dd313289052d71a884f96b7494451d9a6fa3687d08a3c69975c5ef": {
     "describe": {
       "columns": [],
@@ -59,6 +27,44 @@
       }
     },
     "query": "INSERT INTO members (user_id, guild_id, nickname, joined_at)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (user_id, guild_id) DO UPDATE\n            SET nickname = $3, joined_at = $4"
+  },
+  "23032a35c9fd43b029fa7a36de3600567de489351a71cd18ecdef9b606e6f87d": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 3,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT id, user_id, channel_id, content\n            FROM messages\n            WHERE id = $1"
   },
   "39e8fde5df56b0b7c78345de646e2cf390b0175dc5ea7fa9d9748fd32e29232e": {
     "describe": {
@@ -150,6 +156,44 @@
     },
     "query": "SELECT guild_id FROM members WHERE user_id = $1"
   },
+  "86112aac62e1fce3b32eaf673ca36482a1b6225369d898a02c13382ea0664d1b": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "username",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "last_presence",
+          "ordinal": 3,
+          "type_info": "Int2"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT id, username, display_name, last_presence\n            FROM users\n            WHERE id = $1"
+  },
   "86a33818712b19571f827b0170e904af26ee08d1d8f38fbc92332a49fb2c0808": {
     "describe": {
       "columns": [],
@@ -204,6 +248,44 @@
     },
     "query": "SELECT * FROM members WHERE user_id = $1 AND guild_id = $2"
   },
+  "8e8e06ebe38aac297f6e4f4420f65c6d230847a6647e4f8d86fb2fff6e9a1494": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_type",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "guild_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 3,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT * FROM channels WHERE guild_id = $1"
+  },
   "a1fbaac7941f8dc321c32e36f8caf2fec098f23317cc20bce9f8847a624c24e7": {
     "describe": {
       "columns": [],
@@ -245,6 +327,68 @@
     },
     "query": "DELETE FROM members WHERE user_id = $1 AND guild_id = $2"
   },
+  "adba4a12fb00fe9abf5812627c52fe8d2ea7bf586bcf44771fdf20919ff51eb8": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "guild_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "nickname",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "joined_at",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "id",
+          "ordinal": 4,
+          "type_info": "Int8"
+        },
+        {
+          "name": "username",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 6,
+          "type_info": "Text"
+        },
+        {
+          "name": "last_presence",
+          "ordinal": 7,
+          "type_info": "Int2"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT * FROM members JOIN users ON members.user_id = users.id WHERE members.guild_id = $1"
+  },
   "c4fc5cb66c404905a2040d36ddf5e90aacc5763e731c687f42b3601123288489": {
     "describe": {
       "columns": [],
@@ -272,38 +416,6 @@
       }
     },
     "query": "INSERT INTO channels (id, guild_id, name, channel_type)\n            VALUES ($1, $2, $3, 'TEXT_CHANNEL')\n            ON CONFLICT (id) DO UPDATE\n            SET name = $3"
-  },
-  "dacc4e7025ed07e25f8728618ee74b210d9f501fba436a635a06474e14190a19": {
-    "describe": {
-      "columns": [
-        {
-          "name": "user_id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "channel_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "content",
-          "ordinal": 2,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        true,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT user_id, channel_id, content\n            FROM messages\n            WHERE id = $1"
   },
   "dd99e48b1572e25db38f03da95984fda1072913b29bb6b3753a0d351583dfff6": {
     "describe": {

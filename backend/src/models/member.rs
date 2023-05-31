@@ -8,6 +8,14 @@ use super::appstate::APP;
 
 use super::{snowflake::Snowflake, user::User};
 
+/// Represents a guild member record stored in the database.
+pub struct MemberRecord {
+    pub user_id: i64,
+    pub guild_id: i64,
+    pub nickname: Option<String>,
+    pub joined_at: i64,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Member {
     /// The user this guild member represents
@@ -63,9 +71,25 @@ impl Member {
         &mut self.user
     }
 
+    /// Build a member object directly from a database record.
+    pub async fn from_record(record: MemberRecord) -> Self {
+        Self::new(
+            User::fetch(record.user_id.into()).await.unwrap(),
+            record.guild_id.into(),
+            record.nickname,
+            record.joined_at,
+        )
+    }
+
     /// Convert a user into a member with the given guild id.
     pub async fn from_user(user: User, guild_id: Snowflake) -> Self {
         Self::new(user, guild_id, None, Utc::now().timestamp())
+    }
+
+    /// Include the user's presence field in the member payload.
+    pub async fn include_presence(self) -> Self {
+        let user = self.user.include_presence().await;
+        Self { user, ..self }
     }
 
     /// Fetch a member from the database by id and guild id.
@@ -74,7 +98,8 @@ impl Member {
         let id_64: i64 = id.into();
         let guild_id_64: i64 = guild_id.into();
 
-        let record = sqlx::query!(
+        let record = sqlx::query_as!(
+            MemberRecord,
             "SELECT * FROM members WHERE user_id = $1 AND guild_id = $2",
             id_64,
             guild_id_64
@@ -83,12 +108,7 @@ impl Member {
         .await
         .ok()??;
 
-        Some(Self::new(
-            User::fetch(id).await?,
-            guild_id,
-            record.nickname,
-            record.joined_at,
-        ))
+        Some(Self::from_record(record).await)
     }
 
     /// Commit the member to the database.
