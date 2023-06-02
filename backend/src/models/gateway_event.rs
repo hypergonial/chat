@@ -34,7 +34,7 @@ pub enum GatewayEvent {
     // A user's presence was updated.
     PresenceUpdate(PresenceUpdatePayload),
     /// The server is ready to accept messages.
-    Ready(User),
+    Ready(ReadyPayload),
     /// The server has closed the connection.
     InvalidSession(String),
 }
@@ -66,7 +66,7 @@ impl EventLike for GatewayEvent {
             Self::ChannelCreate(channel) => channel.extract_user_id(),
             Self::ChannelRemove(channel) => channel.extract_user_id(),
             Self::PresenceUpdate(payload) => Some(payload.user_id),
-            Self::Ready(user) => user.extract_user_id(),
+            Self::Ready(payload) => payload.extract_user_id(),
             Self::InvalidSession(_) => None,
         }
     }
@@ -168,6 +168,28 @@ impl EventLike for GuildCreatePayload {
     }
     fn extract_user_id(&self) -> Option<Snowflake> {
         None
+    }
+}
+
+/// A payload sent by the server to the client after a handshake.
+#[derive(Serialize, Debug, Clone)]
+pub struct ReadyPayload {
+    pub user: User,
+    pub guilds: Vec<Guild>,
+}
+
+impl ReadyPayload {
+    pub fn new(user: User, guilds: Vec<Guild>) -> Self {
+        Self { user, guilds }
+    }
+}
+
+impl EventLike for ReadyPayload {
+    fn extract_guild_id(&self) -> Option<Snowflake> {
+        None
+    }
+    fn extract_user_id(&self) -> Option<Snowflake> {
+        Some(self.user.id())
     }
 }
 

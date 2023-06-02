@@ -5,7 +5,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::APP, rest::CreateUser, snowflake::Snowflake};
+use crate::models::guild::GuildRecord;
+
+use super::{appstate::APP, guild::Guild, rest::CreateUser, snowflake::Snowflake};
 
 lazy_static! {
     static ref USERNAME_REGEX: Regex =
@@ -195,6 +197,25 @@ impl User {
             last_presence: Presence::from(row.last_presence),
             displayed_presence: None,
         })
+    }
+
+    /// Fetch all guilds that this user is a member of.
+    pub async fn fetch_guilds(&self) -> Result<Vec<Guild>, sqlx::Error> {
+        let db = &APP.read().await.db;
+        let id_i64: i64 = self.id.into();
+
+        let records = sqlx::query_as!(
+            GuildRecord,
+            "SELECT guilds.id, guilds.name, guilds.owner_id
+            FROM guilds
+            INNER JOIN members ON members.guild_id = guilds.id
+            WHERE members.user_id = $1",
+            id_i64
+        )
+        .fetch_all(db.pool())
+        .await?;
+
+        Ok(records.into_iter().map(Guild::from_record).collect())
     }
 
     /// Commit this user to the database.

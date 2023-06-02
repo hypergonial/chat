@@ -23,8 +23,7 @@ use warp::{
 use crate::models::{
     appstate::APP,
     auth::Token,
-    gateway_event::{EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, PresenceUpdatePayload},
-    guild::Guild,
+    gateway_event::{EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, PresenceUpdatePayload, ReadyPayload},
     snowflake::Snowflake,
     user::{Presence, User},
 };
@@ -245,12 +244,6 @@ async fn handle_handshake(
         return Err(());
     };
 
-    ws_sink
-        .send(Message::text(
-            serde_json::to_string(&GatewayEvent::Ready(user.clone())).unwrap(),
-        ))
-        .await
-        .ok();
     Ok(user)
 }
 
@@ -292,11 +285,20 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         .peers
         .insert(user.id(), ConnectionHandle::new(sender, guild_ids.clone()));
 
+    let guilds = user
+        .fetch_guilds()
+        .await
+        .expect("Failed to fetch guilds during socket connection handling");
+
+    ws_sink
+        .send(Message::text(
+            serde_json::to_string(&GatewayEvent::Ready(ReadyPayload::new(user.clone(), guilds.clone()))).unwrap(),
+        ))
+        .await
+        .ok();
+
     // Send GUILD_CREATE events for all guilds the user is in
-    for guild_id in guild_ids {
-        let guild = Guild::fetch(guild_id)
-            .await
-            .expect("Failed to fetch guild during socket connection handling");
+    for guild in guilds {
         let payload = GuildCreatePayload::from_guild(guild)
             .await
             .expect("Failed to fetch guild payload data");

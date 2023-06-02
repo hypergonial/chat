@@ -327,6 +327,38 @@
     },
     "query": "DELETE FROM members WHERE user_id = $1 AND guild_id = $2"
   },
+  "ad6808da65093adef5b2535f55a6f610612ee44800b157abf2afbb17cbc0ef60": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "owner_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT guilds.id, guilds.name, guilds.owner_id\n            FROM guilds\n            INNER JOIN members ON members.guild_id = guilds.id\n            WHERE members.user_id = $1"
+  },
   "adba4a12fb00fe9abf5812627c52fe8d2ea7bf586bcf44771fdf20919ff51eb8": {
     "describe": {
       "columns": [
