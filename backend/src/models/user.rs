@@ -115,6 +115,10 @@ impl User {
     }
 
     /// Retrieve the user's presence.
+    /// 
+    /// ## Locks
+    /// 
+    /// This method acquires a **read** lock on the global application state.
     pub async fn presence(&self) -> &Presence {
         if APP.read().await.gateway.is_connected(self.id()) {
             &self.last_presence

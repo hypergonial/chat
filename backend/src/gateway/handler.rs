@@ -267,11 +267,10 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     // turn receiver into a stream for easier handling
     let mut receiver = UnboundedReceiverStream::new(receiver);
 
-    let db = &APP.read().await.db;
     let user_id_i64: i64 = user.id().into();
 
     let guild_ids = sqlx::query!("SELECT guild_id FROM members WHERE user_id = $1", user_id_i64)
-        .fetch_all(db.pool())
+        .fetch_all(app.read().await.db.pool())
         .await
         .expect("Failed to fetch guilds during socket connection handling")
         .into_iter()
@@ -320,7 +319,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
                 .gateway
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
                     user_id: user.id(),
-                    presence: *user.presence().await,
+                    presence: *presence,
                 }));
         }
     }
