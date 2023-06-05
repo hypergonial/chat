@@ -1,0 +1,6 @@
+{
+    "rust-analyzer.showUnlinkedFileNotification": false,
+    "rust-analyzer.server.extraEnv": {
+        "CARGO_REGISTRIES_CRATES_IO_PROTOCOL": "sparse"
+    },
+}
