@@ -7,8 +7,6 @@ use tokio::sync::RwLock;
 use super::db::Database;
 use crate::gateway::handler::Gateway;
 
-pub type SharedAppState = RwLock<ApplicationState>;
-
 lazy_static! {
     pub static ref APP: ApplicationState = ApplicationState::new();
 }

@@ -114,6 +114,13 @@ impl User {
         &self.display_name
     }
 
+    /// The last known presence of the user.
+    ///
+    /// This does not represent the user's actual presence, as that also depends on the gateway connection.
+    pub fn last_presence(&self) -> &Presence {
+        &self.last_presence
+    }
+
     /// Retrieve the user's presence.
     ///
     /// ## Locks
@@ -179,6 +186,23 @@ impl User {
         .ok()??;
 
         Some(Self::from_record(row))
+    }
+
+    /// Fetch the presence of a user.
+    pub async fn fetch_presence(id: Snowflake) -> Option<Presence> {
+        let db = &APP.db.read().await;
+        let id_i64: i64 = id.into();
+        let row = sqlx::query!(
+            "SELECT last_presence
+            FROM users
+            WHERE id = $1",
+            id_i64
+        )
+        .fetch_optional(db.pool())
+        .await
+        .ok()??;
+
+        Some(Presence::from(row.last_presence))
     }
 
     /// Retrieve a user from the database by their username.

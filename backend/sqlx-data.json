@@ -421,6 +421,26 @@
     },
     "query": "SELECT * FROM members JOIN users ON members.user_id = users.id WHERE members.guild_id = $1"
   },
+  "c307e09ca377d1682cb81ea91e446e4a0f8751fe145553d9a6ea2e28cc11d5af": {
+    "describe": {
+      "columns": [
+        {
+          "name": "last_presence",
+          "ordinal": 0,
+          "type_info": "Int2"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT last_presence\n            FROM users\n            WHERE id = $1"
+  },
   "c4fc5cb66c404905a2040d36ddf5e90aacc5763e731c687f42b3601123288489": {
     "describe": {
       "columns": [],

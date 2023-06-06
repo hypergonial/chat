@@ -289,6 +289,8 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         .await
         .expect("Failed to fetch guilds during socket connection handling");
 
+    let user = user.include_presence().await;
+
     ws_sink
         .send(Message::text(
             serde_json::to_string(&GatewayEvent::Ready(ReadyPayload::new(user.clone(), guilds.clone()))).unwrap(),
@@ -310,8 +312,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     }
 
     // Send the presence update for the user if they are not invisible
-    let presence = user.presence().await;
-    match presence {
+    match user.last_presence() {
         Presence::Offline => {}
         _ => {
             app.gateway
@@ -319,7 +320,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
                 .await
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
                     user_id: user.id(),
-                    presence: *presence,
+                    presence: *user.last_presence(),
                 }));
         }
     }
@@ -375,6 +376,9 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     // Disconnection logic
     app.gateway.write().await.peers.remove(&user.id());
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
+
+    // Refetch presence in case it changed
+    let presence = User::fetch_presence(user.id()).await.expect("Failed to fetch presence");
 
     // Send presence update to OFFLINE
     match presence {
