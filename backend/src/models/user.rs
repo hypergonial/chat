@@ -16,7 +16,7 @@ lazy_static! {
 
 /// Represents the presence of a user.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash)]
-#[serde(tag = "presence", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[repr(i16)]
 pub enum Presence {
     /// The user is currently active.
