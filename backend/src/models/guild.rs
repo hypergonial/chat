@@ -62,7 +62,7 @@ impl Guild {
 
     /// Fetches a guild from the database by ID.
     pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let id_64: i64 = id.into();
         let record = sqlx::query_as!(
             GuildRecord,
@@ -78,7 +78,7 @@ impl Guild {
 
     /// Fetches all guilds from the database that a given user is a member of.
     pub async fn fetch_all_for_user(user_id: Snowflake) -> Result<Vec<Self>, sqlx::Error> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let user_id_64: i64 = user_id.into();
         let records = sqlx::query!(
             "SELECT guilds.id, guilds.name, guilds.owner_id 
@@ -110,7 +110,7 @@ impl Guild {
 
     /// Fetch all members that are in the guild.
     pub async fn fetch_members(&self) -> Result<Vec<Member>, sqlx::Error> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let guild_id_64: i64 = self.id.into();
 
         let records = sqlx::query!(
@@ -140,7 +140,7 @@ impl Guild {
 
     /// Fetch all channels that are in the guild.
     pub async fn fetch_channels(&self) -> Result<Vec<Channel>, sqlx::Error> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let guild_id_64: i64 = self.id.into();
 
         let records = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE guild_id = $1", guild_id_64)
@@ -154,7 +154,7 @@ impl Guild {
     ///
     /// Note: This is faster than creating a member and then committing it.
     pub async fn create_member(&self, user_id: Snowflake) -> Result<(), sqlx::Error> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let user_id_64: i64 = user_id.into();
         let guild_id_64: i64 = self.id.into();
         sqlx::query!(
@@ -177,7 +177,7 @@ impl Guild {
             anyhow::bail!("Cannot remove owner from guild");
         }
 
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let user_id_64: i64 = user_id.into();
         let guild_id_64: i64 = self.id.into();
         sqlx::query!(
@@ -191,7 +191,7 @@ impl Guild {
     }
 
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let id_64: i64 = self.id.into();
         let owner_id_i64: i64 = self.owner_id.into();
         sqlx::query!(

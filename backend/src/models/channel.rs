@@ -45,7 +45,7 @@ impl Channel {
     }
 
     pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let id_64: i64 = id.into();
 
         let record = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE id = $1", id_64)
@@ -97,7 +97,7 @@ impl ChannelLike for TextChannel {
     }
 
     async fn commit(&self) -> Result<(), SqlxError> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let id_64: i64 = self.id.into();
         let guild_id_64: i64 = self.guild_id.into();
         sqlx::query!(

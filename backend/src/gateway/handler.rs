@@ -270,7 +270,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     let user_id_i64: i64 = user.id().into();
 
     let guild_ids = sqlx::query!("SELECT guild_id FROM members WHERE user_id = $1", user_id_i64)
-        .fetch_all(app.read().await.db.pool())
+        .fetch_all(app.db.read().await.pool())
         .await
         .expect("Failed to fetch guilds during socket connection handling")
         .into_iter()
@@ -278,9 +278,9 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         .collect::<HashSet<Snowflake>>();
 
     // Add user to peermap
-    app.write()
+    app.gateway
+        .write()
         .await
-        .gateway
         .peers
         .insert(user.id(), ConnectionHandle::new(sender, guild_ids.clone()));
 
@@ -314,9 +314,9 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     match presence {
         Presence::Offline => {}
         _ => {
-            app.write()
+            app.gateway
+                .write()
                 .await
-                .gateway
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
                     user_id: user.id(),
                     presence: *presence,
@@ -373,16 +373,16 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     }
 
     // Disconnection logic
-    app.write().await.gateway.peers.remove(&user.id());
+    app.gateway.write().await.peers.remove(&user.id());
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 
     // Send presence update to OFFLINE
     match presence {
         Presence::Offline => {}
         _ => {
-            app.write()
+            app.gateway
+                .write()
                 .await
-                .gateway
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
                     user_id: user.id(),
                     presence: Presence::Offline,

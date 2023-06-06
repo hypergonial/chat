@@ -115,12 +115,12 @@ impl User {
     }
 
     /// Retrieve the user's presence.
-    /// 
+    ///
     /// ## Locks
-    /// 
-    /// This method acquires a **read** lock on the global application state.
+    ///
+    /// This method acquires a **read** lock on the gateway.
     pub async fn presence(&self) -> &Presence {
-        if APP.read().await.gateway.is_connected(self.id()) {
+        if APP.gateway.read().await.is_connected(self.id()) {
             &self.last_presence
         } else {
             &Presence::Offline
@@ -165,7 +165,7 @@ impl User {
 
     /// Retrieve a user from the database by their ID.
     pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let id_i64: i64 = id.into();
         let row = sqlx::query_as!(
             UserRecord,
@@ -183,7 +183,7 @@ impl User {
 
     /// Retrieve a user from the database by their username.
     pub async fn fetch_by_username(username: &str) -> Option<Self> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let row = sqlx::query!(
             "SELECT id, username, display_name, last_presence
             FROM users
@@ -205,7 +205,7 @@ impl User {
 
     /// Fetch all guilds that this user is a member of.
     pub async fn fetch_guilds(&self) -> Result<Vec<Guild>, sqlx::Error> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let id_i64: i64 = self.id.into();
 
         let records = sqlx::query_as!(
@@ -224,7 +224,7 @@ impl User {
 
     /// Commit this user to the database.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = &APP.read().await.db;
+        let db = &APP.db.read().await;
         let id_i64: i64 = self.id.into();
         sqlx::query!(
             "INSERT INTO users (id, username, display_name, last_presence)

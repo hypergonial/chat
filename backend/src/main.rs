@@ -45,7 +45,7 @@ async fn main() -> ExitCode {
     let rest_routes = rest::routes::get_routes();
 
     // Initialize the database
-    if let Err(e) = APP.write().await.init().await {
+    if let Err(e) = APP.init().await {
         tracing::error!(message = "Failed initializing application", error = %e);
         return ExitCode::FAILURE;
     }
@@ -53,9 +53,9 @@ async fn main() -> ExitCode {
     tokio::select!(
         _ = handle_signals() => {},
         _ = warp::serve(gateway_routes.or(rest_routes))
-            .run(APP.read().await.config().listen_addr()) => {}
+            .run(APP.config().listen_addr()) => {}
     );
-    APP.write().await.close().await;
+    APP.close().await;
 
     ExitCode::SUCCESS
 }

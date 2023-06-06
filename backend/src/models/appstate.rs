@@ -10,24 +10,23 @@ use crate::gateway::handler::Gateway;
 pub type SharedAppState = RwLock<ApplicationState>;
 
 lazy_static! {
-    pub static ref APP: SharedAppState = {
-        let config = Config::from_env();
-        let db = Database::new();
-        let gateway = Gateway::new();
-        RwLock::new(ApplicationState::new(db, gateway, config))
-    };
+    pub static ref APP: ApplicationState = ApplicationState::new();
 }
 
 /// Contains all the application state and manages application state changes.
 pub struct ApplicationState {
-    pub db: Database,
-    pub gateway: Gateway,
+    pub db: RwLock<Database>,
+    pub gateway: RwLock<Gateway>,
     config: Config,
 }
 
 impl ApplicationState {
-    fn new(db: Database, gateway: Gateway, config: Config) -> Self {
-        ApplicationState { db, gateway, config }
+    fn new() -> Self {
+        ApplicationState {
+            db: RwLock::new(Database::new()),
+            config: Config::from_env(),
+            gateway: RwLock::new(Gateway::new()),
+        }
     }
 
     /// The application config.
@@ -36,13 +35,13 @@ impl ApplicationState {
     }
 
     /// Initializes the application
-    pub async fn init(&mut self) -> Result<(), sqlx::Error> {
-        self.db.connect(self.config.database_url()).await
+    pub async fn init(&self) -> Result<(), sqlx::Error> {
+        self.db.write().await.connect(self.config.database_url()).await
     }
 
     /// Closes the application and cleans up resources.
-    pub async fn close(&mut self) {
-        self.db.close().await
+    pub async fn close(&self) {
+        self.db.write().await.close().await
     }
 }
 
@@ -56,7 +55,7 @@ pub struct Config {
 
 impl Config {
     /// Creates a new config instance.
-    pub fn new(database_url: String, machine_id: i32, process_id: i32, listen_addr: SocketAddr) -> Self {
+    pub const fn new(database_url: String, machine_id: i32, process_id: i32, listen_addr: SocketAddr) -> Self {
         Config {
             database_url,
             machine_id,

@@ -27,7 +27,7 @@ impl Snowflake {
 
     /// Generate a new snowflake using the current time.
     pub async fn gen_new() -> Self {
-        let app = APP.read().await;
+        let app = &APP;
         let mut gen = get_generator(app.config().machine_id(), app.config().process_id());
         gen.generate().into()
     }

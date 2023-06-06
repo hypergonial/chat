@@ -9,7 +9,7 @@ impl Database {
     /// Creates a new database instance
     ///
     /// Note: The database is not connected by default
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Database {
             pool: None,
             is_connected: false,

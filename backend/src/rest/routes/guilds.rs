@@ -110,7 +110,7 @@ async fn create_guild(token: Token, payload: CreateGuild) -> Result<impl warp::R
         .await
         .expect("Member should have been created");
 
-    APP.write().await.gateway.add_member(token.data().user_id(), guild.id());
+    APP.gateway.write().await.add_member(token.data().user_id(), guild.id());
 
     dispatch!(GatewayEvent::GuildCreate(GuildCreatePayload::new(
         guild.clone(),
@@ -298,7 +298,7 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
         .expect("A member should have been created");
 
     // Send GUILD_CREATE to the user who joined
-    APP.write().await.gateway.send_to(
+    APP.gateway.write().await.send_to(
         member.user().id(),
         GatewayEvent::GuildCreate(
             GuildCreatePayload::from_guild(guild)
@@ -309,7 +309,7 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
     );
 
     // Add the member to the gateway's cache
-    APP.write().await.gateway.add_member(member.user().id(), guild_id);
+    APP.gateway.write().await.add_member(member.user().id(), guild_id);
 
     // Dispatch the member create event to all guild members
     dispatch!(GatewayEvent::MemberCreate(member.clone()));
@@ -355,17 +355,17 @@ async fn leave_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
     }
 
     // Remove the member from the gateway's cache
-    APP.write()
+    APP.gateway
+        .write()
         .await
-        .gateway
         .remove_member(token.data().user_id(), guild_id);
     // Dispatch the member remove event
     dispatch!(GatewayEvent::MemberRemove(member.clone()));
 
     // Send GUILD_REMOVE to the user who left
-    APP.write()
+    APP.gateway
+        .write()
         .await
-        .gateway
         .send_to(member.user().id(), GatewayEvent::GuildRemove(guild));
 
     Ok(warp::reply::with_status(
