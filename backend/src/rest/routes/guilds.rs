@@ -226,14 +226,14 @@ async fn fetch_member(
     member_id: Snowflake,
     token: Token,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let member = Member::fetch(member_id, guild_id)
-        .await
-        .or_reject(NotFound::new("Member does not exist or is not available."))?;
-
     // Check if the user is in the channel's guild
     Member::fetch(token.data().user_id(), guild_id)
         .await
         .or_reject(Forbidden::new("Not permitted to view resource"))?;
+
+    let member = Member::fetch(member_id, guild_id)
+        .await
+        .or_reject(NotFound::new("Member does not exist or is not available."))?;
 
     Ok(warp::reply::with_status(
         warp::reply::json(&member),

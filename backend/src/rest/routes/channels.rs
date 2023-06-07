@@ -96,11 +96,11 @@ async fn create_message(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let channel = Channel::fetch(channel_id)
         .await
-        .or_reject_and_log(InternalServerError::db(), "Failed to fetch channel from database")?;
+        .or_reject(NotFound::new("Channel does not exist or is not available."))?;
 
     let member = Member::fetch(token.data().user_id(), channel.guild_id())
         .await
-        .or_reject_and_log(InternalServerError::db(), "Failed to fetch member from database")?;
+        .or_reject(Forbidden::new("Not permitted to access resource."))?;
 
     let message = Message::from_payload(UserLike::Member(member), channel_id, payload).await;
 
