@@ -7,6 +7,7 @@ use std::process::ExitCode;
 
 use models::appstate::APP;
 use tokio::signal::ctrl_c;
+use tracing::level_filters::LevelFilter;
 use warp::Filter;
 
 #[cfg(unix)]
@@ -36,6 +37,7 @@ async fn main() -> ExitCode {
     let subscriber = tracing_subscriber::fmt()
         .compact()
         .with_target(false)
+        .with_max_level(LevelFilter::DEBUG)
         .without_time()
         .finish();
     /* console_subscriber::init(); */
