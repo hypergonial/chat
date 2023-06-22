@@ -87,9 +87,9 @@ impl Member {
     }
 
     /// Include the user's presence field in the member payload.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.gateway` (read)
     pub async fn include_presence(self) -> Self {
         let user = self.user.include_presence().await;

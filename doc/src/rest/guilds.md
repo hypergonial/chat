@@ -36,6 +36,32 @@ A [Guild](../objects/guild.md) object.
 | ---- | ----------- |
 | 404  | The guild was not found. |
 
+# /guilds/\{guild_id\}/channels
+
+## POST
+
+### Summary
+
+Creates a channel in a guild.
+
+### Example Payload
+
+```json
+{
+    "type": "GUILD_TEXT", // Currently only this channel-type is supported
+    "name": "channel-name",
+}
+```
+
+### Response
+
+The created [Channel](../objects/channel.md) object.
+
+### Errors
+
+| Code | Description |
+| ---- | ----------- |
+| 404  | The guild was not found. |
 
 # /guilds/\{guild_id\}/members
 

@@ -48,7 +48,7 @@ async fn main() -> ExitCode {
         .with_target(false)
         .without_time()
         .finish();
-    
+
     /* console_subscriber::init(); */
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 

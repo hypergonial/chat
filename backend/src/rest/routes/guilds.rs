@@ -305,10 +305,7 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
     );
 
     // Send GUILD_CREATE to the user who joined
-    APP.gateway.write().await.send_to(
-        member.user().id(),
-        gc_payload
-    );
+    APP.gateway.write().await.send_to(member.user().id(), gc_payload);
 
     // Add the member to the gateway's cache
     APP.gateway.write().await.add_member(member.user().id(), guild_id);
