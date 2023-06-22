@@ -285,21 +285,16 @@ async fn fetch_member_self(guild_id: Snowflake, token: Token) -> Result<impl war
 /// ## Endpoint
 ///
 /// POST `/guilds/{guild_id}/members`
-
 async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
-    tracing::debug!("Creating member for user {} in guild {}", token.data().user_id(), guild_id);
     let guild = Guild::fetch(guild_id).await.ok_or_else(warp::reject::not_found)?;
-    tracing::debug!(guild = %guild_id, "Fetched guild from db");
     if let Err(e) = guild.create_member(token.data().user_id()).await {
         tracing::error!(message = "Failed to add user to guild", user = %token.data().user_id(), guild = %guild_id, error = %e);
         return Err(warp::reject::custom(InternalServerError::db()));
     }
-    tracing::debug!(guild = %guild_id, member=%token.data().user_id(), "Added member to guild");
 
     let member = Member::fetch(token.data().user_id(), guild_id)
         .await
         .expect("A member should have been created");
-    tracing::debug!(member = %token.data().user_id(), "Fetched created member");
 
     // Create payload seperately as it needs read access to gateway
     let gc_payload = GatewayEvent::GuildCreate(
@@ -315,17 +310,11 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
         gc_payload
     );
 
-    tracing::debug!(member = %token.data().user_id(), "Dispatch GUILD_CREATE to invoker");
-
     // Add the member to the gateway's cache
     APP.gateway.write().await.add_member(member.user().id(), guild_id);
 
-    tracing::debug!(member = %token.data().user_id(), "Added member to gateway peermap");
-
     // Dispatch the member create event to all guild members
     dispatch!(GatewayEvent::MemberCreate(member.clone()));
-
-    tracing::debug!(member = %token.data().user_id(), "Dispatched MEMBER_CREATE to all guild members, done");
 
     Ok(warp::reply::with_status(
         warp::reply::json(&member),

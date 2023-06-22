@@ -34,12 +34,21 @@ async fn handle_signals() {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    #[cfg(debug_assertions)]
     let subscriber = tracing_subscriber::fmt()
         .compact()
         .with_target(false)
         .with_max_level(LevelFilter::DEBUG)
         .without_time()
         .finish();
+
+    #[cfg(not(debug_assertions))]
+    let subscriber = tracing_subscriber::fmt()
+        .compact()
+        .with_target(false)
+        .without_time()
+        .finish();
+    
     /* console_subscriber::init(); */
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 
