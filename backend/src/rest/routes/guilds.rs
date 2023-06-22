@@ -285,7 +285,9 @@ async fn fetch_member_self(guild_id: Snowflake, token: Token) -> Result<impl war
 /// ## Endpoint
 ///
 /// POST `/guilds/{guild_id}/members`
+
 async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+    tracing::debug!("Creating member for user {} in guild {}", token.data().user_id(), guild_id);
     let guild = Guild::fetch(guild_id).await.ok_or_else(warp::reject::not_found)?;
     tracing::debug!(guild = %guild_id, "Fetched guild from db");
     if let Err(e) = guild.create_member(token.data().user_id()).await {
