@@ -301,15 +301,18 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
         .expect("A member should have been created");
     tracing::debug!(member = %token.data().user_id(), "Fetched created member");
 
+    // Create payload seperately as it needs read access to gateway
+    let gc_payload = GatewayEvent::GuildCreate(
+        GuildCreatePayload::from_guild(guild)
+            .await
+            .or_reject(InternalServerError::db())
+            .unwrap(),
+    );
+
     // Send GUILD_CREATE to the user who joined
     APP.gateway.write().await.send_to(
         member.user().id(),
-        GatewayEvent::GuildCreate(
-            GuildCreatePayload::from_guild(guild)
-                .await
-                .or_reject(InternalServerError::db())
-                .unwrap(),
-        ),
+        gc_payload
     );
 
     tracing::debug!(member = %token.data().user_id(), "Dispatch GUILD_CREATE to invoker");
