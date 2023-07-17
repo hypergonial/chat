@@ -190,6 +190,7 @@ impl Guild {
         Ok(())
     }
 
+    /// Commits the current state of this guild object to the database.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
         let db = &APP.db.read().await;
         let id_64: i64 = self.id.into();
@@ -205,6 +206,16 @@ impl Guild {
         )
         .execute(db.pool())
         .await?;
+        Ok(())
+    }
+
+    /// Deletes the guild.
+    pub async fn delete(self) -> Result<(), sqlx::Error> {
+        let db = &APP.db.read().await;
+        let id_64: i64 = self.id.into();
+        sqlx::query!("DELETE FROM guilds WHERE id = $1", id_64)
+            .execute(db.pool())
+            .await?;
         Ok(())
     }
 }

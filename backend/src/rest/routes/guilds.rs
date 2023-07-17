@@ -40,6 +40,11 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(needs_token())
         .and_then(fetch_guild);
 
+    let delete_guild = warp::path!("guilds" / Snowflake)
+        .and(warp::delete())
+        .and(needs_token())
+        .and_then(delete_guild);
+
     let fetch_member = warp::path!("guilds" / Snowflake / "members" / Snowflake)
         .and(warp::get())
         .and(needs_token())
@@ -63,6 +68,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     create_channel
         .or(create_guild)
         .or(fetch_guild)
+        .or(delete_guild)
         .or(fetch_member)
         .or(fetch_member_self)
         .or(add_member)
@@ -204,6 +210,38 @@ async fn fetch_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
     Ok(warp::reply::with_status(
         warp::reply::json(&guild),
         warp::http::StatusCode::OK,
+    ))
+}
+
+/// Delete a guild and all associated objects
+/// 
+/// ## Arguments
+/// 
+/// * `guild_id` - The ID of the guild to delete
+/// * `token` - The user's session token, already validated
+/// 
+/// ## Endpoint
+/// 
+/// DELETE `/guilds/{guild_id}`
+async fn delete_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+    let guild = Guild::fetch(guild_id)
+        .await
+        .or_reject(NotFound::new("The requested guild does not exist."))?;
+
+    if guild.owner_id() != token.data().user_id() {
+        return Err(warp::reject::custom(Forbidden::new(
+            "You are not the owner of this guild.",
+        )));
+    }
+
+    guild.delete().await.or_reject_and_log(
+        InternalServerError::db(),
+        "Failed to delete guild from database",
+    )?;
+
+    Ok(warp::reply::with_status(
+        warp::reply(),
+        warp::http::StatusCode::NO_CONTENT,
     ))
 }
 
