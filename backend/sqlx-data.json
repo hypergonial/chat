@@ -1,5 +1,17 @@
 {
   "db": "PostgreSQL",
+  "0b72902bc8ec599bc847b3671444f3f19f59bdcc47e22697d73196df434c9aca": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "DELETE FROM channels WHERE id = $1"
+  },
   "0f3e3f4e44dd313289052d71a884f96b7494451d9a6fa3687d08a3c69975c5ef": {
     "describe": {
       "columns": [],
@@ -420,6 +432,18 @@
       }
     },
     "query": "SELECT * FROM members JOIN users ON members.user_id = users.id WHERE members.guild_id = $1"
+  },
+  "af3cf99d962f642d6e9069c1687834f0b3633ffe4f42afb2c464167a7a555898": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "DELETE FROM guilds WHERE id = $1"
   },
   "c307e09ca377d1682cb81ea91e446e4a0f8751fe145553d9a6ea2e28cc11d5af": {
     "describe": {
