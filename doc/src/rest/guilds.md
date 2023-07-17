@@ -36,6 +36,19 @@ A [Guild](../objects/guild.md) object.
 | ---- | ----------- |
 | 404  | The guild was not found. |
 
+## DELETE
+
+### Summary
+
+Deletes a guild.
+
+### Errors
+
+| Code | Description |
+| ---- | ----------- |
+| 403  | The user is not the guild's owner. |
+| 404  | The guild was not found. |
+
 # /guilds/\{guild_id\}/channels
 
 ## POST
