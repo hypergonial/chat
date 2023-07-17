@@ -11,7 +11,8 @@ use crate::models::{
     appstate::APP,
     auth::Token,
     channel::{Channel, ChannelLike},
-    gateway_event::GatewayEvent,
+    gateway_event::{GatewayEvent, DeletePayload},
+    guild::Guild,
     member::{Member, UserLike},
     message::Message,
     rejections::{Forbidden, InternalServerError, NotFound},
@@ -31,6 +32,11 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(needs_token())
         .and_then(fetch_channel);
 
+    let delete_channel = warp::path!("channels" / Snowflake)
+        .and(warp::delete())
+        .and(needs_token())
+        .and_then(delete_channel);
+
     let create_msg = warp::path!("channels" / Snowflake / "messages")
         .and(warp::post())
         .and(needs_limit(message_create_lim))
@@ -38,7 +44,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::body::json())
         .and_then(create_message);
 
-    fetch_channel.or(create_msg).boxed()
+    fetch_channel.or(create_msg).or(delete_channel).boxed()
 }
 
 /// Fetch a channel's data.
@@ -68,6 +74,28 @@ async fn fetch_channel(channel_id: Snowflake, token: Token) -> Result<impl warp:
     Ok(warp::reply::with_status(
         warp::reply::json(&channel),
         warp::http::StatusCode::OK,
+    ))
+}
+
+async fn delete_channel(channel_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+    let channel = Channel::fetch(channel_id)
+        .await
+        .or_reject(NotFound::new("Channel does not exist or is not available."))?;
+
+    // Check guild owner_id
+    let guild = Guild::fetch(channel.guild_id()).await.or_reject(InternalServerError::db())?;
+
+    if guild.owner_id() != token.data().user_id() {
+        return Err(Forbidden::new("Not permitted to delete channel.").into());
+    }
+
+    channel.delete().await.or_reject(InternalServerError::db())?;
+
+    dispatch!(GatewayEvent::ChannelRemove(DeletePayload::new(channel_id, Some(guild.id()))));
+
+    Ok(warp::reply::with_status(
+        warp::reply::reply(),
+        warp::http::StatusCode::NO_CONTENT,
     ))
 }
 

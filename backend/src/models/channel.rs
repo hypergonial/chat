@@ -14,6 +14,7 @@ pub trait ChannelLike {
     fn name(&self) -> &str;
     fn name_mut(&mut self) -> &mut String;
     async fn commit(&self) -> Result<(), SqlxError>;
+    async fn delete(self) -> Result<(), SqlxError>;
 }
 
 /// Represents a row representing a channel.
@@ -111,6 +112,17 @@ impl ChannelLike for TextChannel {
         )
         .execute(db.pool())
         .await?;
+
+        Ok(())
+    }
+
+    /// Deletes the channel.
+    async fn delete(self) -> Result<(), SqlxError> {
+        let db = &APP.db.read().await;
+        let id_64: i64 = self.id.into();
+        sqlx::query!("DELETE FROM channels WHERE id = $1", id_64)
+            .execute(db.pool())
+            .await?;
 
         Ok(())
     }

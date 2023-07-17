@@ -5,7 +5,7 @@ use crate::models::{
     appstate::APP,
     auth::Token,
     channel::{Channel, ChannelLike},
-    gateway_event::GatewayEvent,
+    gateway_event::{GatewayEvent, DeletePayload},
     guild::Guild,
     member::Member,
     rejections::{BadRequest, Forbidden, InternalServerError, NotFound},
@@ -239,6 +239,8 @@ async fn delete_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Re
         "Failed to delete guild from database",
     )?;
 
+    dispatch!(GatewayEvent::GuildRemove(DeletePayload::new(guild_id, Some(guild_id))));
+
     Ok(warp::reply::with_status(
         warp::reply(),
         warp::http::StatusCode::NO_CONTENT,
@@ -397,13 +399,19 @@ async fn leave_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
         .await
         .remove_member(token.data().user_id(), guild_id);
     // Dispatch the member remove event
-    dispatch!(GatewayEvent::MemberRemove(member.clone()));
+    dispatch!(GatewayEvent::MemberRemove(DeletePayload::new(
+        member.user().id(),
+        Some(member.guild_id())
+    )));
 
     // Send GUILD_REMOVE to the user who left
     APP.gateway
         .write()
         .await
-        .send_to(member.user().id(), GatewayEvent::GuildRemove(guild));
+        .send_to(member.user().id(), GatewayEvent::GuildRemove(DeletePayload::new(
+            guild_id,
+            Some(guild_id),
+        )));
 
     Ok(warp::reply::with_status(
         warp::reply(),

@@ -22,15 +22,15 @@ pub enum GatewayEvent {
     /// A peer has joined the chat.
     MemberCreate(Member),
     /// A peer has left the chat.
-    MemberRemove(Member),
+    MemberRemove(DeletePayload),
     /// A guild was created.
     GuildCreate(GuildCreatePayload),
     /// A guild was deleted.
-    GuildRemove(Guild),
+    GuildRemove(DeletePayload),
     /// A channel was created.
     ChannelCreate(Channel),
     /// A channel was deleted.
-    ChannelRemove(Channel),
+    ChannelRemove(DeletePayload),
     // A user's presence was updated.
     PresenceUpdate(PresenceUpdatePayload),
     /// The server is ready to accept messages.
@@ -45,11 +45,11 @@ impl EventLike for GatewayEvent {
         match self {
             Self::MessageCreate(message) => message.extract_guild_id(),
             Self::MemberCreate(member) => member.extract_guild_id(),
-            Self::MemberRemove(member) => member.extract_guild_id(),
+            Self::MemberRemove(payload) => payload.extract_guild_id(),
             Self::GuildCreate(guild) => guild.extract_guild_id(),
-            Self::GuildRemove(guild) => guild.extract_guild_id(),
+            Self::GuildRemove(payload) => payload.extract_guild_id(),
             Self::ChannelCreate(channel) => channel.extract_guild_id(),
-            Self::ChannelRemove(channel) => channel.extract_guild_id(),
+            Self::ChannelRemove(payload) => payload.extract_guild_id(),
             Self::PresenceUpdate(_) => None,
             Self::Ready(_) => None,
             Self::InvalidSession(_) => None,
@@ -60,11 +60,11 @@ impl EventLike for GatewayEvent {
         match self {
             Self::MessageCreate(message) => message.extract_user_id(),
             Self::MemberCreate(member) => member.extract_user_id(),
-            Self::MemberRemove(member) => member.extract_user_id(),
+            Self::MemberRemove(payload) => payload.extract_user_id(),
             Self::GuildCreate(guild) => guild.extract_user_id(),
-            Self::GuildRemove(guild) => guild.extract_user_id(),
+            Self::GuildRemove(payload) => payload.extract_user_id(),
             Self::ChannelCreate(channel) => channel.extract_user_id(),
-            Self::ChannelRemove(channel) => channel.extract_user_id(),
+            Self::ChannelRemove(payload) => payload.extract_user_id(),
             Self::PresenceUpdate(payload) => Some(payload.user_id),
             Self::Ready(payload) => payload.extract_user_id(),
             Self::InvalidSession(_) => None,
@@ -123,6 +123,35 @@ impl EventLike for User {
     }
     fn extract_user_id(&self) -> Option<Snowflake> {
         Some(self.id())
+    }
+}
+
+/// A wrapper object around an ID with an optional guild_id to aid gateway event filtering.
+/// The guild_id field is not serialized and sent through the API.
+#[derive(Debug, Clone)]
+pub struct DeletePayload {
+    id: Snowflake,
+    guild_id: Option<Snowflake>,
+}
+
+impl DeletePayload {
+    pub fn new(id: Snowflake, guild_id: Option<Snowflake>) -> Self {
+        Self { id, guild_id }
+    }
+}
+
+impl EventLike for DeletePayload {
+    fn extract_guild_id(&self) -> Option<Snowflake> {
+        self.guild_id
+    }
+    fn extract_user_id(&self) -> Option<Snowflake> {
+        None
+    }
+}
+
+impl Serialize for DeletePayload {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.id.serialize(serializer)
     }
 }
 

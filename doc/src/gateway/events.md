@@ -42,7 +42,7 @@ Sent when a member leaves a guild that the currently authenticated user is a mem
 
 ### Data
 
-A [Member](../objects/member.md) object.
+The ID of the member that left.
 
 ## GUILD_CREATE
 
@@ -66,7 +66,7 @@ Sent when a guild is deleted.
 
 ### Data
 
-A [Guild](../objects/guild.md) object.
+The ID of the guild that was deleted.
 
 ## CHANNEL_CREATE
 
@@ -86,7 +86,7 @@ Sent when a channel is deleted.
 
 ### Data
 
-A [Channel](../objects/channel.md) object.
+The ID of the channel that was deleted.
 
 ## READY
 
