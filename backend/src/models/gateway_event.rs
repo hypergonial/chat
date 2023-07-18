@@ -1,6 +1,7 @@
 use futures::future;
 use secrecy::Secret;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use super::{
     channel::{Channel, ChannelLike},
@@ -151,7 +152,7 @@ impl EventLike for DeletePayload {
 
 impl Serialize for DeletePayload {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.id.serialize(serializer)
+        json!({"id": self.id}).serialize(serializer)
     }
 }
 

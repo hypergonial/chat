@@ -11,7 +11,7 @@ use crate::models::{
     appstate::APP,
     auth::Token,
     channel::{Channel, ChannelLike},
-    gateway_event::{GatewayEvent, DeletePayload},
+    gateway_event::{DeletePayload, GatewayEvent},
     guild::Guild,
     member::{Member, UserLike},
     message::Message,
@@ -83,7 +83,9 @@ async fn delete_channel(channel_id: Snowflake, token: Token) -> Result<impl warp
         .or_reject(NotFound::new("Channel does not exist or is not available."))?;
 
     // Check guild owner_id
-    let guild = Guild::fetch(channel.guild_id()).await.or_reject(InternalServerError::db())?;
+    let guild = Guild::fetch(channel.guild_id())
+        .await
+        .or_reject(InternalServerError::db())?;
 
     if guild.owner_id() != token.data().user_id() {
         return Err(Forbidden::new("Not permitted to delete channel.").into());
@@ -91,7 +93,10 @@ async fn delete_channel(channel_id: Snowflake, token: Token) -> Result<impl warp
 
     channel.delete().await.or_reject(InternalServerError::db())?;
 
-    dispatch!(GatewayEvent::ChannelRemove(DeletePayload::new(channel_id, Some(guild.id()))));
+    dispatch!(GatewayEvent::ChannelRemove(DeletePayload::new(
+        channel_id,
+        Some(guild.id())
+    )));
 
     Ok(warp::reply::with_status(
         warp::reply::reply(),

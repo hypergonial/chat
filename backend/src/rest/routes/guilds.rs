@@ -5,7 +5,7 @@ use crate::models::{
     appstate::APP,
     auth::Token,
     channel::{Channel, ChannelLike},
-    gateway_event::{GatewayEvent, DeletePayload},
+    gateway_event::{DeletePayload, GatewayEvent},
     guild::Guild,
     member::Member,
     rejections::{BadRequest, Forbidden, InternalServerError, NotFound},
@@ -214,14 +214,14 @@ async fn fetch_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
 }
 
 /// Delete a guild and all associated objects
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// * `guild_id` - The ID of the guild to delete
 /// * `token` - The user's session token, already validated
-/// 
+///
 /// ## Endpoint
-/// 
+///
 /// DELETE `/guilds/{guild_id}`
 async fn delete_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
     let guild = Guild::fetch(guild_id)
@@ -234,10 +234,10 @@ async fn delete_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Re
         )));
     }
 
-    guild.delete().await.or_reject_and_log(
-        InternalServerError::db(),
-        "Failed to delete guild from database",
-    )?;
+    guild
+        .delete()
+        .await
+        .or_reject_and_log(InternalServerError::db(), "Failed to delete guild from database")?;
 
     dispatch!(GatewayEvent::GuildRemove(DeletePayload::new(guild_id, Some(guild_id))));
 
@@ -405,13 +405,10 @@ async fn leave_guild(guild_id: Snowflake, token: Token) -> Result<impl warp::Rep
     )));
 
     // Send GUILD_REMOVE to the user who left
-    APP.gateway
-        .write()
-        .await
-        .send_to(member.user().id(), GatewayEvent::GuildRemove(DeletePayload::new(
-            guild_id,
-            Some(guild_id),
-        )));
+    APP.gateway.write().await.send_to(
+        member.user().id(),
+        GatewayEvent::GuildRemove(DeletePayload::new(guild_id, Some(guild_id))),
+    );
 
     Ok(warp::reply::with_status(
         warp::reply(),
