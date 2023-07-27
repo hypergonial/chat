@@ -110,6 +110,86 @@
     },
     "query": "SELECT id, name, owner_id FROM guilds WHERE id = $1"
   },
+  "3e7a4519693e83b178d8316abbac2c951c8e6cb3b1ed1dbb73b8958e9389f57b": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 3,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT * FROM messages WHERE channel_id = $1 ORDER BY id DESC LIMIT $2"
+  },
+  "41e4c4f27f61c0dbb735b30b16ed81280149da3b3ba331077475aeab1d06b760": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 3,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT * FROM messages WHERE channel_id = $1 AND id > $2 AND id < $3 ORDER BY id DESC LIMIT $4"
+  },
   "5d7bc6bd8805058a40ef0f00becd280c8c7bda6fe35434c1ae6dd4f163ee3b78": {
     "describe": {
       "columns": [

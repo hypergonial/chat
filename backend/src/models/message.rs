@@ -48,7 +48,18 @@ impl Message {
         MessageBuilder::default()
     }
 
-    pub async fn from_record(record: MessageRecord) -> Self {
+    /// Create a new message from the given record.
+    /// 
+    /// This will fetch the author from the database.
+    /// 
+    /// ## Panics
+    /// 
+    /// This function will panic if the author is not found in the database.
+    /// 
+    /// ## Locks
+    /// 
+    /// * `APP.db` (read)
+    pub async fn from_record(record: &MessageRecord) -> Self {
         let mut author = None;
         if let Some(author_id) = record.user_id {
             author = Some(UserLike::User(
@@ -62,7 +73,7 @@ impl Message {
             id: record.id.into(),
             channel_id: record.channel_id.into(),
             author,
-            content: record.content,
+            content: record.content.clone(),
             nonce: None,
         }
     }
@@ -110,7 +121,7 @@ impl Message {
         .await
         .ok()??;
 
-        Some(Self::from_record(row).await)
+        Some(Self::from_record(&row).await)
     }
 
     /// Commit this message to the database.

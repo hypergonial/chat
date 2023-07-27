@@ -1,10 +1,14 @@
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
+use futures_util::stream;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
 
-use super::snowflake::Snowflake;
+use crate::models::message::MessageRecord;
+
 use super::{appstate::APP, rest::CreateChannel};
+use super::{message::Message, snowflake::Snowflake};
 
 #[async_trait]
 #[enum_dispatch(Channel)]
@@ -77,6 +81,66 @@ impl TextChannel {
     pub fn new(id: Snowflake, guild_id: Snowflake, name: String) -> Self {
         Self { id, guild_id, name }
     }
+
+    /// Fetch messages from this channel.
+    /// 
+    /// ## Arguments
+    /// 
+    /// * `limit` - The maximum number of messages to fetch. Defaults to 50, capped at 100.
+    /// * `before` - Fetch messages before this ID.
+    /// * `after` - Fetch messages after this ID.
+    /// 
+    /// ## Returns
+    /// 
+    /// [`Vec<Message>`] - The messages fetched.
+    /// 
+    /// ## Locks
+    /// 
+    /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the database query fails.
+    pub async fn fetch_messages(
+        &self,
+        limit: Option<u32>,
+        before: Option<Snowflake>,
+        after: Option<Snowflake>,
+    ) -> Result<Vec<Message>, sqlx::Error> {
+        let limit = limit.unwrap_or(50).max(100);
+
+        let db = &APP.db.read().await;
+        let id_64: i64 = self.id.into();
+
+        let records: Vec<MessageRecord>;
+
+        if before.is_none() && after.is_none() {
+            records = sqlx::query_as!(
+                MessageRecord,
+                "SELECT * FROM messages WHERE channel_id = $1 ORDER BY id DESC LIMIT $2",
+                id_64,
+                limit as i64
+            )
+            .fetch_all(db.pool())
+            .await?;
+        } else {
+            records = sqlx::query_as!(
+                MessageRecord,
+                "SELECT * FROM messages WHERE channel_id = $1 AND id > $2 AND id < $3 ORDER BY id DESC LIMIT $4",
+                id_64,
+                before.map(|s| s.into()).unwrap_or(i64::MAX),
+                after.map(|s| s.into()).unwrap_or(i64::MIN),
+                limit as i64
+            )
+            .fetch_all(db.pool())
+            .await?;
+        }
+
+        Ok(stream::iter(records)
+            .then(|r| async move { Message::from_record(&r).await })
+            .collect()
+            .await)
+    }
 }
 
 #[async_trait]
@@ -97,6 +161,15 @@ impl ChannelLike for TextChannel {
         &mut self.name
     }
 
+    /// Commit this channel to the database.
+    /// 
+    /// ## Locks
+    /// 
+    /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the database query fails.
     async fn commit(&self) -> Result<(), SqlxError> {
         let db = &APP.db.read().await;
         let id_64: i64 = self.id.into();

@@ -34,6 +34,24 @@ Deletes a channel.
 
 # /channels/\{channel_id\}/messages
 
+## GET
+
+### Summary
+
+Fetch a sequence of messages from a channel.
+
+### Query Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| before | snowflake? | Get messages before this message ID. |
+| after | snowflake? | Get messages after this message ID. |
+| limit | integer? | The maximum number of messages to return. Capped at 100, defaults to 50. |
+
+### Response
+
+An array of [Message](../objects/message.md) objects.
+
 ## POST
 
 ### Summary
