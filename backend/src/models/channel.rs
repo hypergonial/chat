@@ -107,7 +107,7 @@ impl TextChannel {
         before: Option<Snowflake>,
         after: Option<Snowflake>,
     ) -> Result<Vec<Message>, sqlx::Error> {
-        let limit = limit.unwrap_or(50).max(100);
+        let limit = limit.unwrap_or(50).min(100);
 
         let db = &APP.db.read().await;
         let id_64: i64 = self.id.into();
