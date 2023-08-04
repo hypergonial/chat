@@ -112,19 +112,17 @@ impl TextChannel {
         let db = &APP.db.read().await;
         let id_64: i64 = self.id.into();
 
-        let records: Vec<MessageRecord>;
-
-        if before.is_none() && after.is_none() {
-            records = sqlx::query_as!(
+        let records: Vec<MessageRecord> = if before.is_none() && after.is_none() {
+            sqlx::query_as!(
                 MessageRecord,
                 "SELECT * FROM messages WHERE channel_id = $1 ORDER BY id DESC LIMIT $2",
                 id_64,
                 limit as i64
             )
             .fetch_all(db.pool())
-            .await?;
+            .await?
         } else {
-            records = sqlx::query_as!(
+            sqlx::query_as!(
                 MessageRecord,
                 "SELECT * FROM messages WHERE channel_id = $1 AND id > $2 AND id < $3 ORDER BY id DESC LIMIT $4",
                 id_64,
@@ -133,8 +131,8 @@ impl TextChannel {
                 limit as i64
             )
             .fetch_all(db.pool())
-            .await?;
-        }
+            .await?
+        };
 
         Ok(stream::iter(records)
             .then(|r| async move { Message::from_record(&r).await })
