@@ -7,6 +7,7 @@ use warp::{filters::BoxedFilter, Filter};
 
 use super::common::SharedIDLimiter;
 use super::common::{needs_limit, needs_token};
+use crate::dispatch;
 use crate::models::{
     appstate::APP,
     auth::Token,
@@ -20,7 +21,6 @@ use crate::models::{
     snowflake::Snowflake,
 };
 use crate::utils::traits::{OptionExt, ResultExt};
-use crate::dispatch;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FetchMessagesQuery {
@@ -58,7 +58,11 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::query::<FetchMessagesQuery>())
         .and_then(fetch_messages);
 
-    fetch_channel.or(create_msg).or(fetch_messages).or(delete_channel).boxed()
+    fetch_channel
+        .or(create_msg)
+        .or(fetch_messages)
+        .or(delete_channel)
+        .boxed()
 }
 
 /// Fetch a channel's data.
@@ -164,19 +168,19 @@ async fn create_message(
 }
 
 /// Fetch a channel's messages.
-/// 
+///
 /// ## Arguments
-/// 
+///
 /// * `token` - The authorization token
 /// * `channel_id` - The ID of the channel to fetch messages from
 /// * `query` - The query parameters
-/// 
+///
 /// ## Returns
-/// 
+///
 /// * [`Vec<Message>`] - A JSON response containing a list of [`Message`] objects
-/// 
+///
 /// ## Endpoint
-/// 
+///
 /// GET `/channels/{channel_id}/messages`
 async fn fetch_messages(
     channel_id: Snowflake,
@@ -193,8 +197,8 @@ async fn fetch_messages(
         .or_reject(Forbidden::new("Not permitted to view resource."))?;
 
     let Channel::GuildText(txtchannel) = channel; /* else {
-        return Err(BadRequest::new("Cannot fetch messages from non-textable channel.").into());
-    }; */
+                                                      return Err(BadRequest::new("Cannot fetch messages from non-textable channel.").into());
+                                                  }; */
 
     let messages = txtchannel
         .fetch_messages(query.limit, query.before, query.after)

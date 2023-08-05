@@ -175,9 +175,9 @@ impl User {
     }
 
     /// Retrieve a user from the database by their ID.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
     pub async fn fetch(id: Snowflake) -> Option<Self> {
         let db = &APP.db.read().await;
@@ -197,9 +197,9 @@ impl User {
     }
 
     /// Fetch the presence of a user.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
     pub async fn fetch_presence(id: Snowflake) -> Option<Presence> {
         let db = &APP.db.read().await;
@@ -218,9 +218,9 @@ impl User {
     }
 
     /// Retrieve a user from the database by their username.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
     pub async fn fetch_by_username(username: &str) -> Option<Self> {
         let db = &APP.db.read().await;
@@ -244,9 +244,9 @@ impl User {
     }
 
     /// Fetch all guilds that this user is a member of.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
     pub async fn fetch_guilds(&self) -> Result<Vec<Guild>, sqlx::Error> {
         let db = &APP.db.read().await;
@@ -267,9 +267,9 @@ impl User {
     }
 
     /// Commit this user to the database.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
         let db = &APP.db.read().await;

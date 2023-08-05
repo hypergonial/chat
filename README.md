@@ -13,10 +13,8 @@ Once done, running the server should be as simple as running it using `cargo run
 
 ## TODO
 
-- [x] Nonces to handle message sending state
-- [x] Unify global app state in backend
-- [ ] Encode tokens with the user's password hash
-- [ ] Proper frontend
+- [ ] Fix token secret handling
+- [ ] Optimize message fetching by fetching author data in the same query
 
 ## Contributing
 

@@ -1,5 +1,58 @@
 {
   "db": "PostgreSQL",
+  "03f1fea0ae02be5c91c4a88edf9c27651eed542c7378c33ace1fbb5061c41e7d": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 5,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT messages.*, users.username, users.display_name\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                WHERE messages.channel_id = $1 AND messages.id > $2 AND messages.id < $3\n                ORDER BY messages.id DESC LIMIT $4"
+  },
   "0b72902bc8ec599bc847b3671444f3f19f59bdcc47e22697d73196df434c9aca": {
     "describe": {
       "columns": [],
@@ -40,44 +93,6 @@
     },
     "query": "INSERT INTO members (user_id, guild_id, nickname, joined_at)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (user_id, guild_id) DO UPDATE\n            SET nickname = $3, joined_at = $4"
   },
-  "23032a35c9fd43b029fa7a36de3600567de489351a71cd18ecdef9b606e6f87d": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "channel_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "content",
-          "ordinal": 3,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT id, user_id, channel_id, content\n            FROM messages\n            WHERE id = $1"
-  },
   "39e8fde5df56b0b7c78345de646e2cf390b0175dc5ea7fa9d9748fd32e29232e": {
     "describe": {
       "columns": [
@@ -110,7 +125,7 @@
     },
     "query": "SELECT id, name, owner_id FROM guilds WHERE id = $1"
   },
-  "3e7a4519693e83b178d8316abbac2c951c8e6cb3b1ed1dbb73b8958e9389f57b": {
+  "4926bbb269cf3007e0b4f5dbc5dbd812737abbf81a5dfb72bd9e919994b6e9d1": {
     "describe": {
       "columns": [
         {
@@ -132,44 +147,15 @@
           "name": "content",
           "ordinal": 3,
           "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT * FROM messages WHERE channel_id = $1 ORDER BY id DESC LIMIT $2"
-  },
-  "41e4c4f27f61c0dbb735b30b16ed81280149da3b3ba331077475aeab1d06b760": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
         },
         {
-          "name": "user_id",
-          "ordinal": 1,
-          "type_info": "Int8"
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Text"
         },
         {
-          "name": "channel_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "content",
-          "ordinal": 3,
+          "name": "display_name",
+          "ordinal": 5,
           "type_info": "Text"
         }
       ],
@@ -177,18 +163,17 @@
         false,
         true,
         false,
+        false,
+        false,
         false
       ],
       "parameters": {
         "Left": [
-          "Int8",
-          "Int8",
-          "Int8",
           "Int8"
         ]
       }
     },
-    "query": "SELECT * FROM messages WHERE channel_id = $1 AND id > $2 AND id < $3 ORDER BY id DESC LIMIT $4"
+    "query": "SELECT messages.*, users.username, users.display_name\n            FROM messages\n            LEFT JOIN users ON messages.user_id = users.id\n            WHERE messages.id = $1"
   },
   "5d7bc6bd8805058a40ef0f00becd280c8c7bda6fe35434c1ae6dd4f163ee3b78": {
     "describe": {
@@ -300,6 +285,57 @@
       }
     },
     "query": "INSERT INTO messages (id, user_id, channel_id, content)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (id) DO UPDATE\n            SET user_id = $2, channel_id = $3, content = $4"
+  },
+  "8bb8ff2a814c6fc3586f686001518cbd2e81c8c27a1b86a7038f1c8481f82a28": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 5,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT messages.*, users.username, users.display_name\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                WHERE messages.channel_id = $1\n                ORDER BY messages.id DESC LIMIT $2"
   },
   "8e40920032f5c84153113b35f969cdc917ebf3e12b51dbaa231338e25abbb3eb": {
     "describe": {

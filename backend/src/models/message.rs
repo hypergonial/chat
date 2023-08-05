@@ -12,6 +12,17 @@ pub struct MessageRecord {
     pub content: String,
 }
 
+/// Represents a message record with associated author data as queried.
+/// All associated author fields are optional because the author may have been deleted.
+pub struct ExtendedMessageRecord {
+    pub id: i64,
+    pub channel_id: i64,
+    pub content: String,
+    pub user_id: Option<i64>,
+    pub username: Option<String>,
+    pub display_name: Option<String>,
+}
+
 /// A chat message.
 #[derive(Serialize, Deserialize, Debug, Clone, Builder)]
 #[builder(setter(into))]
@@ -49,15 +60,15 @@ impl Message {
     }
 
     /// Create a new message from the given record.
-    /// 
+    ///
     /// This will fetch the author from the database.
-    /// 
+    ///
     /// ## Panics
-    /// 
+    ///
     /// This function will panic if the author is not found in the database.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
     pub async fn from_record(record: &MessageRecord) -> Self {
         let mut author = None;
@@ -68,6 +79,30 @@ impl Message {
                     .expect("Failed to fetch user from database."),
             ));
         }
+
+        Self {
+            id: record.id.into(),
+            channel_id: record.channel_id.into(),
+            author,
+            content: record.content.clone(),
+            nonce: None,
+        }
+    }
+
+    /// Create a new message from the given record.
+    /// 
+    /// This will not fetch the author from the database, and will instead use the author data from the record.
+    pub fn from_extended_record(record: &ExtendedMessageRecord) -> Self {
+        let author = record.user_id.map(|user_id| {
+            UserLike::User(
+                User::builder()
+                    .id(user_id)
+                    .username(record.username.clone().unwrap())
+                    .display_name(record.display_name.clone().unwrap())
+                    .build()
+                    .expect("Failed to build user"),
+            )
+        });
 
         Self {
             id: record.id.into(),
@@ -106,7 +141,9 @@ impl Message {
         self.id.created_at()
     }
 
-    /// Retrieve a message from the database by its ID.
+    /* /// Retrieve a message from the database by its ID.
+    /// ## Locks
+    /// * `APP.db` (read)
     pub async fn fetch(id: Snowflake) -> Option<Self> {
         let db = &APP.db.read().await;
         let id_i64: i64 = id.into();
@@ -122,6 +159,32 @@ impl Message {
         .ok()??;
 
         Some(Self::from_record(&row).await)
+    } */
+
+    /// Retrieve a message and fetch its author from the database in one query.
+    /// 
+    /// ## Locks
+    /// 
+    /// * `APP.db` (read)
+    pub async fn fetch(id: Snowflake) -> Option<Self> {
+        let db = &APP.db.read().await;
+        let id_i64: i64 = id.into();
+
+        // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord` 
+        // contains `Option<T>` for all users fields and sqlx does not recognize this.
+        let record = sqlx::query_as_unchecked!(
+            ExtendedMessageRecord,
+            "SELECT messages.*, users.username, users.display_name
+            FROM messages
+            LEFT JOIN users ON messages.user_id = users.id
+            WHERE messages.id = $1",
+            id_i64
+        )
+        .fetch_optional(db.pool())
+        .await
+        .ok()??;
+
+        Some(Self::from_extended_record(&record))
     }
 
     /// Commit this message to the database.

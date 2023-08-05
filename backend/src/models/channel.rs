@@ -1,13 +1,9 @@
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
-use futures_util::stream;
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
 
-use crate::models::message::MessageRecord;
-
-use super::{appstate::APP, rest::CreateChannel};
+use super::{appstate::APP, rest::CreateChannel, message::ExtendedMessageRecord};
 use super::{message::Message, snowflake::Snowflake};
 
 #[async_trait]
@@ -83,23 +79,23 @@ impl TextChannel {
     }
 
     /// Fetch messages from this channel.
-    /// 
+    ///
     /// ## Arguments
-    /// 
+    ///
     /// * `limit` - The maximum number of messages to fetch. Defaults to 50, capped at 100.
     /// * `before` - Fetch messages before this ID.
     /// * `after` - Fetch messages after this ID.
-    /// 
+    ///
     /// ## Returns
-    /// 
+    ///
     /// [`Vec<Message>`] - The messages fetched.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_messages(
         &self,
@@ -112,19 +108,30 @@ impl TextChannel {
         let db = &APP.db.read().await;
         let id_64: i64 = self.id.into();
 
-        let records: Vec<MessageRecord> = if before.is_none() && after.is_none() {
-            sqlx::query_as!(
-                MessageRecord,
-                "SELECT * FROM messages WHERE channel_id = $1 ORDER BY id DESC LIMIT $2",
+        let records: Vec<ExtendedMessageRecord> = if before.is_none() && after.is_none() {
+            // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord` 
+            // contains `Option<T>` for all users fields and sqlx does not recognize this.
+            sqlx::query_as_unchecked!(
+                ExtendedMessageRecord,
+                "SELECT messages.*, users.username, users.display_name
+                FROM messages
+                LEFT JOIN users ON messages.user_id = users.id
+                WHERE messages.channel_id = $1
+                ORDER BY messages.id DESC LIMIT $2",
                 id_64,
                 limit as i64
             )
             .fetch_all(db.pool())
             .await?
         } else {
-            sqlx::query_as!(
-                MessageRecord,
-                "SELECT * FROM messages WHERE channel_id = $1 AND id > $2 AND id < $3 ORDER BY id DESC LIMIT $4",
+            // SAFETY: Ditto, see above.
+            sqlx::query_as_unchecked!(
+                ExtendedMessageRecord,
+                "SELECT messages.*, users.username, users.display_name
+                FROM messages
+                LEFT JOIN users ON messages.user_id = users.id
+                WHERE messages.channel_id = $1 AND messages.id > $2 AND messages.id < $3
+                ORDER BY messages.id DESC LIMIT $4",
                 id_64,
                 before.map(|s| s.into()).unwrap_or(i64::MAX),
                 after.map(|s| s.into()).unwrap_or(i64::MIN),
@@ -134,10 +141,9 @@ impl TextChannel {
             .await?
         };
 
-        Ok(stream::iter(records)
-            .then(|r| async move { Message::from_record(&r).await })
-            .collect()
-            .await)
+        Ok(
+            records.iter().map(Message::from_extended_record).collect()
+        )
     }
 }
 
@@ -160,13 +166,13 @@ impl ChannelLike for TextChannel {
     }
 
     /// Commit this channel to the database.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`sqlx::Error`] - If the database query fails.
     async fn commit(&self) -> Result<(), SqlxError> {
         let db = &APP.db.read().await;
