@@ -123,13 +123,18 @@ impl Guild {
         Ok(records
             .into_iter()
             .map(|record| {
+                let mut builder = User::builder();
+                if let Some(display_name) = record.display_name {
+                    builder.display_name(display_name);
+                }
+                let user = builder
+                    .id(record.user_id)
+                    .username(record.username)
+                    .build()
+                    .expect("Failed building user object.");
+
                 Member::new(
-                    User::builder()
-                        .username(record.username)
-                        .display_name(record.display_name)
-                        .id(record.user_id)
-                        .build()
-                        .expect("Failed building user object."),
+                    user,
                     Snowflake::from(record.guild_id),
                     record.nickname,
                     record.joined_at,

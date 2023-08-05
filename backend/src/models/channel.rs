@@ -3,7 +3,7 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
 
-use super::{appstate::APP, rest::CreateChannel, message::ExtendedMessageRecord};
+use super::{appstate::APP, message::ExtendedMessageRecord, rest::CreateChannel};
 use super::{message::Message, snowflake::Snowflake};
 
 #[async_trait]
@@ -109,7 +109,7 @@ impl TextChannel {
         let id_64: i64 = self.id.into();
 
         let records: Vec<ExtendedMessageRecord> = if before.is_none() && after.is_none() {
-            // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord` 
+            // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord`
             // contains `Option<T>` for all users fields and sqlx does not recognize this.
             sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
@@ -141,9 +141,7 @@ impl TextChannel {
             .await?
         };
 
-        Ok(
-            records.iter().map(Message::from_extended_record).collect()
-        )
+        Ok(records.iter().map(Message::from_extended_record).collect())
     }
 }
 

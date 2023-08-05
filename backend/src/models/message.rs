@@ -90,7 +90,7 @@ impl Message {
     }
 
     /// Create a new message from the given record.
-    /// 
+    ///
     /// This will not fetch the author from the database, and will instead use the author data from the record.
     pub fn from_extended_record(record: &ExtendedMessageRecord) -> Self {
         let author = record.user_id.map(|user_id| {
@@ -162,15 +162,15 @@ impl Message {
     } */
 
     /// Retrieve a message and fetch its author from the database in one query.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
     pub async fn fetch(id: Snowflake) -> Option<Self> {
         let db = &APP.db.read().await;
         let id_i64: i64 = id.into();
 
-        // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord` 
+        // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord`
         // contains `Option<T>` for all users fields and sqlx does not recognize this.
         let record = sqlx::query_as_unchecked!(
             ExtendedMessageRecord,

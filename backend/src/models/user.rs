@@ -50,7 +50,7 @@ impl Default for Presence {
 pub struct UserRecord {
     pub id: i64,
     pub username: String,
-    pub display_name: String,
+    pub display_name: Option<String>,
     pub last_presence: i16,
 }
 
@@ -62,8 +62,8 @@ pub struct User {
     /// A user's username. This is unique to the user.
     username: String,
     /// A user's displayname. This is the same as the username unless the user has changed it.
-    #[builder(default = "self.username.clone().unwrap()")]
-    pub display_name: String,
+    #[builder(setter(strip_option), default)]
+    pub display_name: Option<String>,
     /// The last presence used by this user.
     /// This does not represent the user's actual presence, as that also depends on the gateway connection.
     #[serde(skip)]
@@ -88,7 +88,7 @@ impl User {
         Ok(User {
             id: Snowflake::gen_new().await,
             username: payload.username.clone(),
-            display_name: payload.username,
+            display_name: None,
             last_presence: Presence::default(),
             displayed_presence: None,
         })
@@ -105,12 +105,12 @@ impl User {
     }
 
     /// The user's username. This is unique to the user.
-    pub fn username(&self) -> &str {
+    pub fn username(&self) -> &String {
         &self.username
     }
 
     /// The user's display name. This is the same as the username unless the user has changed it.
-    pub fn display_name(&self) -> &str {
+    pub fn display_name(&self) -> &Option<String> {
         &self.display_name
     }
 
