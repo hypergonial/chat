@@ -141,7 +141,7 @@ impl TextChannel {
             .await?
         };
 
-        Ok(records.iter().map(Message::from_extended_record).collect())
+        Ok(records.into_iter().map(Message::from_extended_record).collect())
     }
 }
 

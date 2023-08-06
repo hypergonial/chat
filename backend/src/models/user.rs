@@ -67,7 +67,7 @@ pub struct User {
     /// The last presence used by this user.
     /// This does not represent the user's actual presence, as that also depends on the gateway connection.
     #[serde(skip)]
-    #[builder(setter(skip), default)]
+    #[builder(default)]
     last_presence: Presence,
     /// Is 'null' in all cases except when the user is sent in a GUILD_CREATE event.
     /// This is the presence that is sent in payloads to clients.

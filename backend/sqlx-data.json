@@ -175,6 +175,63 @@
     },
     "query": "SELECT messages.*, users.username, users.display_name\n            FROM messages\n            LEFT JOIN users ON messages.user_id = users.id\n            WHERE messages.id = $1"
   },
+  "5b43e57dd2a10bdb091056852edcef24d3c23b183a1c330af85c2b02e0e164db": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "guild_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "nickname",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "joined_at",
+          "ordinal": 3,
+          "type_info": "Int8"
+        },
+        {
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "last_presence",
+          "ordinal": 6,
+          "type_info": "Int2"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        true,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT members.*, users.username, users.display_name, users.last_presence \n            FROM members\n            INNER JOIN users ON users.id = members.user_id\n            WHERE members.user_id = $1 AND members.guild_id = $2"
+  },
   "5d7bc6bd8805058a40ef0f00becd280c8c7bda6fe35434c1ae6dd4f163ee3b78": {
     "describe": {
       "columns": [
@@ -337,45 +394,6 @@
     },
     "query": "SELECT messages.*, users.username, users.display_name\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                WHERE messages.channel_id = $1\n                ORDER BY messages.id DESC LIMIT $2"
   },
-  "8e40920032f5c84153113b35f969cdc917ebf3e12b51dbaa231338e25abbb3eb": {
-    "describe": {
-      "columns": [
-        {
-          "name": "user_id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "guild_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "nickname",
-          "ordinal": 2,
-          "type_info": "Text"
-        },
-        {
-          "name": "joined_at",
-          "ordinal": 3,
-          "type_info": "Int8"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        true,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT * FROM members WHERE user_id = $1 AND guild_id = $2"
-  },
   "8e8e06ebe38aac297f6e4f4420f65c6d230847a6647e4f8d86fb2fff6e9a1494": {
     "describe": {
       "columns": [
@@ -487,7 +505,19 @@
     },
     "query": "SELECT guilds.id, guilds.name, guilds.owner_id\n            FROM guilds\n            INNER JOIN members ON members.guild_id = guilds.id\n            WHERE members.user_id = $1"
   },
-  "adba4a12fb00fe9abf5812627c52fe8d2ea7bf586bcf44771fdf20919ff51eb8": {
+  "af3cf99d962f642d6e9069c1687834f0b3633ffe4f42afb2c464167a7a555898": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "DELETE FROM guilds WHERE id = $1"
+  },
+  "b621a0fadcbee2c113143dd975e10c3d534f2cb4140c3282c385afe467aa02dd": {
     "describe": {
       "columns": [
         {
@@ -511,23 +541,18 @@
           "type_info": "Int8"
         },
         {
-          "name": "id",
-          "ordinal": 4,
-          "type_info": "Int8"
-        },
-        {
           "name": "username",
-          "ordinal": 5,
+          "ordinal": 4,
           "type_info": "Text"
         },
         {
           "name": "display_name",
-          "ordinal": 6,
+          "ordinal": 5,
           "type_info": "Text"
         },
         {
           "name": "last_presence",
-          "ordinal": 7,
+          "ordinal": 6,
           "type_info": "Int2"
         }
       ],
@@ -535,7 +560,6 @@
         false,
         false,
         true,
-        false,
         false,
         false,
         true,
@@ -547,19 +571,7 @@
         ]
       }
     },
-    "query": "SELECT * FROM members JOIN users ON members.user_id = users.id WHERE members.guild_id = $1"
-  },
-  "af3cf99d962f642d6e9069c1687834f0b3633ffe4f42afb2c464167a7a555898": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int8"
-        ]
-      }
-    },
-    "query": "DELETE FROM guilds WHERE id = $1"
+    "query": "SELECT members.*, users.username, users.display_name, users.last_presence \n            FROM members\n            INNER JOIN users ON users.id = members.user_id\n            WHERE members.guild_id = $1"
   },
   "c307e09ca377d1682cb81ea91e446e4a0f8751fe145553d9a6ea2e28cc11d5af": {
     "describe": {

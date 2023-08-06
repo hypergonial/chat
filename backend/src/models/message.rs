@@ -70,7 +70,7 @@ impl Message {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn from_record(record: &MessageRecord) -> Self {
+    pub async fn from_record(record: MessageRecord) -> Self {
         let mut author = None;
         if let Some(author_id) = record.user_id {
             author = Some(UserLike::User(
@@ -84,7 +84,7 @@ impl Message {
             id: record.id.into(),
             channel_id: record.channel_id.into(),
             author,
-            content: record.content.clone(),
+            content: record.content,
             nonce: None,
         }
     }
@@ -92,13 +92,13 @@ impl Message {
     /// Create a new message from the given record.
     ///
     /// This will not fetch the author from the database, and will instead use the author data from the record.
-    pub fn from_extended_record(record: &ExtendedMessageRecord) -> Self {
+    pub fn from_extended_record(record: ExtendedMessageRecord) -> Self {
         let author = record.user_id.map(|user_id| {
             UserLike::User(
                 User::builder()
                     .id(user_id)
-                    .username(record.username.clone().unwrap())
-                    .display_name(record.display_name.clone().unwrap())
+                    .username(record.username.unwrap()) // SAFETY: This is safe because user_id is not None.
+                    .display_name(record.display_name.unwrap())
                     .build()
                     .expect("Failed to build user"),
             )
@@ -184,7 +184,7 @@ impl Message {
         .await
         .ok()??;
 
-        Some(Self::from_extended_record(&record))
+        Some(Self::from_extended_record(record))
     }
 
     /// Commit this message to the database.

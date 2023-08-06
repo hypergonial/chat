@@ -183,11 +183,12 @@ impl GuildCreatePayload {
         }
     }
 
-    /// Create a new guild create event by fetching all relevant data from the database.
+    /// Create a new guild create payload by fetching all relevant data from the database.
     ///
     /// ## Locks
     ///
     /// * `APP.gateway` (read)
+    /// * `APP.db` (read)
     pub async fn from_guild(guild: Guild) -> Result<Self, sqlx::Error> {
         // Presences need to be included in the payload
         let members = future::join_all(guild.fetch_members().await?.into_iter().map(|m| m.include_presence())).await;

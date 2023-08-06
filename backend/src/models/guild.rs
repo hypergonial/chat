@@ -1,9 +1,9 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::models::channel::ChannelRecord;
+use crate::models::{channel::ChannelRecord, member::ExtendedMemberRecord};
 
-use super::{appstate::APP, channel::Channel, member::Member, rest::CreateGuild, snowflake::Snowflake, user::User};
+use super::{appstate::APP, channel::Channel, member::Member, rest::CreateGuild, snowflake::Snowflake};
 
 /// Represents a guild record stored in the database.
 pub struct GuildRecord {
@@ -113,34 +113,18 @@ impl Guild {
         let db = &APP.db.read().await;
         let guild_id_64: i64 = self.id.into();
 
-        let records = sqlx::query!(
-            "SELECT * FROM members JOIN users ON members.user_id = users.id WHERE members.guild_id = $1",
+        let records = sqlx::query_as!(
+            ExtendedMemberRecord,
+            "SELECT members.*, users.username, users.display_name, users.last_presence 
+            FROM members
+            INNER JOIN users ON users.id = members.user_id
+            WHERE members.guild_id = $1",
             guild_id_64
         )
         .fetch_all(db.pool())
         .await?;
 
-        Ok(records
-            .into_iter()
-            .map(|record| {
-                let mut builder = User::builder();
-                if let Some(display_name) = record.display_name {
-                    builder.display_name(display_name);
-                }
-                let user = builder
-                    .id(record.user_id)
-                    .username(record.username)
-                    .build()
-                    .expect("Failed building user object.");
-
-                Member::new(
-                    user,
-                    Snowflake::from(record.guild_id),
-                    record.nickname,
-                    record.joined_at,
-                )
-            })
-            .collect())
+        Ok(records.into_iter().map(Member::from_extended_record).collect())
     }
 
     /// Fetch all channels that are in the guild.

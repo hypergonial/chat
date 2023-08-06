@@ -16,6 +16,17 @@ pub struct MemberRecord {
     pub joined_at: i64,
 }
 
+/// Represents a guild member record with associated user data as queried.
+pub struct ExtendedMemberRecord {
+    pub user_id: i64,
+    pub guild_id: i64,
+    pub nickname: Option<String>,
+    pub joined_at: i64,
+    pub username: String,
+    pub display_name: Option<String>,
+    pub last_presence: i16,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Member {
     /// The user this guild member represents
@@ -72,6 +83,11 @@ impl Member {
     }
 
     /// Build a member object directly from a database record.
+    /// The user part of the object will be fetched from the database.
+    ///
+    /// ## Locks
+    ///
+    /// * `APP.db` (read)
     pub async fn from_record(record: MemberRecord) -> Self {
         Self::new(
             User::fetch(record.user_id.into()).await.unwrap(),
@@ -81,7 +97,27 @@ impl Member {
         )
     }
 
+    /// Build a member object directly from a database record.
+    /// The user is contained in the record, so it will not be fetched from the database.
+    pub fn from_extended_record(record: ExtendedMemberRecord) -> Self {
+        let mut builder = User::builder();
+
+        if let Some(display_name) = record.display_name {
+            builder.display_name(display_name);
+        }
+
+        let user = builder
+            .id(record.user_id)
+            .username(record.username)
+            .last_presence(record.last_presence)
+            .build()
+            .expect("Failed to build user object.");
+
+        Self::new(user, record.guild_id.into(), record.nickname, record.joined_at)
+    }
+
     /// Convert a user into a member with the given guild id.
+    /// The join date of the member will be set to the current time.
     pub async fn from_user(user: User, guild_id: Snowflake) -> Self {
         Self::new(user, guild_id, None, Utc::now().timestamp())
     }
@@ -103,8 +139,11 @@ impl Member {
         let guild_id_64: i64 = guild_id.into();
 
         let record = sqlx::query_as!(
-            MemberRecord,
-            "SELECT * FROM members WHERE user_id = $1 AND guild_id = $2",
+            ExtendedMemberRecord,
+            "SELECT members.*, users.username, users.display_name, users.last_presence 
+            FROM members
+            INNER JOIN users ON users.id = members.user_id
+            WHERE members.user_id = $1 AND members.guild_id = $2",
             id_64,
             guild_id_64
         )
@@ -112,7 +151,7 @@ impl Member {
         .await
         .ok()??;
 
-        Some(Self::from_record(record).await)
+        Some(Self::from_extended_record(record))
     }
 
     /// Commit the member to the database.
