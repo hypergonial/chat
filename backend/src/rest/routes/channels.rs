@@ -47,7 +47,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
     let create_msg = warp::path!("channels" / Snowflake / "messages")
         .and(warp::post())
         .and(needs_limit(message_create_lim))
-        .and(warp::body::content_length_limit(1024 * 16))
+        .and(warp::body::content_length_limit(10485760))
         .and(warp::multipart::form())
         .and_then(create_message);
 
