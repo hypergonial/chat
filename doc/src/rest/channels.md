@@ -60,11 +60,39 @@ Sends a message to a channel.
 
 ### Payload
 
-```json
+This endpoint expects a `multipart/form-data` payload. The following fields are supported:
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| json | application/json | Valid json that represents the message's textually representable information |
+| attachment-0..9 | application/octet-stream | A file to attach to the message. The `filename` field is mandatory. |
+
+> Note: While both `json` and `attachment` are optional, at least one of them **must** be present.
+
+Example:
+
+```http
+POST /channels/123/messages HTTP/1.1
+Content-Type: multipart/form-data; boundary=--------------------------1234567890
+
+----------------------------1234567890
+Content-Disposition: form-data; name="json"
+Content-Type: application/json
+
 {
-    "content": "sus",
-    "nonce": "this will be echoed back by the gateway!"
+    "content": "Hello, world!",
+    "nonce": "catch me catch me catch me catch.."
 }
+----------------------------1234567890
+Content-Disposition: form-data; name="attachment-0"; filename="cat.png"
+Content-Type: image/png
+
+<cat.png bytes>
+----------------------------1234567890
+Content-Disposition: form-data; name="attachment-1"; filename="dog.gif"
+Content-Type: image/gif
+
+<dog.gif bytes>
 ```
 
 ### Response

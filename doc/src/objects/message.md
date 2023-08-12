@@ -11,6 +11,7 @@ Represents a text message sent to a [channel](channel.md).
 | author | [`User`](user.md) or [`Member`](member.md) | The message's author's data, this evaluates to `Member` if in a guild context. |
 | content | `String` | The message's content |
 | nonce | `String?` | The message's nonce, this may be used by clients to identify their sent messages. It is `null` in all cases except in the `MESSAGE_CREATE` gateway event. |
+| attachments | [`Attachment`](attachment.md)[] | The message's attachments. |
 
 ## Example payload
 
@@ -30,6 +31,16 @@ Represents a text message sent to a [channel](channel.md).
         "joined_at": 1630000000000
     },
     "content": "sus",
-    "nonce": "catch me catch me catch me catch.."
+    "nonce": "catch me catch me catch me catch..",
+    "attachments": [
+        {
+            "id": 0,
+            "filename": "among_us.png",
+        },
+        {
+            "id": 1,
+            "filename": "among_us_2.png",
+        }
+    ]
 }
 ```

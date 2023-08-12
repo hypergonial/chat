@@ -8,8 +8,12 @@ Why not?
 
 ## Usage
 
-Firstly, rename `.env.example` and fill it out by providing a valid postgres dsn.
-Once done, running the server should be as simple as running it using `cargo run` and then opening `static/index.html` twice in two seperate browser tabs to experiment.
+Firstly, rename `.env.example` and fill it out by providing a valid postgres dsn, MinIO root credentials, and a random string for the session secret.
+
+Then, we need to generate a session token for the admin user in MinIO. To do this, start up the application using `docker compose up` (starting certain components in this state will fail, this is normal) and then
+visit `http://localhost:9001` in your webbrowser. Log in using the credentials you provided in the `.env` file, navigate to access keys, and generate a new key. Copy the access key and secret key into the `.env` file.
+
+Then, run `docker compose up` to start the backend, database and MinIO instances.
 
 ## Contributing
 
