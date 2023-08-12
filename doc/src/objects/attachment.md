@@ -25,13 +25,14 @@ Represents a file attached to a [Message](./message.md).
 To fetch the file contents, you must first construct a valid S3 URL. This URL is constructed as follows:
 
 ```http
-http://<minio_host>:<minio_port>/attachments/<message_id>/<attachment_id>/<object>
+http://<minio_host>:<minio_port>/attachments/<channel_id>/<message_id>/<attachment_id>/<object>
 ```
 
 Where:
 
 - `<minio_host>` is the host of the MinIO instance, this is `localhost` if you're running the application locally.
 - `<minio_port>` is the port of the MinIO instance, this is `9000` if you're running the application locally.
+- `<channel_id>` is the channel ID the message was sent in.
 - `<message_id>` is the message ID the attachment belongs to.
 - `<attachment_id>` is the attachment ID. This is the `id` field in the attachment object.
 - `<object>` is the object name, this is the attachment's filename.
