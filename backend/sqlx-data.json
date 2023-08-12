@@ -307,6 +307,22 @@
     },
     "query": "SELECT members.*, users.username, users.display_name, users.last_presence \n            FROM members\n            INNER JOIN users ON users.id = members.user_id\n            WHERE members.user_id = $1 AND members.guild_id = $2"
   },
+  "5beb3a7852172c07a7fadec6ba747e273d410d8f1cb22a0964296d5f6a212d00": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Text",
+          "Int8",
+          "Int8",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "INSERT INTO attachments (id, filename, message_id, channel_id, content_type)\n            VALUES ($1, $2, $3, $4, $5) \n            ON CONFLICT (id, message_id) \n            DO UPDATE SET filename = $2, content_type = $5"
+  },
   "5d7bc6bd8805058a40ef0f00becd280c8c7bda6fe35434c1ae6dd4f163ee3b78": {
     "describe": {
       "columns": [
@@ -455,21 +471,6 @@
       }
     },
     "query": "SELECT * FROM channels WHERE guild_id = $1"
-  },
-  "a049c315b4acd8c74b710585af242f733173309fcc5713997ef1c0541d43cc4f": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int4",
-          "Text",
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "INSERT INTO attachments (id, filename, message_id, channel_id)\n            VALUES ($1, $2, $3, $4) ON CONFLICT (id, message_id) DO UPDATE SET filename = $2"
   },
   "a1fbaac7941f8dc321c32e36f8caf2fec098f23317cc20bce9f8847a624c24e7": {
     "describe": {

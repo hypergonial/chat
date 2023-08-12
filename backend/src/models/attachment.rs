@@ -144,12 +144,15 @@ impl Attachment {
         let channel_id: i64 = self.channel_id.into();
 
         sqlx::query!(
-            "INSERT INTO attachments (id, filename, message_id, channel_id)
-            VALUES ($1, $2, $3, $4) ON CONFLICT (id, message_id) DO UPDATE SET filename = $2",
+            "INSERT INTO attachments (id, filename, message_id, channel_id, content_type)
+            VALUES ($1, $2, $3, $4, $5) 
+            ON CONFLICT (id, message_id) 
+            DO UPDATE SET filename = $2, content_type = $5",
             self.id as i32,
             self.filename,
             message_id,
             channel_id,
+            self.content_type,
         )
         .execute(db.pool())
         .await?;
