@@ -57,6 +57,10 @@ pub async fn handle_rejection(err: Rejection) -> Result<Box<dyn Reply>, Infallib
         code = StatusCode::BAD_REQUEST;
         message = "BAD_REQUEST";
         description = Some(format!("Missing Header: {}", e.name()));
+    } else if let Some(e) = err.find::<warp::reject::InvalidHeader>() {
+        code = StatusCode::BAD_REQUEST;
+        message = "BAD_REQUEST";
+        description = Some(format!("Invalid Header: {}", e.name()));
     } else if let Some(e) = err.find::<warp::reject::PayloadTooLarge>() {
         code = StatusCode::PAYLOAD_TOO_LARGE;
         message = "PAYLOAD_TOO_LARGE";
