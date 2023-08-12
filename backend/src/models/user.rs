@@ -61,8 +61,8 @@ pub struct User {
     id: Snowflake,
     /// A user's username. This is unique to the user.
     username: String,
-    /// A user's displayname. This is the same as the username unless the user has changed it.
-    #[builder(setter(strip_option), default)]
+    /// A user's displayname.
+    #[builder(default)]
     pub display_name: Option<String>,
     /// The last presence used by this user.
     /// This does not represent the user's actual presence, as that also depends on the gateway connection.

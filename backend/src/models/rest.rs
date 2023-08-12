@@ -1,5 +1,5 @@
 use secrecy::Secret;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// A request to create a new user
 #[derive(Deserialize, Debug, Clone)]
@@ -8,27 +8,11 @@ pub struct CreateUser {
     pub password: Secret<String>,
 }
 
-/// A request to create a new message
-///
-/// A Message object is returned on success
-#[derive(Serialize, Deserialize, Debug, Clone)]
+/// The JSON part of a multipart form request to create a message
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateMessage {
-    content: String,
-    nonce: Option<String>,
-}
-
-impl CreateMessage {
-    pub fn new(content: String, nonce: Option<String>) -> Self {
-        CreateMessage { content, nonce }
-    }
-
-    pub fn content(&self) -> &str {
-        &self.content
-    }
-
-    pub fn nonce(&self) -> &Option<String> {
-        &self.nonce
-    }
+    pub content: Option<String>,
+    pub nonce: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]

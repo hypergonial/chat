@@ -9,11 +9,17 @@ use super::{message::Message, snowflake::Snowflake};
 #[async_trait]
 #[enum_dispatch(Channel)]
 pub trait ChannelLike {
+    /// The Snowflake ID of a channel.
     fn id(&self) -> Snowflake;
+    /// The Snowflake ID of the guild this channel belongs to.
     fn guild_id(&self) -> Snowflake;
+    /// The name of the channel.
     fn name(&self) -> &str;
+    /// The name of the channel.
     fn name_mut(&mut self) -> &mut String;
+    /// Commit this channel's current state to the database.
     async fn commit(&self) -> Result<(), SqlxError>;
+    /// Deletes the channel.
     async fn delete(self) -> Result<(), SqlxError>;
 }
 
@@ -113,9 +119,10 @@ impl TextChannel {
             // contains `Option<T>` for all users fields and sqlx does not recognize this.
             sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
-                "SELECT messages.*, users.username, users.display_name
+                "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename
                 FROM messages
                 LEFT JOIN users ON messages.user_id = users.id
+                LEFT JOIN attachments ON messages.id = attachments.message_id
                 WHERE messages.channel_id = $1
                 ORDER BY messages.id DESC LIMIT $2",
                 id_64,
@@ -127,9 +134,10 @@ impl TextChannel {
             // SAFETY: Ditto, see above.
             sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
-                "SELECT messages.*, users.username, users.display_name
+                "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename
                 FROM messages
                 LEFT JOIN users ON messages.user_id = users.id
+                LEFT JOIN attachments ON messages.id = attachments.message_id
                 WHERE messages.channel_id = $1 AND messages.id > $2 AND messages.id < $3
                 ORDER BY messages.id DESC LIMIT $4",
                 id_64,
@@ -140,8 +148,7 @@ impl TextChannel {
             .fetch_all(db.pool())
             .await?
         };
-
-        Ok(records.into_iter().map(Message::from_extended_record).collect())
+        Ok(Message::from_records(&records))
     }
 }
 

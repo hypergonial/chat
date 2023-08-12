@@ -1,6 +1,23 @@
-services:
+# Common configuration for all minio instances
+x-minio-common: &minio-common
+  image: minio/minio:latest
+  command: server --console-address ":9001" http://minio{1...2}/minio_data{1...2}
+  expose:
+    - 9000
+    - 9001
+  environment:
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?err}
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    interval: 30s
+    timeout: 20s
+    retries: 3
+  networks:
+    - private
 
-  chat-db:
+services:
+  db:
     image: postgres:14
     restart: always
     expose:
@@ -16,14 +33,77 @@ services:
     networks:
       - private
 
-  chat-backend:
+  minio1:
+    <<: *minio-common
+    hostname: minio1
+    restart: always
+    volumes:
+      - minio_data1-1:/minio_data1
+      - minio_data1-2:/minio_data2
+  
+  minio2:
+    <<: *minio-common
+    hostname: minio2
+    restart: always
+    volumes:
+      - minio_data2-1:/minio_data1
+      - minio_data2-2:/minio_data2
+
+  nginx:
+    image: nginx:1.25.1-alpine
+    hostname: nginx
+    restart: always
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    depends_on:
+      - minio1
+      - minio2
+    networks:
+      - private
+
+  create_buckets:
+    image: minio/mc:latest
+    depends_on:
+      - nginx
+    networks:
+      - private
+    entrypoint: >
+      /bin/sh -c '
+
+      /usr/bin/mc alias set s3-local ${MINIO_URL:-http://nginx:9000} ${MINIO_ACCESS_KEY:?err} ${MINIO_SECRET_KEY:?err} --quiet;
+
+      if [ $? -ne 0 ]; then
+          echo "Failed to connect to minio, exiting.";
+          exit 1;
+      fi;
+
+      buckets="attachments test";
+
+      for bucket in $$buckets; do
+          /usr/bin/mc ls s3-local | grep -wq $$bucket;
+          if [ $? -eq 0 ]; then
+              echo Bucket $$bucket already exists, skipping creation.
+          else
+              /usr/bin/mc mb s3-local/$$bucket --region "vault";
+              /usr/bin/mc anonymous set download s3-local/$$bucket;
+          fi;
+      done;
+      '
+
+  backend:
     build:
         context: ./backend
         dockerfile: Dockerfile
         args:
           - BUILD_TYPE=${BUILD_TYPE:-release}
     environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?err}@chat-db:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-chat}
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?err}@db:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-chat}
+      - MINIO_URL=${MINIO_URL:-http://nginx:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?err}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?err}
       - MACHINE_ID=${MACHINE_ID:?err}
       - PROCESS_ID=${PROCESS_ID:?err}
       - LISTEN_ADDR=0.0.0.0:8080
@@ -31,7 +111,9 @@ services:
       - 8080:8080
     command: ["backend"]
     depends_on:
-      - chat-db
+      - db
+      - nginx
+      - create_buckets
     restart: always
     networks:
       - private
@@ -42,3 +124,7 @@ networks:
 
 volumes:
   postgres_data:
+  minio_data1-1:
+  minio_data1-2:
+  minio_data2-1:
+  minio_data2-2:

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use governor::{Quota, RateLimiter};
 use nonzero_ext::nonzero;
 use serde::{Deserialize, Serialize};
-use warp::{filters::BoxedFilter, Filter};
+use warp::{filters::BoxedFilter, multipart::FormData, Filter};
 
 use super::common::SharedIDLimiter;
 use super::common::{needs_limit, needs_token};
@@ -17,7 +17,6 @@ use crate::models::{
     member::{Member, UserLike},
     message::Message,
     rejections::{Forbidden, InternalServerError, NotFound},
-    rest::CreateMessage,
     snowflake::Snowflake,
 };
 use crate::utils::traits::{OptionExt, ResultExt};
@@ -49,7 +48,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
         .and(warp::post())
         .and(needs_limit(message_create_lim))
         .and(warp::body::content_length_limit(1024 * 16))
-        .and(warp::body::json())
+        .and(warp::multipart::form())
         .and_then(create_message);
 
     let fetch_messages = warp::path!("channels" / Snowflake / "messages")
@@ -127,7 +126,7 @@ async fn delete_channel(channel_id: Snowflake, token: Token) -> Result<impl warp
 /// ## Arguments
 ///
 /// * `token` - The authorization token
-/// * `payload` - The CreateMessage payload
+/// * `payload` - The multipart form data
 ///
 /// ## Returns
 ///
@@ -143,7 +142,7 @@ async fn delete_channel(channel_id: Snowflake, token: Token) -> Result<impl warp
 async fn create_message(
     channel_id: Snowflake,
     token: Token,
-    payload: CreateMessage,
+    payload: FormData,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let channel = Channel::fetch(channel_id)
         .await
@@ -153,18 +152,20 @@ async fn create_message(
         .await
         .or_reject(Forbidden::new("Not permitted to access resource."))?;
 
-    let message = Message::from_payload(UserLike::Member(member), channel_id, payload).await;
+    let message = Message::from_formdata(UserLike::Member(member), channel_id, payload)
+        .await
+        .or_reject(InternalServerError::db())?;
 
     message
         .commit()
         .await
         .or_reject_and_log(InternalServerError::db(), "Failed to commit message to database")?;
 
-    dispatch!(GatewayEvent::MessageCreate(message.clone()));
-    Ok(warp::reply::with_status(
-        warp::reply::json(&message),
-        warp::http::StatusCode::CREATED,
-    ))
+    let message = message.strip_attachment_contents();
+    let reply = warp::reply::json(&message);
+
+    dispatch!(GatewayEvent::MessageCreate(message));
+    Ok(warp::reply::with_status(reply, warp::http::StatusCode::CREATED))
 }
 
 /// Fetch a channel's messages.

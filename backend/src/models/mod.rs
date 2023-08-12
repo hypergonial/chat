@@ -1,7 +1,9 @@
 pub mod appstate;
+pub mod attachment;
 pub mod auth;
 pub mod channel;
 pub mod db;
+pub mod errors;
 pub mod gateway_event;
 pub mod guild;
 pub mod member;

@@ -1,58 +1,5 @@
 {
   "db": "PostgreSQL",
-  "03f1fea0ae02be5c91c4a88edf9c27651eed542c7378c33ace1fbb5061c41e7d": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "channel_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "content",
-          "ordinal": 3,
-          "type_info": "Text"
-        },
-        {
-          "name": "username",
-          "ordinal": 4,
-          "type_info": "Text"
-        },
-        {
-          "name": "display_name",
-          "ordinal": 5,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        false,
-        false,
-        false,
-        true
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8",
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT messages.*, users.username, users.display_name\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                WHERE messages.channel_id = $1 AND messages.id > $2 AND messages.id < $3\n                ORDER BY messages.id DESC LIMIT $4"
-  },
   "0b72902bc8ec599bc847b3671444f3f19f59bdcc47e22697d73196df434c9aca": {
     "describe": {
       "columns": [],
@@ -125,7 +72,7 @@
     },
     "query": "SELECT id, name, owner_id FROM guilds WHERE id = $1"
   },
-  "4926bbb269cf3007e0b4f5dbc5dbd812737abbf81a5dfb72bd9e919994b6e9d1": {
+  "3dd874a716961776d2af11b9ba4adc3123a8cb23b94acd48a69c04cf56feb4a8": {
     "describe": {
       "columns": [
         {
@@ -157,6 +104,16 @@
           "name": "display_name",
           "ordinal": 5,
           "type_info": "Text"
+        },
+        {
+          "name": "attachment_id",
+          "ordinal": 6,
+          "type_info": "Int4"
+        },
+        {
+          "name": "attachment_filename",
+          "ordinal": 7,
+          "type_info": "Text"
         }
       ],
       "nullable": [
@@ -165,15 +122,18 @@
         false,
         false,
         false,
-        true
+        true,
+        false,
+        false
       ],
       "parameters": {
         "Left": [
+          "Int8",
           "Int8"
         ]
       }
     },
-    "query": "SELECT messages.*, users.username, users.display_name\n            FROM messages\n            LEFT JOIN users ON messages.user_id = users.id\n            WHERE messages.id = $1"
+    "query": "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                LEFT JOIN attachments ON messages.id = attachments.message_id\n                WHERE messages.channel_id = $1\n                ORDER BY messages.id DESC LIMIT $2"
   },
   "5b43e57dd2a10bdb091056852edcef24d3c23b183a1c330af85c2b02e0e164db": {
     "describe": {
@@ -270,6 +230,39 @@
     },
     "query": "SELECT id, username, display_name, last_presence\n            FROM users\n            WHERE username = $1"
   },
+  "7639104e0f0077f7d7e59a83731a2cc786f8614eee653031a1fb84e3bd73b9b2": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        },
+        {
+          "name": "filename",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "message_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT id, filename, message_id\n            FROM attachments\n            WHERE id = $1 AND message_id = $2"
+  },
   "79a40009b7e09a7b443779142a8022f65c38ab7d75a362c5c1a1ab1052840234": {
     "describe": {
       "columns": [
@@ -342,57 +335,6 @@
       }
     },
     "query": "INSERT INTO messages (id, user_id, channel_id, content)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (id) DO UPDATE\n            SET user_id = $2, channel_id = $3, content = $4"
-  },
-  "8bb8ff2a814c6fc3586f686001518cbd2e81c8c27a1b86a7038f1c8481f82a28": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int8"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 1,
-          "type_info": "Int8"
-        },
-        {
-          "name": "channel_id",
-          "ordinal": 2,
-          "type_info": "Int8"
-        },
-        {
-          "name": "content",
-          "ordinal": 3,
-          "type_info": "Text"
-        },
-        {
-          "name": "username",
-          "ordinal": 4,
-          "type_info": "Text"
-        },
-        {
-          "name": "display_name",
-          "ordinal": 5,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        false,
-        false,
-        false,
-        true
-      ],
-      "parameters": {
-        "Left": [
-          "Int8",
-          "Int8"
-        ]
-      }
-    },
-    "query": "SELECT messages.*, users.username, users.display_name\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                WHERE messages.channel_id = $1\n                ORDER BY messages.id DESC LIMIT $2"
   },
   "8e8e06ebe38aac297f6e4f4420f65c6d230847a6647e4f8d86fb2fff6e9a1494": {
     "describe": {
@@ -517,6 +459,71 @@
     },
     "query": "DELETE FROM guilds WHERE id = $1"
   },
+  "b172f535557e77c8785847e3b6b04d1c4351a0451adc184ae381020e22889445": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "attachment_id",
+          "ordinal": 6,
+          "type_info": "Int4"
+        },
+        {
+          "name": "attachment_filename",
+          "ordinal": 7,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                LEFT JOIN attachments ON messages.id = attachments.message_id\n                WHERE messages.channel_id = $1 AND messages.id > $2 AND messages.id < $3\n                ORDER BY messages.id DESC LIMIT $4"
+  },
   "b621a0fadcbee2c113143dd975e10c3d534f2cb4140c3282c385afe467aa02dd": {
     "describe": {
       "columns": [
@@ -572,6 +579,68 @@
       }
     },
     "query": "SELECT members.*, users.username, users.display_name, users.last_presence \n            FROM members\n            INNER JOIN users ON users.id = members.user_id\n            WHERE members.guild_id = $1"
+  },
+  "bc0f4db9d182c4ac75dbf8c1b38b62b0ce02d1338cca195e74da8e8ac828e932": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "channel_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        },
+        {
+          "name": "content",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "username",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "display_name",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "attachment_id",
+          "ordinal": 6,
+          "type_info": "Int4"
+        },
+        {
+          "name": "attachment_filename",
+          "ordinal": 7,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        false,
+        false,
+        false,
+        true,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename\n            FROM messages\n            LEFT JOIN users ON messages.user_id = users.id\n            LEFT JOIN attachments ON messages.id = attachments.message_id\n            WHERE messages.id = $1"
   },
   "c307e09ca377d1682cb81ea91e446e4a0f8751fe145553d9a6ea2e28cc11d5af": {
     "describe": {
@@ -694,6 +763,38 @@
     },
     "query": "SELECT * FROM channels WHERE id = $1"
   },
+  "f744c51cf9b99000268c23cdeeff3635ce28229ea8cf06cb520ef3bd0c4dccd3": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        },
+        {
+          "name": "filename",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "message_id",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT id, filename, message_id\n            FROM attachments\n            WHERE message_id = $1"
+  },
   "f895d442c658bcf9634c8b1188857dc104451a1579523e93ac87982decfd4c48": {
     "describe": {
       "columns": [
@@ -725,6 +826,20 @@
       }
     },
     "query": "SELECT guilds.id, guilds.name, guilds.owner_id \n            FROM guilds JOIN members ON guilds.id = members.guild_id \n            WHERE members.user_id = $1"
+  },
+  "f99a08bfc90c4291fb65301a1d5053315e061396398d8ab1aa4196510855a383": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Text",
+          "Int8"
+        ]
+      }
+    },
+    "query": "INSERT INTO attachments (id, filename, message_id)\n            VALUES ($1, $2, $3) ON CONFLICT (id, message_id) DO UPDATE SET filename = $2"
   },
   "fc7ecd98dad2144f8f01d9ec80c4d992c017cb00c10c6b6cbc24a091a6260369": {
     "describe": {

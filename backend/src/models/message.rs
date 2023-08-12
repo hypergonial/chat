@@ -1,8 +1,19 @@
 use chrono::{DateTime, Utc};
 use derive_builder::Builder;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use slice_group_by::GroupBy;
+use tokio_stream::StreamExt;
+use warp::{multipart::FormData, Buf};
 
-use super::{appstate::APP, member::UserLike, rest::CreateMessage, snowflake::Snowflake, user::User};
+use super::{
+    appstate::APP,
+    attachment::{Attachment, AttachmentLike},
+    errors::ChatError,
+    member::UserLike,
+    rest::CreateMessage,
+    snowflake::Snowflake,
+    user::User,
+};
 
 /// Represents a message record stored in the database.
 pub struct MessageRecord {
@@ -21,107 +32,147 @@ pub struct ExtendedMessageRecord {
     pub user_id: Option<i64>,
     pub username: Option<String>,
     pub display_name: Option<String>,
+    pub attachment_id: Option<i32>,
+    pub attachment_filename: Option<String>,
 }
 
 /// A chat message.
-#[derive(Serialize, Deserialize, Debug, Clone, Builder)]
-#[builder(setter(into))]
+#[derive(Serialize, Debug, Clone, Builder)]
+#[builder(setter(into), build_fn(validate = "Self::validate"))]
 pub struct Message {
     /// The id of the message.
     id: Snowflake,
+
     /// The id of the channel this message was sent in.
     channel_id: Snowflake,
+
     /// The author of the message. This may be none if the author has been deleted since.
     #[builder(setter(strip_option))]
     author: Option<UserLike>,
+
     /// A nonce that can be used by a client to determine if the message was sent.
     /// The nonce is not stored in the database and thus is not returned by REST calls.
-    #[builder(setter(strip_option), default)]
+    #[builder(default)]
     nonce: Option<String>,
+
     /// The content of the message.
-    pub content: String,
+    #[builder(default)]
+    pub content: Option<String>,
+
+    /// Attachments sent with this message.
+    #[builder(default)]
+    attachments: Vec<AttachmentLike>,
+}
+
+impl MessageBuilder {
+    fn validate(&self) -> Result<(), String> {
+        if self.content.is_none() && (self.attachments.is_none() || self.attachments.as_ref().unwrap().is_empty()) {
+            Err("Message must have content or attachments".to_string())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl Message {
-    /// Create a new message with the given id, author, content, and nonce.
-    pub fn new(id: Snowflake, channel_id: Snowflake, author: UserLike, content: String, nonce: Option<String>) -> Self {
-        Message {
-            id,
-            channel_id,
-            author: Some(author),
-            content,
-            nonce,
-        }
-    }
-
     /// Create a new builder for a message.
     pub fn builder() -> MessageBuilder {
         MessageBuilder::default()
     }
 
-    /// Create a new message from the given record.
+    /// Create a new message or messages from the given records. Multiple records are linked together by their ID.
+    pub fn from_records(records: &[ExtendedMessageRecord]) -> Vec<Self> {
+        if records.is_empty() {
+            return Vec::new();
+        }
+
+        records
+            .linear_group_by(|a, b| a.id == b.id)
+            .map(|group| {
+                let author = group[0].user_id.map(|user_id| {
+                    UserLike::User(
+                        User::builder()
+                            .id(user_id)
+                            .username(group[0].username.clone().unwrap()) // SAFETY: This is safe because user_id is not None.
+                            .display_name(group[0].display_name.clone())
+                            .build()
+                            .expect("Failed to build user"),
+                    )
+                });
+
+                let mut attachments = Vec::new();
+
+                for record in group {
+                    if let Ok(attachment) = record.try_into() {
+                        attachments.push(AttachmentLike::Partial(attachment));
+                    }
+                }
+
+                Self {
+                    id: group[0].id.into(),
+                    channel_id: group[0].channel_id.into(),
+                    author,
+                    content: Some(group[0].content.clone()),
+                    nonce: None,
+                    attachments,
+                }
+            })
+            .collect()
+    }
+
+    /// Create a new message from the given formdata. Assigns a new snowflake to the message.
     ///
-    /// This will fetch the author from the database.
+    /// ## Errors
     ///
-    /// ## Panics
-    ///
-    /// This function will panic if the author is not found in the database.
+    /// * `anyhow::Error` - If the formdata is invalid
     ///
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn from_record(record: MessageRecord) -> Self {
-        let mut author = None;
-        if let Some(author_id) = record.user_id {
-            author = Some(UserLike::User(
-                User::fetch(author_id.into())
-                    .await
-                    .expect("Failed to fetch user from database."),
-            ));
+    pub async fn from_formdata(author: UserLike, channel_id: Snowflake, mut form: FormData) -> anyhow::Result<Self> {
+        let id = Snowflake::gen_new().await;
+        let mut attachments = Vec::new();
+        let mut builder = Message::builder();
+
+        builder.id(id).channel_id(channel_id).author(author);
+
+        while let Some(part) = form.next().await {
+            let Ok(mut part) = part else {
+                tracing::warn!("Failed to read form-data part, this error should not happen!");
+                continue // Unsure why this can fail
+            };
+
+            if part.name() == "json" && part.content_type().is_some_and(|ct| ct == "application/json") {
+                // TODO: More descriptive error messages
+                let Some(Ok(data)) = part.data().await else {
+                    anyhow::bail!("Failed to read json part of formdata");
+                };
+                let Ok(payload) = serde_json::from_slice::<CreateMessage>(data.chunk()) else {
+                    anyhow::bail!("Failed to parse json part of formdata")
+                };
+                builder.content(payload.content).nonce(payload.nonce.clone());
+            } else {
+                attachments.push(AttachmentLike::Full(Attachment::try_from_form_part(part, id)?));
+            }
         }
 
-        Self {
-            id: record.id.into(),
-            channel_id: record.channel_id.into(),
-            author,
-            content: record.content,
-            nonce: None,
-        }
+        builder.attachments(attachments).build().map_err(Into::into)
     }
 
-    /// Create a new message from the given record.
-    ///
-    /// This will not fetch the author from the database, and will instead use the author data from the record.
-    pub fn from_extended_record(record: ExtendedMessageRecord) -> Self {
-        let author = record.user_id.map(|user_id| {
-            UserLike::User(
-                User::builder()
-                    .id(user_id)
-                    .username(record.username.unwrap()) // SAFETY: This is safe because user_id is not None.
-                    .display_name(record.display_name.unwrap())
-                    .build()
-                    .expect("Failed to build user"),
-            )
-        });
-
-        Self {
-            id: record.id.into(),
-            channel_id: record.channel_id.into(),
-            author,
-            content: record.content.clone(),
-            nonce: None,
-        }
-    }
-
-    /// Create a new message from the given payload. Assigns a new snowflake to the message.
-    pub async fn from_payload(author: UserLike, channel_id: Snowflake, payload: CreateMessage) -> Self {
-        Message {
-            id: Snowflake::gen_new().await,
-            channel_id,
-            author: Some(author),
-            content: payload.content().to_string(),
-            nonce: payload.nonce().clone(),
-        }
+    /// Turns all attachments into partial attachments, removing the attachment contents from memory.
+    pub fn strip_attachment_contents(mut self) -> Self {
+        self.attachments = self
+            .attachments
+            .into_iter()
+            .map(|a| {
+                if let AttachmentLike::Full(f) = a {
+                    AttachmentLike::Partial(f.into())
+                } else {
+                    a
+                }
+            })
+            .collect();
+        self
     }
 
     /// The unique ID of this message.
@@ -141,27 +192,8 @@ impl Message {
         self.id.created_at()
     }
 
-    /* /// Retrieve a message from the database by its ID.
-    /// ## Locks
-    /// * `APP.db` (read)
-    pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = &APP.db.read().await;
-        let id_i64: i64 = id.into();
-        let row = sqlx::query_as!(
-            MessageRecord,
-            "SELECT id, user_id, channel_id, content
-            FROM messages
-            WHERE id = $1",
-            id_i64
-        )
-        .fetch_optional(db.pool())
-        .await
-        .ok()??;
-
-        Some(Self::from_record(&row).await)
-    } */
-
     /// Retrieve a message and fetch its author from the database in one query.
+    /// Attachment contents will not be retrieved from S3.
     ///
     /// ## Locks
     ///
@@ -172,23 +204,26 @@ impl Message {
 
         // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord`
         // contains `Option<T>` for all users fields and sqlx does not recognize this.
-        let record = sqlx::query_as_unchecked!(
+        let records = sqlx::query_as_unchecked!(
             ExtendedMessageRecord,
-            "SELECT messages.*, users.username, users.display_name
+            "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename
             FROM messages
             LEFT JOIN users ON messages.user_id = users.id
+            LEFT JOIN attachments ON messages.id = attachments.message_id
             WHERE messages.id = $1",
             id_i64
         )
-        .fetch_optional(db.pool())
+        .fetch_all(db.pool())
         .await
-        .ok()??;
+        .ok()?;
 
-        Some(Self::from_extended_record(record))
+        Self::from_records(&records).pop()
     }
 
-    /// Commit this message to the database.
-    pub async fn commit(&self) -> Result<(), sqlx::Error> {
+    /// Commit this message to the database. Uploads all attachments to S3.
+    /// It is highly recommended to call [`Message::strip_attachment_contents`] after calling
+    /// this method to remove the attachment contents from memory.
+    pub async fn commit(&self) -> Result<(), ChatError> {
         let db = &APP.db.read().await;
         let id_i64: i64 = self.id.into();
         let author_id_i64: Option<i64> = self.author.as_ref().map(|u| u.id().into());
@@ -205,6 +240,12 @@ impl Message {
         )
         .execute(db.pool())
         .await?;
+
+        for attachment in &self.attachments {
+            if let AttachmentLike::Full(f) = attachment {
+                f.commit().await?;
+            }
+        }
         Ok(())
     }
 }
