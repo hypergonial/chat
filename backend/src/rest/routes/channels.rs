@@ -58,7 +58,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 
     fetch_channel
         .or(create_msg)
-        /* .or(fetch_messages) */
+        .or(fetch_messages)
         .or(delete_channel)
         .boxed()
 }
