@@ -12,6 +12,7 @@ use regex::Regex;
 use s3::error::S3Error;
 use serde::Serialize;
 use warp::multipart::Part;
+use bytes::Bytes;
 
 use super::snowflake::Snowflake;
 
@@ -29,8 +30,14 @@ pub trait AttachmentT {
     fn filename(&self) -> &String;
     /// The ID of the message this attachment belongs to.
     fn message_id(&self) -> Snowflake;
+    /// The ID of the channel the message was sent to.
+    fn channel_id(&self) -> Snowflake;
     /// The MIME-type of the file.
     fn mime(&self) -> Mime;
+    /// The path to the attachment in S3.
+    fn s3_path(&self) -> String {
+        format!("{}/{}/{}/{}", self.channel_id(), self.message_id(), self.id(), self.filename())
+    }
 }
 
 /// An object representing either a partial or full attachment.
@@ -53,22 +60,26 @@ pub struct Attachment {
     filename: String,
     /// The contents of the file.
     #[serde(skip)]
-    content: Vec<u8>,
+    content: Bytes,
     /// The MIME type of the file.
     content_type: String,
     /// The ID of the message this attachment belongs to.
     #[serde(skip)]
     message_id: Snowflake,
+    /// The ID of the channel the message was sent to.
+    #[serde(skip)]
+    channel_id: Snowflake,
 }
 
 impl Attachment {
     /// Create a new attachment with the given ID, filename, and content.
-    pub fn new(id: u8, filename: String, content: Vec<u8>, content_type: String, message_id: Snowflake) -> Self {
+    pub fn new(id: u8, filename: String, content: impl Into<Bytes>, content_type: String, channel_id: Snowflake, message_id: Snowflake) -> Self {
         Self {
             id,
             filename,
-            content,
+            content: content.into(),
             content_type,
+            channel_id,
             message_id,
         }
     }
@@ -112,10 +123,6 @@ impl Attachment {
             .map_err(Into::into)
     }
 
-    pub fn s3_path(&self) -> String {
-        format!("{}/{}/{}", self.message_id, self.id, self.filename)
-    }
-
     /// Commit the attachment to the database. Uploads the contents to S3 implicitly.
     pub async fn commit(&self) -> Result<(), ChatError> {
         let db = &APP.db.read().await;
@@ -146,7 +153,7 @@ impl Attachment {
     /// Download the attachment content from S3.
     pub async fn download(&mut self) -> Result<(), S3Error> {
         let bucket = APP.buckets().attachments();
-        self.content = bucket.get_object(self.s3_path()).await?.to_vec();
+        self.content = bucket.get_object(self.s3_path()).await?.bytes().clone();
         Ok(())
     }
 
@@ -166,6 +173,10 @@ impl AttachmentT for Attachment {
 
     fn filename(&self) -> &String {
         &self.filename
+    }
+
+    fn channel_id(&self) -> Snowflake {
+        self.channel_id
     }
 
     fn message_id(&self) -> Snowflake {
@@ -198,22 +209,25 @@ pub struct PartialAttachment {
     /// The ID of the message this attachment belongs to.
     #[serde(skip)]
     message_id: Snowflake,
+    #[serde(skip)]
+    channel_id: Snowflake,
 }
 
 impl PartialAttachment {
     /// Create a new partial attachment with the given ID and filename.
-    pub fn new(id: u8, filename: String, content_type: String, message_id: Snowflake) -> Self {
+    pub fn new(id: u8, filename: String, content_type: String, channel_id: Snowflake, message_id: Snowflake) -> Self {
         Self {
             id,
             filename,
             content_type,
+            channel_id,
             message_id,
         }
     }
 
     /// Download the attachment content from S3, turning this into a full attachment.
     pub async fn download(self) -> Attachment {
-        let mut attachment = Attachment::new(self.id, self.filename, Vec::new(), self.content_type, self.message_id);
+        let mut attachment = Attachment::new(self.id, self.filename, Vec::new(), self.content_type, self.channel_id, self.message_id);
         attachment.download().await.unwrap();
         attachment
     }
@@ -278,6 +292,7 @@ impl From<Attachment> for PartialAttachment {
         Self {
             id: attachment.id,
             filename: attachment.filename,
+            channel_id: attachment.channel_id,
             message_id: attachment.message_id,
             content_type: attachment.content_type,
         }
@@ -289,6 +304,7 @@ impl From<PartialAttachmentRecord> for PartialAttachment {
         Self {
             id: record.id as u8,
             filename: record.filename,
+            channel_id: Snowflake::from(record.message_id),
             message_id: Snowflake::from(record.message_id),
             content_type: record.content_type,
         }
@@ -306,6 +322,7 @@ impl TryFrom<&ExtendedMessageRecord> for PartialAttachment {
             .ok_or("No attachment filename".to_string())?;
         Ok(Self {
             id: id.try_into().unwrap(),
+            channel_id: record.channel_id.into(),
             message_id: record.id.into(),
             filename: filename.clone(),
             content_type: record
@@ -323,6 +340,10 @@ impl AttachmentT for PartialAttachment {
 
     fn filename(&self) -> &String {
         &self.filename
+    }
+
+    fn channel_id(&self) -> Snowflake {
+        self.channel_id
     }
 
     fn message_id(&self) -> Snowflake {
