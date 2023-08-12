@@ -4,6 +4,7 @@ use super::{
     message::ExtendedMessageRecord,
 };
 use bytes::BufMut;
+use bytes::Bytes;
 use derive_builder::Builder;
 use enum_dispatch::enum_dispatch;
 use lazy_static::lazy_static;
@@ -12,7 +13,6 @@ use regex::Regex;
 use s3::error::S3Error;
 use serde::Serialize;
 use warp::multipart::Part;
-use bytes::Bytes;
 
 use super::snowflake::Snowflake;
 
@@ -36,7 +36,13 @@ pub trait AttachmentT {
     fn mime(&self) -> Mime;
     /// The path to the attachment in S3.
     fn s3_path(&self) -> String {
-        format!("{}/{}/{}/{}", self.channel_id(), self.message_id(), self.id(), self.filename())
+        format!(
+            "{}/{}/{}/{}",
+            self.channel_id(),
+            self.message_id(),
+            self.id(),
+            self.filename()
+        )
     }
 }
 
@@ -73,7 +79,14 @@ pub struct Attachment {
 
 impl Attachment {
     /// Create a new attachment with the given ID, filename, and content.
-    pub fn new(id: u8, filename: String, content: impl Into<Bytes>, content_type: String, channel_id: Snowflake, message_id: Snowflake) -> Self {
+    pub fn new(
+        id: u8,
+        filename: String,
+        content: impl Into<Bytes>,
+        content_type: String,
+        channel_id: Snowflake,
+        message_id: Snowflake,
+    ) -> Self {
         Self {
             id,
             filename,
@@ -146,7 +159,9 @@ impl Attachment {
     /// Upload the attachment content to S3. This function is called implicitly by [`Attachment`]`::commit`.
     pub async fn upload(&self) -> Result<(), S3Error> {
         let bucket = APP.buckets().attachments();
-        bucket.put_object_with_content_type(self.s3_path(), &self.content, &self.content_type).await?;
+        bucket
+            .put_object_with_content_type(self.s3_path(), &self.content, &self.content_type)
+            .await?;
         Ok(())
     }
 
@@ -227,7 +242,14 @@ impl PartialAttachment {
 
     /// Download the attachment content from S3, turning this into a full attachment.
     pub async fn download(self) -> Attachment {
-        let mut attachment = Attachment::new(self.id, self.filename, Vec::new(), self.content_type, self.channel_id, self.message_id);
+        let mut attachment = Attachment::new(
+            self.id,
+            self.filename,
+            Vec::new(),
+            self.content_type,
+            self.channel_id,
+            self.message_id,
+        );
         attachment.download().await.unwrap();
         attachment
     }
