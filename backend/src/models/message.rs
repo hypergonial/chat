@@ -152,7 +152,7 @@ impl Message {
                 let payload = serde_json::from_slice::<CreateMessage>(data.chunk())?;
                 builder.content(payload.content).nonce(payload.nonce.clone());
             } else {
-                let attachment = Attachment::try_from_form_part(part, id).await?;
+                let attachment = Attachment::try_from_form_part(part, id, channel_id).await?;
 
                 if attachments.iter().any(|a| a.id() == attachment.id()) {
                     return Err(ChatError::DuplicateFieldError("attachment.id".to_string()));

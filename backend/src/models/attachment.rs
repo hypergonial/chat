@@ -101,7 +101,7 @@ impl Attachment {
         AttachmentBuilder::default()
     }
 
-    pub async fn try_from_form_part(mut part: Part, message_id: Snowflake) -> Result<Self, ChatError> {
+    pub async fn try_from_form_part(mut part: Part, channel_id: Snowflake, message_id: Snowflake) -> Result<Self, ChatError> {
         let mut builder = Attachment::builder();
 
         let Some(caps) = ATTACHMENT_REGEX.captures(part.name()) else {
@@ -125,6 +125,7 @@ impl Attachment {
         }
 
         builder
+            .channel_id(channel_id)
             .message_id(message_id)
             .content(bytes)
             .content_type(
