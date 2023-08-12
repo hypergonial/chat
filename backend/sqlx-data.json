@@ -456,6 +456,21 @@
     },
     "query": "SELECT * FROM channels WHERE guild_id = $1"
   },
+  "a049c315b4acd8c74b710585af242f733173309fcc5713997ef1c0541d43cc4f": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int4",
+          "Text",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "INSERT INTO attachments (id, filename, message_id, channel_id)\n            VALUES ($1, $2, $3, $4) ON CONFLICT (id, message_id) DO UPDATE SET filename = $2"
+  },
   "a1fbaac7941f8dc321c32e36f8caf2fec098f23317cc20bce9f8847a624c24e7": {
     "describe": {
       "columns": [],
@@ -856,20 +871,6 @@
       }
     },
     "query": "SELECT guilds.id, guilds.name, guilds.owner_id \n            FROM guilds JOIN members ON guilds.id = members.guild_id \n            WHERE members.user_id = $1"
-  },
-  "f99a08bfc90c4291fb65301a1d5053315e061396398d8ab1aa4196510855a383": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Int4",
-          "Text",
-          "Int8"
-        ]
-      }
-    },
-    "query": "INSERT INTO attachments (id, filename, message_id)\n            VALUES ($1, $2, $3) ON CONFLICT (id, message_id) DO UPDATE SET filename = $2"
   },
   "fc7ecd98dad2144f8f01d9ec80c4d992c017cb00c10c6b6cbc24a091a6260369": {
     "describe": {

@@ -141,13 +141,15 @@ impl Attachment {
     pub async fn commit(&self) -> Result<(), ChatError> {
         let db = &APP.db.read().await;
         let message_id: i64 = self.message_id.into();
+        let channel_id: i64 = self.channel_id.into();
 
         sqlx::query!(
-            "INSERT INTO attachments (id, filename, message_id)
-            VALUES ($1, $2, $3) ON CONFLICT (id, message_id) DO UPDATE SET filename = $2",
+            "INSERT INTO attachments (id, filename, message_id, channel_id)
+            VALUES ($1, $2, $3, $4) ON CONFLICT (id, message_id) DO UPDATE SET filename = $2",
             self.id as i32,
             self.filename,
-            message_id
+            message_id,
+            channel_id,
         )
         .execute(db.pool())
         .await?;
