@@ -1,7 +1,13 @@
-use super::{appstate::APP, errors::ChatError, message::ExtendedMessageRecord};
+use super::{
+    appstate::APP,
+    errors::{BuilderError, ChatError},
+    message::ExtendedMessageRecord,
+};
+use bytes::BufMut;
 use derive_builder::Builder;
 use enum_dispatch::enum_dispatch;
 use lazy_static::lazy_static;
+use mime::Mime;
 use regex::Regex;
 use s3::error::S3Error;
 use serde::Serialize;
@@ -23,6 +29,8 @@ trait AttachmentT {
     fn filename(&self) -> &String;
     /// The ID of the message this attachment belongs to.
     fn message_id(&self) -> Snowflake;
+    /// The MIME-type of the file.
+    fn mime(&self) -> Mime;
 }
 
 /// An object representing either a partial or full attachment.
@@ -37,6 +45,7 @@ pub enum AttachmentLike {
 }
 
 #[derive(Debug, Clone, Builder, Serialize)]
+#[builder(setter(into), build_fn(error = "BuilderError"))]
 pub struct Attachment {
     /// Describes the ordering of attachments within a message, starting from 0.
     id: u8,
@@ -45,6 +54,8 @@ pub struct Attachment {
     /// The contents of the file.
     #[serde(skip)]
     content: Vec<u8>,
+    /// The MIME type of the file.
+    content_type: String,
     /// The ID of the message this attachment belongs to.
     #[serde(skip)]
     message_id: Snowflake,
@@ -52,11 +63,12 @@ pub struct Attachment {
 
 impl Attachment {
     /// Create a new attachment with the given ID, filename, and content.
-    pub fn new(id: u8, filename: String, content: Vec<u8>, message_id: Snowflake) -> Self {
+    pub fn new(id: u8, filename: String, content: Vec<u8>, content_type: String, message_id: Snowflake) -> Self {
         Self {
             id,
             filename,
             content,
+            content_type,
             message_id,
         }
     }
@@ -65,17 +77,37 @@ impl Attachment {
         AttachmentBuilder::default()
     }
 
-    pub fn try_from_form_part(part: Part, message_id: Snowflake) -> anyhow::Result<Self> {
+    pub async fn try_from_form_part(mut part: Part, message_id: Snowflake) -> Result<Self, ChatError> {
+        let mut builder = Attachment::builder();
+
         let Some(caps) = ATTACHMENT_REGEX.captures(part.name()) else {
-            anyhow::bail!("Invalid attachment name: {}", part.name());
+            return Err(ChatError::MissingFieldError("id".to_string()));
         };
+        builder.id(caps["id"].parse::<u8>()?);
+
         let Some(filename) = part.filename() else {
-            anyhow::bail!("Missing filename for attachment: {}", part.name());
+            return Err(ChatError::MissingFieldError("filename".to_string()));
         };
-        Self::builder()
-            .id(caps["id"].parse()?)
-            .filename(filename.to_string())
+        builder.filename(filename.to_string());
+
+        let mut bytes: Vec<u8> = Vec::new();
+
+        // part.data() only returns a piece of the content at a time
+        while let Some(content) = part.data().await {
+            let Ok(content) = content else {
+                return Err(ChatError::MalformedFieldError("content".to_string()));
+            };
+            bytes.put(content);
+        }
+
+        builder
             .message_id(message_id)
+            .content(bytes)
+            .content_type(
+                part.content_type()
+                    .map(String::from)
+                    .unwrap_or("application/octet-stream".to_string()),
+            )
             .build()
             .map_err(Into::into)
     }
@@ -107,7 +139,7 @@ impl Attachment {
     /// Upload the attachment content to S3. This function is called implicitly by [`Attachment`]`::commit`.
     pub async fn upload(&self) -> Result<(), S3Error> {
         let bucket = APP.buckets().attachments();
-        bucket.put_object(self.s3_path(), &self.content).await?;
+        bucket.put_object_with_content_type(self.s3_path(), &self.content, &self.content_type).await?;
         Ok(())
     }
 
@@ -139,6 +171,10 @@ impl AttachmentT for Attachment {
     fn message_id(&self) -> Snowflake {
         self.message_id
     }
+
+    fn mime(&self) -> Mime {
+        self.content_type.parse().unwrap()
+    }
 }
 
 /// A partial attachment, as stored in the database.
@@ -146,15 +182,19 @@ pub struct PartialAttachmentRecord {
     id: i32,
     filename: String,
     message_id: i64,
+    content_type: String,
 }
 
 /// A partial attachment, with the binary content not loaded.
 #[derive(Debug, Clone, Builder, Serialize)]
+#[builder(setter(into), build_fn(error = "BuilderError"))]
 pub struct PartialAttachment {
     /// Describes the ordering of attachments within a message, starting from 0.
     id: u8,
     /// The name of the attachment file, including the file extension.
     filename: String,
+    /// The MIME type of the file.
+    content_type: String,
     /// The ID of the message this attachment belongs to.
     #[serde(skip)]
     message_id: Snowflake,
@@ -162,17 +202,18 @@ pub struct PartialAttachment {
 
 impl PartialAttachment {
     /// Create a new partial attachment with the given ID and filename.
-    pub fn new(id: u8, filename: String, message_id: Snowflake) -> Self {
+    pub fn new(id: u8, filename: String, content_type: String, message_id: Snowflake) -> Self {
         Self {
             id,
             filename,
+            content_type,
             message_id,
         }
     }
 
     /// Download the attachment content from S3, turning this into a full attachment.
     pub async fn download(self) -> Attachment {
-        let mut attachment = Attachment::new(self.id, self.filename, Vec::new(), self.message_id);
+        let mut attachment = Attachment::new(self.id, self.filename, Vec::new(), self.content_type, self.message_id);
         attachment.download().await.unwrap();
         attachment
     }
@@ -193,7 +234,7 @@ impl PartialAttachment {
 
         Ok(sqlx::query_as!(
             PartialAttachmentRecord,
-            "SELECT id, filename, message_id
+            "SELECT id, filename, message_id, content_type
             FROM attachments
             WHERE id = $1 AND message_id = $2",
             id as i32,
@@ -219,7 +260,7 @@ impl PartialAttachment {
 
         Ok(sqlx::query_as!(
             PartialAttachmentRecord,
-            "SELECT id, filename, message_id
+            "SELECT id, filename, message_id, content_type
             FROM attachments
             WHERE message_id = $1",
             message_id
@@ -238,6 +279,7 @@ impl From<Attachment> for PartialAttachment {
             id: attachment.id,
             filename: attachment.filename,
             message_id: attachment.message_id,
+            content_type: attachment.content_type,
         }
     }
 }
@@ -248,6 +290,7 @@ impl From<PartialAttachmentRecord> for PartialAttachment {
             id: record.id as u8,
             filename: record.filename,
             message_id: Snowflake::from(record.message_id),
+            content_type: record.content_type,
         }
     }
 }
@@ -265,6 +308,10 @@ impl TryFrom<&ExtendedMessageRecord> for PartialAttachment {
             id: id.try_into().unwrap(),
             message_id: record.id.into(),
             filename: filename.clone(),
+            content_type: record
+                .attachment_content_type
+                .clone()
+                .unwrap_or("application/octet-stream".to_string()),
         })
     }
 }
@@ -280,5 +327,9 @@ impl AttachmentT for PartialAttachment {
 
     fn message_id(&self) -> Snowflake {
         self.message_id
+    }
+
+    fn mime(&self) -> Mime {
+        self.content_type.parse().unwrap()
     }
 }

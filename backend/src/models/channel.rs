@@ -119,7 +119,7 @@ impl TextChannel {
             // contains `Option<T>` for all users fields and sqlx does not recognize this.
             sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
-                "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename
+                "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
                 FROM messages
                 LEFT JOIN users ON messages.user_id = users.id
                 LEFT JOIN attachments ON messages.id = attachments.message_id
@@ -134,7 +134,7 @@ impl TextChannel {
             // SAFETY: Ditto, see above.
             sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
-                "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename
+                "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
                 FROM messages
                 LEFT JOIN users ON messages.user_id = users.id
                 LEFT JOIN attachments ON messages.id = attachments.message_id

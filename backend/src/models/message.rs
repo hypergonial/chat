@@ -8,7 +8,7 @@ use warp::{multipart::FormData, Buf};
 use super::{
     appstate::APP,
     attachment::{Attachment, AttachmentLike},
-    errors::ChatError,
+    errors::{BuilderError, ChatError},
     member::UserLike,
     rest::CreateMessage,
     snowflake::Snowflake,
@@ -34,11 +34,12 @@ pub struct ExtendedMessageRecord {
     pub display_name: Option<String>,
     pub attachment_id: Option<i32>,
     pub attachment_filename: Option<String>,
+    pub attachment_content_type: Option<String>,
 }
 
 /// A chat message.
 #[derive(Serialize, Debug, Clone, Builder)]
-#[builder(setter(into), build_fn(validate = "Self::validate"))]
+#[builder(setter(into), build_fn(validate = "Self::validate", error = "BuilderError"))]
 pub struct Message {
     /// The id of the message.
     id: Snowflake,
@@ -129,7 +130,7 @@ impl Message {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn from_formdata(author: UserLike, channel_id: Snowflake, mut form: FormData) -> anyhow::Result<Self> {
+    pub async fn from_formdata(author: UserLike, channel_id: Snowflake, mut form: FormData) -> Result<Self, ChatError> {
         let id = Snowflake::gen_new().await;
         let mut attachments = Vec::new();
         let mut builder = Message::builder();
@@ -142,17 +143,16 @@ impl Message {
                 continue // Unsure why this can fail
             };
 
+            tracing::debug!("Form-data part: {:?}", part);
+
             if part.name() == "json" && part.content_type().is_some_and(|ct| ct == "application/json") {
-                // TODO: More descriptive error messages
                 let Some(Ok(data)) = part.data().await else {
-                    anyhow::bail!("Failed to read json part of formdata");
+                    return Err(ChatError::MalformedFieldError("json".to_string()));
                 };
-                let Ok(payload) = serde_json::from_slice::<CreateMessage>(data.chunk()) else {
-                    anyhow::bail!("Failed to parse json part of formdata")
-                };
+                let payload = serde_json::from_slice::<CreateMessage>(data.chunk())?;
                 builder.content(payload.content).nonce(payload.nonce.clone());
             } else {
-                attachments.push(AttachmentLike::Full(Attachment::try_from_form_part(part, id)?));
+                attachments.push(AttachmentLike::Full(Attachment::try_from_form_part(part, id).await?));
             }
         }
 
@@ -206,7 +206,7 @@ impl Message {
         // contains `Option<T>` for all users fields and sqlx does not recognize this.
         let records = sqlx::query_as_unchecked!(
             ExtendedMessageRecord,
-            "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename
+            "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
             FROM messages
             LEFT JOIN users ON messages.user_id = users.id
             LEFT JOIN attachments ON messages.id = attachments.message_id

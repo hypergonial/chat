@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::guild::GuildRecord;
 
-use super::{appstate::APP, guild::Guild, rest::CreateUser, snowflake::Snowflake};
+use super::{appstate::APP, errors::BuilderError, guild::Guild, rest::CreateUser, snowflake::Snowflake};
 
 lazy_static! {
     static ref USERNAME_REGEX: Regex =
@@ -55,7 +55,7 @@ pub struct UserRecord {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, Builder)]
-#[builder(setter(into))]
+#[builder(setter(into), build_fn(error = "BuilderError"))]
 pub struct User {
     /// The snowflake belonging to this user.
     id: Snowflake,

@@ -179,7 +179,9 @@ impl Buckets {
         )
         .unwrap();
 
-        let attachments = Bucket::new("attachments", region, credentials).unwrap();
+        let attachments = Bucket::new("attachments", region, credentials)
+            .unwrap()
+            .with_path_style();
         Buckets { attachments }
     }
 

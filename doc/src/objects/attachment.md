@@ -8,6 +8,7 @@ Represents a file attached to a [Message](./message.md).
 | --- | --- | --- |
 | id | `int` | The attachment's ID, this should determine ordering. |
 | filename | `String` | The attachment's filename, including the file extension. |
+| content_type | `String` | The attachment's [MIME type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types). |
 
 ## Example payload
 
@@ -15,6 +16,7 @@ Represents a file attached to a [Message](./message.md).
 {
     "id": 0,
     "filename": "among_us.png",
+    "content_type": "image/png"
 }
 ```
 

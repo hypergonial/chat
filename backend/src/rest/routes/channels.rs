@@ -7,7 +7,6 @@ use warp::{filters::BoxedFilter, multipart::FormData, Filter};
 
 use super::common::SharedIDLimiter;
 use super::common::{needs_limit, needs_token};
-use crate::dispatch;
 use crate::models::{
     appstate::APP,
     auth::Token,
@@ -20,6 +19,7 @@ use crate::models::{
     snowflake::Snowflake,
 };
 use crate::utils::traits::{OptionExt, ResultExt};
+use crate::{dispatch, models::rejections::BadRequest};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FetchMessagesQuery {
@@ -58,7 +58,7 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 
     fetch_channel
         .or(create_msg)
-        .or(fetch_messages)
+        /* .or(fetch_messages) */
         .or(delete_channel)
         .boxed()
 }
@@ -153,7 +153,10 @@ async fn create_message(
 
     let message = Message::from_formdata(UserLike::Member(member), channel_id, payload)
         .await
-        .or_reject(InternalServerError::db())?;
+        .or_reject_and_log(
+            BadRequest::new("Invalid body. WIP ERROR"),
+            "Failed to deserialize message",
+        )?;
 
     message
         .commit()

@@ -36,10 +36,12 @@ Represents a text message sent to a [channel](channel.md).
         {
             "id": 0,
             "filename": "among_us.png",
+            "content_type": "image/png",
         },
         {
             "id": 1,
             "filename": "among_us_2.png",
+            "content_type": "image/png",
         }
     ]
 }
