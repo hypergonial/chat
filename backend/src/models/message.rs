@@ -28,7 +28,7 @@ pub struct MessageRecord {
 pub struct ExtendedMessageRecord {
     pub id: i64,
     pub channel_id: i64,
-    pub content: String,
+    pub content: Option<String>,
     pub user_id: Option<i64>,
     pub username: Option<String>,
     pub display_name: Option<String>,
@@ -113,7 +113,7 @@ impl Message {
                     id: group[0].id.into(),
                     channel_id: group[0].channel_id.into(),
                     author,
-                    content: Some(group[0].content.clone()),
+                    content: group[0].content.clone(),
                     nonce: None,
                     attachments,
                 }
