@@ -40,6 +40,8 @@ pub enum ChatError {
     MissingFieldError(String),
     #[error("Malformed field: {0}")]
     MalformedFieldError(String),
+    #[error("Duplicate field: {0}")]
+    DuplicateFieldError(String),
     #[error("Failed to build object: {0}")]
     BuilderError(#[from] BuilderError),
     #[error("Failed to parse int: {0}")]

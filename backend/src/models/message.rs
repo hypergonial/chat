@@ -7,7 +7,7 @@ use warp::{multipart::FormData, Buf};
 
 use super::{
     appstate::APP,
-    attachment::{Attachment, AttachmentLike},
+    attachment::{Attachment, AttachmentLike, AttachmentT},
     errors::{BuilderError, ChatError},
     member::UserLike,
     rest::CreateMessage,
@@ -132,7 +132,7 @@ impl Message {
     /// * `APP.db` (read)
     pub async fn from_formdata(author: UserLike, channel_id: Snowflake, mut form: FormData) -> Result<Self, ChatError> {
         let id = Snowflake::gen_new().await;
-        let mut attachments = Vec::new();
+        let mut attachments: Vec<AttachmentLike> = Vec::new();
         let mut builder = Message::builder();
 
         builder.id(id).channel_id(channel_id).author(author);
@@ -152,7 +152,12 @@ impl Message {
                 let payload = serde_json::from_slice::<CreateMessage>(data.chunk())?;
                 builder.content(payload.content).nonce(payload.nonce.clone());
             } else {
-                attachments.push(AttachmentLike::Full(Attachment::try_from_form_part(part, id).await?));
+                let attachment = Attachment::try_from_form_part(part, id).await?;
+
+                if attachments.iter().any(|a| a.id() == attachment.id()) {
+                    return Err(ChatError::DuplicateFieldError("attachment.id".to_string()));
+                }
+                attachments.push(AttachmentLike::Full(attachment));
             }
         }
 

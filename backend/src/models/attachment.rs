@@ -21,7 +21,7 @@ lazy_static! {
 
 /// Trait used for enum dispatch
 #[enum_dispatch(AttachmentLike)]
-trait AttachmentT {
+pub trait AttachmentT {
     /// The ID of the attachment.
     /// This determines the ordering of attachments within a message, starting from 0.
     fn id(&self) -> u8;
