@@ -44,13 +44,13 @@ pub struct Member {
 
 impl Member {
     /// Create a new member with the given user, guild id, nickname, and joined at timestamp.
-    pub fn new(user: User, guild_id: Snowflake, nickname: Option<String>, joined_at: i64) -> Self {
+    pub fn new(user: User, guild: impl Into<Snowflake>, nickname: Option<String>, joined_at: i64) -> Self {
         let mut hasher = DefaultHasher::new();
         user.hash(&mut hasher);
         let _user_hash = hasher.finish();
         Member {
             user,
-            guild_id,
+            guild_id: guild.into(),
             nickname,
             joined_at,
             _user_hash,
@@ -90,8 +90,8 @@ impl Member {
     /// * `APP.db` (read)
     pub async fn from_record(record: MemberRecord) -> Self {
         Self::new(
-            User::fetch(record.user_id.into()).await.unwrap(),
-            record.guild_id.into(),
+            User::fetch(record.user_id).await.unwrap(),
+            record.guild_id,
             record.nickname,
             record.joined_at,
         )
@@ -113,13 +113,13 @@ impl Member {
             .build()
             .expect("Failed to build user object.");
 
-        Self::new(user, record.guild_id.into(), record.nickname, record.joined_at)
+        Self::new(user, record.guild_id, record.nickname, record.joined_at)
     }
 
     /// Convert a user into a member with the given guild id.
     /// The join date of the member will be set to the current time.
-    pub async fn from_user(user: User, guild_id: Snowflake) -> Self {
-        Self::new(user, guild_id, None, Utc::now().timestamp())
+    pub async fn from_user(user: User, guild: impl Into<Snowflake>) -> Self {
+        Self::new(user, guild.into(), None, Utc::now().timestamp())
     }
 
     /// Include the user's presence field in the member payload.
@@ -133,10 +133,10 @@ impl Member {
     }
 
     /// Fetch a member from the database by id and guild id.
-    pub async fn fetch(id: Snowflake, guild_id: Snowflake) -> Option<Self> {
+    pub async fn fetch(user: impl Into<Snowflake>, guild: impl Into<Snowflake>) -> Option<Self> {
         let db = APP.db.read().await;
-        let id_64: i64 = id.into();
-        let guild_id_64: i64 = guild_id.into();
+        let id_64: i64 = user.into().into();
+        let guild_id_64: i64 = guild.into().into();
 
         let record = sqlx::query_as!(
             ExtendedMemberRecord,
@@ -198,5 +198,17 @@ impl UserLike {
             UserLike::Member(member) => member.user.id(),
             UserLike::User(user) => user.id(),
         }
+    }
+}
+
+impl From<UserLike> for Snowflake {
+    fn from(user_like: UserLike) -> Self {
+        user_like.id()
+    }
+}
+
+impl From<Member> for Snowflake {
+    fn from(member: Member) -> Self {
+        member.user.id()
     }
 }

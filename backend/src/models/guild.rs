@@ -58,14 +58,14 @@ impl Guild {
     }
 
     /// Constructs a new guild from a payload and owner ID.
-    pub async fn from_payload(payload: CreateGuild, owner_id: Snowflake) -> Self {
-        Self::new(Snowflake::gen_new().await, payload.name, owner_id)
+    pub async fn from_payload(payload: CreateGuild, owner: impl Into<Snowflake>) -> Self {
+        Self::new(Snowflake::gen_new().await, payload.name, owner.into())
     }
 
     /// Fetches a guild from the database by ID.
-    pub async fn fetch(id: Snowflake) -> Option<Self> {
+    pub async fn fetch(guild: impl Into<Snowflake>) -> Option<Self> {
         let db = APP.db.read().await;
-        let id_64: i64 = id.into();
+        let id_64: i64 = guild.into().into();
         let record = sqlx::query_as!(
             GuildRecord,
             "SELECT id, name, owner_id FROM guilds WHERE id = $1",
@@ -79,9 +79,9 @@ impl Guild {
     }
 
     /// Fetches all guilds from the database that a given user is a member of.
-    pub async fn fetch_all_for_user(user_id: Snowflake) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn fetch_all_for_user(user: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
         let db = APP.db.read().await;
-        let user_id_64: i64 = user_id.into();
+        let user_id_64: i64 = user.into().into();
         let records = sqlx::query!(
             "SELECT guilds.id, guilds.name, guilds.owner_id 
             FROM guilds JOIN members ON guilds.id = members.guild_id 
@@ -144,9 +144,9 @@ impl Guild {
     /// Adds a member to the guild.
     ///
     /// Note: This is faster than creating a member and then committing it.
-    pub async fn create_member(&self, user_id: Snowflake) -> Result<(), sqlx::Error> {
+    pub async fn create_member(&self, user: impl Into<Snowflake>) -> Result<(), sqlx::Error> {
         let db = APP.db.read().await;
-        let user_id_64: i64 = user_id.into();
+        let user_id_64: i64 = user.into().into();
         let guild_id_64: i64 = self.id.into();
         sqlx::query!(
             "INSERT INTO members (user_id, guild_id, joined_at)
@@ -163,7 +163,8 @@ impl Guild {
     /// Removes a member from a guild.
     ///
     /// Note: If the member is the owner of the guild, this will fail.
-    pub async fn remove_member(&self, user_id: Snowflake) -> Result<(), anyhow::Error> {
+    pub async fn remove_member(&self, user: impl Into<Snowflake>) -> Result<(), anyhow::Error> {
+        let user_id = user.into();
         if self.owner_id == user_id {
             anyhow::bail!("Cannot remove owner from guild");
         }
@@ -211,5 +212,11 @@ impl Guild {
             .execute(db.pool())
             .await?;
         Ok(())
+    }
+}
+
+impl From<Guild> for Snowflake {
+    fn from(guild: Guild) -> Self {
+        guild.id()
     }
 }

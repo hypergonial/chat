@@ -196,8 +196,9 @@ impl Buckets {
     }
 
     /// Remove all S3 data for the given channel.
-    pub async fn remove_all_for_channel(&self, channel_id: Snowflake) -> Result<(), ChatError> {
+    pub async fn remove_all_for_channel(&self, channel: impl Into<Snowflake>) -> Result<(), ChatError> {
         let bucket = APP.buckets().attachments();
+        let channel_id: Snowflake = channel.into();
         let attachments = bucket.list_objects(APP.s3(), channel_id.to_string(), None).await?;
         bucket
             .delete_objects(
@@ -216,8 +217,8 @@ impl Buckets {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn remove_all_for_guild(&self, guild_id: Snowflake) -> Result<(), ChatError> {
-        let guild_id: i64 = guild_id.into();
+    pub async fn remove_all_for_guild(&self, guild: impl Into<Snowflake>) -> Result<(), ChatError> {
+        let guild_id: i64 = guild.into().into();
         let db = APP.db.read().await;
 
         let channel_ids: Vec<i64> = sqlx::query!("SELECT id FROM channels WHERE guild_id = $1", guild_id)
@@ -228,7 +229,7 @@ impl Buckets {
             .collect();
 
         for channel_id in channel_ids {
-            self.remove_all_for_channel(channel_id.into()).await?;
+            self.remove_all_for_channel(channel_id).await?;
         }
 
         Ok(())

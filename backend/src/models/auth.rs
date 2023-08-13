@@ -211,9 +211,9 @@ impl StoredCredentials {
         &self.hash
     }
 
-    pub async fn fetch(id: Snowflake) -> Option<StoredCredentials> {
+    pub async fn fetch(user: impl Into<Snowflake>) -> Option<StoredCredentials> {
         let db = APP.db.read().await;
-        let user_id: i64 = id.into();
+        let user_id: i64 = user.into().into();
 
         let result = sqlx::query!(
             "SELECT user_id, password, last_changed

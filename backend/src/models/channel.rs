@@ -212,3 +212,15 @@ impl ChannelLike for TextChannel {
         Ok(())
     }
 }
+
+impl From<Channel> for Snowflake {
+    fn from(channel: Channel) -> Self {
+        channel.id()
+    }
+}
+
+impl From<TextChannel> for Snowflake {
+    fn from(channel: TextChannel) -> Self {
+        channel.id()
+    }
+}

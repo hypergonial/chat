@@ -7,7 +7,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::guild::GuildRecord;
 
-use super::{appstate::APP, errors::BuilderError, guild::Guild, rest::CreateUser, snowflake::Snowflake};
+use super::{
+    appstate::APP,
+    errors::{BuilderError, ChatError},
+    guild::Guild,
+    rest::CreateUser,
+    snowflake::Snowflake,
+};
 
 lazy_static! {
     static ref USERNAME_REGEX: Regex =
@@ -158,7 +164,10 @@ impl User {
         }
     }
 
-    pub fn set_username(&mut self, username: String) -> Result<(), anyhow::Error> {
+    /// Validates and sets a new username for this user.
+    ///
+    /// The username must be committed to the database for the change to take effect.
+    pub fn set_username(&mut self, username: String) -> Result<(), ChatError> {
         Self::validate_username(&username)?;
         self.username = username;
         Ok(())
@@ -179,9 +188,9 @@ impl User {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn fetch(id: Snowflake) -> Option<Self> {
+    pub async fn fetch(id: impl Into<Snowflake>) -> Option<Self> {
         let db = APP.db.read().await;
-        let id_i64: i64 = id.into();
+        let id_i64: i64 = id.into().into();
         let row = sqlx::query_as!(
             UserRecord,
             "SELECT id, username, display_name, last_presence
@@ -201,9 +210,9 @@ impl User {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn fetch_presence(id: Snowflake) -> Option<Presence> {
+    pub async fn fetch_presence(user: impl Into<Snowflake>) -> Option<Presence> {
         let db = APP.db.read().await;
-        let id_i64: i64 = id.into();
+        let id_i64: i64 = user.into().into();
         let row = sqlx::query!(
             "SELECT last_presence
             FROM users
@@ -287,5 +296,11 @@ impl User {
         .execute(db.pool())
         .await?;
         Ok(())
+    }
+}
+
+impl From<User> for Snowflake {
+    fn from(user: User) -> Self {
+        user.id()
     }
 }

@@ -83,16 +83,16 @@ impl Attachment {
         filename: String,
         content: impl Into<Bytes>,
         content_type: String,
-        channel_id: Snowflake,
-        message_id: Snowflake,
+        channel: impl Into<Snowflake>,
+        message: impl Into<Snowflake>,
     ) -> Self {
         Self {
             id,
             filename,
             content: content.into(),
             content_type,
-            channel_id,
-            message_id,
+            channel_id: channel.into(),
+            message_id: message.into(),
         }
     }
 
@@ -102,8 +102,8 @@ impl Attachment {
 
     pub async fn try_from_form_part(
         mut part: Part,
-        channel_id: Snowflake,
-        message_id: Snowflake,
+        channel: impl Into<Snowflake>,
+        message: impl Into<Snowflake>,
     ) -> Result<Self, ChatError> {
         let mut builder = Attachment::builder();
 
@@ -128,8 +128,8 @@ impl Attachment {
         }
 
         builder
-            .channel_id(channel_id)
-            .message_id(message_id)
+            .channel_id(channel)
+            .message_id(message)
             .content(bytes)
             .content_type(
                 part.content_type()
@@ -243,13 +243,19 @@ pub struct PartialAttachment {
 
 impl PartialAttachment {
     /// Create a new partial attachment with the given ID and filename.
-    pub fn new(id: u8, filename: String, content_type: String, channel_id: Snowflake, message_id: Snowflake) -> Self {
+    pub fn new(
+        id: u8,
+        filename: String,
+        content_type: String,
+        channel: impl Into<Snowflake>,
+        message: impl Into<Snowflake>,
+    ) -> Self {
         Self {
             id,
             filename,
             content_type,
-            channel_id,
-            message_id,
+            channel_id: channel.into(),
+            message_id: message.into(),
         }
     }
 
@@ -277,9 +283,9 @@ impl PartialAttachment {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn fetch(id: u8, message_id: Snowflake) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn fetch(id: u8, message: impl Into<Snowflake>) -> Result<Option<Self>, sqlx::Error> {
         let db = APP.db.read().await;
-        let message_id: i64 = message_id.into();
+        let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
             PartialAttachmentRecord,
@@ -303,9 +309,9 @@ impl PartialAttachment {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn fetch_all(message_id: Snowflake) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn fetch_all(message: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
         let db = APP.db.read().await;
-        let message_id: i64 = message_id.into();
+        let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
             PartialAttachmentRecord,

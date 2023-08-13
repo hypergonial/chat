@@ -130,8 +130,13 @@ impl Message {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn from_formdata(author: UserLike, channel_id: Snowflake, mut form: FormData) -> Result<Self, ChatError> {
+    pub async fn from_formdata(
+        author: UserLike,
+        channel: impl Into<Snowflake>,
+        mut form: FormData,
+    ) -> Result<Self, ChatError> {
         let id = Snowflake::gen_new().await;
+        let channel_id: Snowflake = channel.into();
         let mut attachments: Vec<AttachmentLike> = Vec::new();
         let mut builder = Message::builder();
 
@@ -203,9 +208,9 @@ impl Message {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn fetch(id: Snowflake) -> Option<Self> {
+    pub async fn fetch(message: impl Into<Snowflake>) -> Option<Self> {
         let db = APP.db.read().await;
-        let id_i64: i64 = id.into();
+        let id_i64: i64 = message.into().into();
 
         // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord`
         // contains `Option<T>` for all users fields and sqlx does not recognize this.
@@ -252,5 +257,11 @@ impl Message {
             }
         }
         Ok(())
+    }
+}
+
+impl From<Message> for Snowflake {
+    fn from(message: Message) -> Self {
+        message.id()
     }
 }
