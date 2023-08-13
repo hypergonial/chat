@@ -89,7 +89,7 @@ impl Bucket {
     ///
     /// * `client` - The S3 client to use.
     /// * `prefix` - The prefix to filter by.
-    /// * `limit` - The maximum number of objects to fetch. Is capped at 1000.
+    /// * `limit` - The maximum number of objects to fetch.
     ///
     /// ## Returns
     ///
@@ -110,7 +110,7 @@ impl Bucket {
         let mut req = client.list_objects_v2().bucket(&self.name).prefix(prefix);
 
         if let Some(limit) = limit {
-            req = req.max_keys(limit.min(1000));
+            req = req.max_keys(limit);
         }
 
         let mut paginator = req.into_paginator().send();
