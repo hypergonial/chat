@@ -10,7 +10,6 @@ use enum_dispatch::enum_dispatch;
 use lazy_static::lazy_static;
 use mime::Mime;
 use regex::Regex;
-use s3::error::S3Error;
 use serde::Serialize;
 use warp::multipart::Part;
 
@@ -35,7 +34,7 @@ pub trait AttachmentT {
     /// The MIME-type of the file.
     fn mime(&self) -> Mime;
     /// The path to the attachment in S3.
-    fn s3_path(&self) -> String {
+    fn s3_key(&self) -> String {
         format!(
             "{}/{}/{}/{}",
             self.channel_id(),
@@ -101,7 +100,11 @@ impl Attachment {
         AttachmentBuilder::default()
     }
 
-    pub async fn try_from_form_part(mut part: Part, channel_id: Snowflake, message_id: Snowflake) -> Result<Self, ChatError> {
+    pub async fn try_from_form_part(
+        mut part: Part,
+        channel_id: Snowflake,
+        message_id: Snowflake,
+    ) -> Result<Self, ChatError> {
         let mut builder = Attachment::builder();
 
         let Some(caps) = ATTACHMENT_REGEX.captures(part.name()) else {
@@ -163,26 +166,26 @@ impl Attachment {
     }
 
     /// Upload the attachment content to S3. This function is called implicitly by [`Attachment`]`::commit`.
-    pub async fn upload(&self) -> Result<(), S3Error> {
+    pub async fn upload(&self) -> Result<(), ChatError> {
         let bucket = APP.buckets().attachments();
         bucket
-            .put_object_with_content_type(self.s3_path(), &self.content, &self.content_type)
+            .put_object(APP.s3(), self.s3_key(), self.content.clone(), self.mime())
             .await?;
         Ok(())
     }
 
     /// Download the attachment content from S3.
-    pub async fn download(&mut self) -> Result<(), S3Error> {
+    pub async fn download(&mut self) -> Result<(), ChatError> {
         let bucket = APP.buckets().attachments();
-        self.content = bucket.get_object(self.s3_path()).await?.bytes().clone();
+        self.content = bucket.get_object(APP.s3(), self.s3_key()).await?;
         Ok(())
     }
 
     /// Delete the contents of the attachment from S3.
     /// This should be called after the attachment is deleted from the database.
-    pub async fn delete(&self) -> Result<(), S3Error> {
+    pub async fn delete(&self) -> Result<(), ChatError> {
         let bucket = APP.buckets().attachments();
-        bucket.delete_object(self.s3_path()).await?;
+        bucket.delete_object(APP.s3(), self.s3_key()).await?;
         Ok(())
     }
 }

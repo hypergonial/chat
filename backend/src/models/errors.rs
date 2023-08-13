@@ -1,7 +1,7 @@
 use std::num::ParseIntError;
 
+use aws_sdk_s3::error::{DisplayErrorContext, SdkError};
 use derive_builder::UninitializedFieldError;
-use s3::error::S3Error;
 use thiserror::Error;
 
 #[non_exhaustive]
@@ -31,7 +31,7 @@ pub enum ChatError {
     #[error("Database transaction failed: {0}")]
     DatabaseError(#[from] sqlx::Error),
     #[error("S3 error: {0}")]
-    S3Error(#[from] S3Error),
+    S3Error(String),
     #[error("Failed to serialize/deserialize JSON: {0}")]
     JSONError(#[from] serde_json::Error),
     #[error("Failed to match regex: {0}")]
@@ -48,4 +48,15 @@ pub enum ChatError {
     ParseIntError(#[from] ParseIntError),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+/// Hacky workaround for SdkError having a generic type parameter
+impl<E, R> From<SdkError<E, R>> for ChatError
+where
+    E: std::error::Error + Send + Sync + 'static,
+    R: std::fmt::Debug,
+{
+    fn from(e: SdkError<E, R>) -> Self {
+        Self::S3Error(DisplayErrorContext(e).to_string())
+    }
 }

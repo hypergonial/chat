@@ -15,7 +15,10 @@ RUN if [ "$BUILD_TYPE" = "release" ]; then cargo install --path .; else cargo in
 
 # Copy the binary into a smaller image
 FROM debian:bookworm-slim
-RUN apt-get update && rm -rf /var/lib/apt/lists/*
+RUN apt-get update
+# Required by AWS-SDK which in turn needs rustls to verify the certificates
+RUN apt-get install -y ca-certificates
+RUN rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local/cargo/bin/backend /usr/local/bin/backend
 
 CMD ["backend"]

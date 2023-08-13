@@ -1,10 +1,14 @@
 use std::net::SocketAddr;
 
+use aws_sdk_s3::{
+    config::{Credentials, Region},
+    Client, Config as S3Config,
+};
 use dotenv::dotenv;
 use lazy_static::lazy_static;
-use s3::{creds::Credentials, region::Region, Bucket};
 use tokio::sync::RwLock;
 
+use super::bucket::Bucket;
 use super::db::Database;
 use crate::gateway::handler::Gateway;
 
@@ -17,18 +21,29 @@ pub struct ApplicationState {
     pub db: RwLock<Database>,
     pub gateway: RwLock<Gateway>,
     config: Config,
+    s3: Client,
     buckets: Buckets,
 }
 
 impl ApplicationState {
     fn new() -> Self {
         let config = Config::from_env();
-        let buckets = Buckets::new(&config);
+        let buckets = Buckets::new();
+
+        let s3creds = Credentials::new(config.minio_access_key(), config.minio_secret_key(), None, None, "chat");
+
+        let s3conf = S3Config::builder()
+            .region(Region::new("vault"))
+            .endpoint_url(config.minio_url())
+            .credentials_provider(s3creds)
+            .force_path_style(true) // MinIO does not support virtual hosts
+            .build();
 
         ApplicationState {
             db: RwLock::new(Database::new()),
             config,
             gateway: RwLock::new(Gateway::new()),
+            s3: Client::from_conf(s3conf),
             buckets,
         }
     }
@@ -41,6 +56,11 @@ impl ApplicationState {
     /// All S3 buckets used by the application.
     pub fn buckets(&self) -> &Buckets {
         &self.buckets
+    }
+
+    /// The S3 SDK client.
+    pub fn s3(&self) -> &Client {
+        &self.s3
     }
 
     /// Initializes the application
@@ -164,24 +184,8 @@ pub struct Buckets {
 
 impl Buckets {
     /// Create all buckets from the given config.
-    pub fn new(config: &Config) -> Self {
-        let region = Region::Custom {
-            region: "vault".to_string(),
-            endpoint: config.minio_url().to_string(),
-        };
-
-        let credentials = Credentials::new(
-            Some(config.minio_access_key()),
-            Some(config.minio_secret_key()),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-
-        let attachments = Bucket::new("attachments", region, credentials)
-            .unwrap()
-            .with_path_style();
+    pub fn new() -> Self {
+        let attachments = Bucket::new("attachments");
         Buckets { attachments }
     }
 
@@ -189,5 +193,11 @@ impl Buckets {
     /// It is responsible for storing all message attachments.
     pub fn attachments(&self) -> &Bucket {
         &self.attachments
+    }
+}
+
+impl Default for Buckets {
+    fn default() -> Self {
+        Self::new()
     }
 }
