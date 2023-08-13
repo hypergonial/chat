@@ -107,16 +107,16 @@ async fn create_guild(token: Token, payload: CreateGuild) -> Result<impl warp::R
         return Err(warp::reject::custom(InternalServerError::db()));
     }
 
-    let general = TextChannel::new(Snowflake::gen_new().await, guild.id(), "general".to_string());
+    let general = TextChannel::new(Snowflake::gen_new().await, &guild, "general".to_string());
     if let Err(e) = general.commit().await {
         tracing::error!("Failed to commit channel to database: {}", e);
         return Err(warp::reject::custom(InternalServerError::db()));
     }
-    let member = Member::fetch(token.data().user_id(), guild.id())
+    let member = Member::fetch(token.data().user_id(), &guild)
         .await
         .expect("Member should have been created");
 
-    APP.gateway.write().await.add_member(token.data().user_id(), guild.id());
+    APP.gateway.write().await.add_member(token.data().user_id(), &guild);
 
     dispatch!(GatewayEvent::GuildCreate(GuildCreatePayload::new(
         guild.clone(),
@@ -345,16 +345,18 @@ async fn create_member(guild_id: Snowflake, token: Token) -> Result<impl warp::R
     );
 
     // Send GUILD_CREATE to the user who joined
-    APP.gateway.write().await.send_to(member.user().id(), gc_payload);
+    APP.gateway.write().await.send_to(&member, gc_payload);
 
     // Add the member to the gateway's cache
-    APP.gateway.write().await.add_member(member.user().id(), guild_id);
+    APP.gateway.write().await.add_member(&member, guild_id);
+
+    let resp = warp::reply::json(&member);
 
     // Dispatch the member create event to all guild members
-    dispatch!(GatewayEvent::MemberCreate(member.clone()));
+    dispatch!(GatewayEvent::MemberCreate(member));
 
     Ok(warp::reply::with_status(
-        warp::reply::json(&member),
+        resp,
         warp::http::StatusCode::CREATED,
     ))
 }

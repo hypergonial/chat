@@ -122,21 +122,22 @@ impl Gateway {
     }
 
     /// Registers a new guild member instance to an existing connection
-    pub fn add_member(&mut self, user_id: Snowflake, guild_id: Snowflake) {
-        if let Some(handle) = self.peers.get_mut(&user_id) {
-            handle.guild_ids_mut().insert(guild_id);
+    pub fn add_member(&mut self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
+        if let Some(handle) = self.peers.get_mut(&user.into()) {
+            handle.guild_ids_mut().insert(guild.into());
         }
     }
 
     /// Removes a guild member instance from an existing connection
-    pub fn remove_member(&mut self, user_id: Snowflake, guild_id: Snowflake) {
-        if let Some(handle) = self.peers.get_mut(&user_id) {
-            handle.guild_ids_mut().remove(&guild_id);
+    pub fn remove_member(&mut self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
+        if let Some(handle) = self.peers.get_mut(&user.into()) {
+            handle.guild_ids_mut().remove(&guild.into());
         }
     }
 
     /// Send an event to a specific user. If they are not connected, the event is dropped.
-    pub fn send_to(&mut self, user_id: Snowflake, event: GatewayEvent) {
+    pub fn send_to(&mut self, user: impl Into<Snowflake>, event: GatewayEvent) {
+        let user_id: Snowflake = user.into();
         if let Some(handle) = self.peers.get(&user_id) {
             if let Err(_disconnected) = handle.send(event) {
                 tracing::warn!("Error sending event to user: {}", user_id);
@@ -146,8 +147,8 @@ impl Gateway {
     }
 
     // Query if a given user is connected
-    pub fn is_connected(&self, user_id: Snowflake) -> bool {
-        self.peers.contains_key(&user_id)
+    pub fn is_connected(&self, user: impl Into<Snowflake>) -> bool {
+        self.peers.contains_key(&user.into())
     }
 
     /// Determines if a given user shares any guilds with another user

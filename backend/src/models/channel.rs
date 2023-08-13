@@ -80,8 +80,8 @@ pub struct TextChannel {
 }
 
 impl TextChannel {
-    pub fn new(id: Snowflake, guild_id: Snowflake, name: String) -> Self {
-        Self { id, guild_id, name }
+    pub fn new(id: Snowflake, guild: impl Into<Snowflake>, name: String) -> Self {
+        Self { id, guild_id: guild.into(), name }
     }
 
     /// Fetch messages from this channel.
@@ -203,7 +203,7 @@ impl ChannelLike for TextChannel {
         let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
 
-        APP.buckets().remove_all_for_channel(self.id()).await?;
+        APP.buckets().remove_all_for_channel(self).await?;
 
         sqlx::query!("DELETE FROM channels WHERE id = $1", id_64)
             .execute(db.pool())
@@ -221,6 +221,18 @@ impl From<Channel> for Snowflake {
 
 impl From<TextChannel> for Snowflake {
     fn from(channel: TextChannel) -> Self {
+        channel.id()
+    }
+}
+
+impl From<&Channel> for Snowflake {
+    fn from(channel: &Channel) -> Self {
+        channel.id()
+    }
+}
+
+impl From<&TextChannel> for Snowflake {
+    fn from(channel: &TextChannel) -> Self {
         channel.id()
     }
 }

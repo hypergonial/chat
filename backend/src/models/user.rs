@@ -304,3 +304,9 @@ impl From<User> for Snowflake {
         user.id()
     }
 }
+
+impl From<&User> for Snowflake {
+    fn from(user: &User) -> Self {
+        user.id()
+    }
+}

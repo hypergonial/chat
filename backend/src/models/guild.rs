@@ -206,7 +206,7 @@ impl Guild {
         let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
 
-        APP.buckets().remove_all_for_guild(self.id()).await?;
+        APP.buckets().remove_all_for_guild(self).await?;
 
         sqlx::query!("DELETE FROM guilds WHERE id = $1", id_64)
             .execute(db.pool())
@@ -217,6 +217,12 @@ impl Guild {
 
 impl From<Guild> for Snowflake {
     fn from(guild: Guild) -> Self {
+        guild.id()
+    }
+}
+
+impl From<&Guild> for Snowflake {
+    fn from(guild: &Guild) -> Self {
         guild.id()
     }
 }

@@ -265,3 +265,9 @@ impl From<Message> for Snowflake {
         message.id()
     }
 }
+
+impl From<&Message> for Snowflake {
+    fn from(message: &Message) -> Self {
+        message.id()
+    }
+}

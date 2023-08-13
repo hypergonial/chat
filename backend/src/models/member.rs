@@ -212,3 +212,15 @@ impl From<Member> for Snowflake {
         member.user.id()
     }
 }
+
+impl From<&UserLike> for Snowflake {
+    fn from(user_like: &UserLike) -> Self {
+        user_like.id()
+    }
+}
+
+impl From<&Member> for Snowflake {
+    fn from(member: &Member) -> Self {
+        member.user.id()
+    }
+}
