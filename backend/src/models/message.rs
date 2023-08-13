@@ -204,7 +204,7 @@ impl Message {
     ///
     /// * `APP.db` (read)
     pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_i64: i64 = id.into();
 
         // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord`
@@ -229,7 +229,7 @@ impl Message {
     /// It is highly recommended to call [`Message::strip_attachment_contents`] after calling
     /// this method to remove the attachment contents from memory.
     pub async fn commit(&self) -> Result<(), ChatError> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_i64: i64 = self.id.into();
         let author_id_i64: Option<i64> = self.author.as_ref().map(|u| u.id().into());
         let channel_id_i64: i64 = self.channel_id.into();

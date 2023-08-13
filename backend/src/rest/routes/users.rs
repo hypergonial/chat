@@ -212,7 +212,7 @@ async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejec
 /// PATCH `/users/@self/presence`
 pub async fn update_presence(token: Token, new_presence: Presence) -> Result<impl warp::Reply, warp::Rejection> {
     let user_id_i64: i64 = token.data().user_id().into();
-    let db = &APP.db.read().await;
+    let db = APP.db.read().await;
 
     sqlx::query!(
         "UPDATE users SET last_presence = $1 WHERE id = $2",
@@ -249,7 +249,7 @@ pub async fn update_presence(token: Token, new_presence: Presence) -> Result<imp
 ///
 /// GET `/users/{username}`
 pub async fn query_username(username: String) -> Result<impl warp::Reply, warp::Rejection> {
-    let db = &APP.db.read().await;
+    let db = APP.db.read().await;
 
     sqlx::query!("SELECT id FROM users WHERE username = $1", username)
         .fetch_optional(db.pool())

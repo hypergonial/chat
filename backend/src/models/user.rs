@@ -180,7 +180,7 @@ impl User {
     ///
     /// * `APP.db` (read)
     pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_i64: i64 = id.into();
         let row = sqlx::query_as!(
             UserRecord,
@@ -202,7 +202,7 @@ impl User {
     ///
     /// * `APP.db` (read)
     pub async fn fetch_presence(id: Snowflake) -> Option<Presence> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_i64: i64 = id.into();
         let row = sqlx::query!(
             "SELECT last_presence
@@ -223,7 +223,7 @@ impl User {
     ///
     /// * `APP.db` (read)
     pub async fn fetch_by_username(username: &str) -> Option<Self> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let row = sqlx::query!(
             "SELECT id, username, display_name, last_presence
             FROM users
@@ -249,7 +249,7 @@ impl User {
     ///
     /// * `APP.db` (read)
     pub async fn fetch_guilds(&self) -> Result<Vec<Guild>, sqlx::Error> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_i64: i64 = self.id.into();
 
         let records = sqlx::query_as!(
@@ -272,7 +272,7 @@ impl User {
     ///
     /// * `APP.db` (read)
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_i64: i64 = self.id.into();
         sqlx::query!(
             "INSERT INTO users (id, username, display_name, last_presence)

@@ -8,8 +8,8 @@ use dotenv::dotenv;
 use lazy_static::lazy_static;
 use tokio::sync::RwLock;
 
-use super::bucket::Bucket;
 use super::db::Database;
+use super::{bucket::Bucket, errors::ChatError, snowflake::Snowflake};
 use crate::gateway::handler::Gateway;
 
 lazy_static! {
@@ -194,10 +194,55 @@ impl Buckets {
     pub fn attachments(&self) -> &Bucket {
         &self.attachments
     }
+
+    /// Remove all S3 data for the given channel.
+    pub async fn remove_all_for_channel(&self, channel_id: Snowflake) -> Result<(), ChatError> {
+        let bucket = APP.buckets().attachments();
+        let attachments = bucket.list_objects(APP.s3(), channel_id.to_string(), None).await?;
+        bucket
+            .delete_objects(
+                APP.s3(),
+                attachments
+                    .into_iter()
+                    .map(|o| o.key.unwrap_or(channel_id.to_string()))
+                    .collect(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Remove all S3 data for the given guild.
+    ///
+    /// ## Locks
+    ///
+    /// * `APP.db` (read)
+    pub async fn remove_all_for_guild(&self, guild_id: Snowflake) -> Result<(), ChatError> {
+        let guild_id: i64 = guild_id.into();
+        let db = APP.db.read().await;
+
+        let channel_ids: Vec<i64> = sqlx::query!("SELECT id FROM channels WHERE guild_id = $1", guild_id)
+            .fetch_all(db.pool())
+            .await?
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+
+        for channel_id in channel_ids {
+            self.remove_all_for_channel(channel_id.into()).await?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for Buckets {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl From<Buckets> for Vec<Bucket> {
+    fn from(buckets: Buckets) -> Self {
+        vec![buckets.attachments]
     }
 }

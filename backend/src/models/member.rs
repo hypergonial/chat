@@ -134,7 +134,7 @@ impl Member {
 
     /// Fetch a member from the database by id and guild id.
     pub async fn fetch(id: Snowflake, guild_id: Snowflake) -> Option<Self> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_64: i64 = id.into();
         let guild_id_64: i64 = guild_id.into();
 
@@ -156,7 +156,7 @@ impl Member {
 
     /// Commit the member to the database.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_64: i64 = self.user.id().into();
         let guild_id_64: i64 = self.guild_id.into();
         sqlx::query!(

@@ -1,5 +1,25 @@
 {
   "db": "PostgreSQL",
+  "0431769a9e99425eaf039b636f30be2381ec07d8dce93c8631819bc9e2c157d9": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT id FROM channels WHERE guild_id = $1"
+  },
   "0b72902bc8ec599bc847b3671444f3f19f59bdcc47e22697d73196df434c9aca": {
     "describe": {
       "columns": [],

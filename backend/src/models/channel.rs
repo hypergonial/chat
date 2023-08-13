@@ -3,7 +3,7 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
 
-use super::{appstate::APP, message::ExtendedMessageRecord, rest::CreateChannel};
+use super::{appstate::APP, errors::ChatError, message::ExtendedMessageRecord, rest::CreateChannel};
 use super::{message::Message, snowflake::Snowflake};
 
 #[async_trait]
@@ -20,7 +20,7 @@ pub trait ChannelLike {
     /// Commit this channel's current state to the database.
     async fn commit(&self) -> Result<(), SqlxError>;
     /// Deletes the channel.
-    async fn delete(self) -> Result<(), SqlxError>;
+    async fn delete(self) -> Result<(), ChatError>;
 }
 
 /// Represents a row representing a channel.
@@ -52,7 +52,7 @@ impl Channel {
     }
 
     pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_64: i64 = id.into();
 
         let record = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE id = $1", id_64)
@@ -111,7 +111,7 @@ impl TextChannel {
     ) -> Result<Vec<Message>, sqlx::Error> {
         let limit = limit.unwrap_or(50).min(100);
 
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
 
         let records: Vec<ExtendedMessageRecord> = if before.is_none() && after.is_none() {
@@ -180,7 +180,7 @@ impl ChannelLike for TextChannel {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     async fn commit(&self) -> Result<(), SqlxError> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
         let guild_id_64: i64 = self.guild_id.into();
         sqlx::query!(
@@ -199,9 +199,12 @@ impl ChannelLike for TextChannel {
     }
 
     /// Deletes the channel.
-    async fn delete(self) -> Result<(), SqlxError> {
-        let db = &APP.db.read().await;
+    async fn delete(self) -> Result<(), ChatError> {
+        let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
+
+        APP.buckets().remove_all_for_channel(self.id()).await?;
+
         sqlx::query!("DELETE FROM channels WHERE id = $1", id_64)
             .execute(db.pool())
             .await?;

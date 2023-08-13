@@ -212,7 +212,7 @@ impl StoredCredentials {
     }
 
     pub async fn fetch(id: Snowflake) -> Option<StoredCredentials> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let user_id: i64 = id.into();
 
         let result = sqlx::query!(
@@ -242,7 +242,7 @@ impl StoredCredentials {
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
     pub async fn fetch_by_username(username: String) -> Option<StoredCredentials> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
 
         let result = sqlx::query!(
             "SELECT users.id, secrets.password, secrets.last_changed
@@ -268,7 +268,7 @@ impl StoredCredentials {
     /// Returns an error if the credentials could not be committed,
     /// this could be due to the user not existing in the database.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let user_id: i64 = self.user_id.into();
 
         sqlx::query!(

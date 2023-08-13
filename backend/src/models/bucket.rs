@@ -98,17 +98,22 @@ impl Bucket {
     /// ## Errors
     ///
     /// * [`ChatError::S3Error`] - If the S3 request fails.
-    pub async fn list_objects(&self, client: &Client, prefix: &str, limit: i32) -> Result<Vec<Object>, ChatError> {
+    pub async fn list_objects(
+        &self,
+        client: &Client,
+        prefix: impl Into<String>,
+        limit: Option<i32>,
+    ) -> Result<Vec<Object>, ChatError> {
         let mut objects = Vec::new();
 
         // AWS-SDK has a nice pagination API to send continuation tokens implicitly, so we use that
-        let mut paginator = client
-            .list_objects_v2()
-            .bucket(&self.name)
-            .prefix(prefix)
-            .max_keys(limit)
-            .into_paginator()
-            .send();
+        let mut req = client.list_objects_v2().bucket(&self.name).prefix(prefix);
+
+        if let Some(limit) = limit {
+            req = req.max_keys(limit.min(1000));
+        }
+
+        let mut paginator = req.into_paginator().send();
 
         while let Some(resp) = paginator.next().await {
             let resp = resp?;

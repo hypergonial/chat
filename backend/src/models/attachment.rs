@@ -141,8 +141,12 @@ impl Attachment {
     }
 
     /// Commit the attachment to the database. Uploads the contents to S3 implicitly.
+    ///
+    /// ## Locks
+    ///
+    /// * `APP.db` (read)
     pub async fn commit(&self) -> Result<(), ChatError> {
-        let db = &APP.db.read().await;
+        let db = APP.db.read().await;
         let message_id: i64 = self.message_id.into();
         let channel_id: i64 = self.channel_id.into();
 
