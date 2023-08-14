@@ -2,8 +2,11 @@ use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use secrecy::{ExposeSecret, Secret};
 
-use crate::models::auth::{Credentials, StoredCredentials};
 use crate::models::snowflake::Snowflake;
+use crate::models::{
+    auth::{Credentials, StoredCredentials},
+    errors::AuthError,
+};
 
 /// Verify a set of credentials against the database in constant time.
 ///
@@ -15,7 +18,7 @@ use crate::models::snowflake::Snowflake;
 ///
 /// * `Ok(Snowflake)` - The user id of the user that owns the credentials.
 /// * `Err(anyhow::Error)` - If the credentials are invalid or the user was not found.
-pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake, anyhow::Error> {
+pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake, AuthError> {
     let mut user_id: Option<Snowflake> = None;
     // We set up a dummy hash here so verify_password_hash is always run.
     // This is to prevent timing attacks.
@@ -33,11 +36,11 @@ pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake,
 
     tokio::task::spawn_blocking(move || verify_password_hash(expected_hash, credentials.password().clone()))
         .await
-        .map_err(|_| anyhow::anyhow!("Invalid credentials"))??;
+        .unwrap()?;
 
-    // If the user doesn't actually exist, we bail.
+    // If the user doesn't actually exist, fail.
     if user_id.is_none() {
-        anyhow::bail!("Unknown user");
+        return Err(AuthError::UserNotFound);
     }
 
     Ok(user_id.unwrap())
@@ -53,13 +56,16 @@ pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake,
 /// # Returns
 ///
 /// * `Ok(())` - If the password candidate matches the hash.
-/// * `Err(argon2::password_hash::Error)` - If the password candidate does not match the hash.
+/// * `Err(AuthError::WrongCredentials)` - If the password candidate does not match the hash.
+/// * `Err(AuthError::PasswordHash)` - If the password candidate could not be hashed.
 pub fn verify_password_hash(
     expected_hash: Secret<String>,
     password_candidate: Secret<String>,
-) -> Result<(), argon2::password_hash::Error> {
+) -> Result<(), AuthError> {
     let expected_hash = PasswordHash::new(expected_hash.expose_secret())?;
-    Argon2::default().verify_password(password_candidate.expose_secret().as_bytes(), &expected_hash)
+    Argon2::default()
+        .verify_password(password_candidate.expose_secret().as_bytes(), &expected_hash)
+        .map_err(|_| AuthError::WrongCredentials)
 }
 
 /// Generate a hash for a new password.
@@ -71,8 +77,8 @@ pub fn verify_password_hash(
 /// # Returns
 ///
 /// * `Ok(String)` - The hash of the password.
-/// * `Err(argon2::password_hash::Error)` - If the password could not be hashed.
-pub fn generate_hash(password: &Secret<String>) -> Result<String, argon2::password_hash::Error> {
+/// * `Err(AuthError::PasswordHash)` - If the password could not be hashed.
+pub fn generate_hash(password: &Secret<String>) -> Result<String, AuthError> {
     let hasher = Argon2::default();
     let salt = SaltString::generate(&mut rand::thread_rng());
     Ok(hasher

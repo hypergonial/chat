@@ -81,7 +81,11 @@ pub struct TextChannel {
 
 impl TextChannel {
     pub fn new(id: Snowflake, guild: impl Into<Snowflake>, name: String) -> Self {
-        Self { id, guild_id: guild.into(), name }
+        Self {
+            id,
+            guild_id: guild.into(),
+            name,
+        }
     }
 
     /// Fetch messages from this channel.

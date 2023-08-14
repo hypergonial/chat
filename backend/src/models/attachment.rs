@@ -1,9 +1,9 @@
 use super::{
     appstate::APP,
-    errors::{BuilderError, AppError},
+    errors::{AppError, BuilderError, RESTError},
     message::ExtendedMessageRecord,
 };
-use bytes::BufMut;
+use axum::extract::multipart::Field;
 use bytes::Bytes;
 use derive_builder::Builder;
 use enum_dispatch::enum_dispatch;
@@ -11,7 +11,6 @@ use lazy_static::lazy_static;
 use mime::Mime;
 use regex::Regex;
 use serde::Serialize;
-use warp::multipart::Part;
 
 use super::snowflake::Snowflake;
 
@@ -100,44 +99,39 @@ impl Attachment {
         AttachmentBuilder::default()
     }
 
-    pub async fn try_from_form_part(
-        mut part: Part,
+    pub async fn try_from_field(
+        field: Field<'_>,
         channel: impl Into<Snowflake>,
         message: impl Into<Snowflake>,
-    ) -> Result<Self, AppError> {
+    ) -> Result<Self, RESTError> {
         let mut builder = Attachment::builder();
 
-        let Some(caps) = ATTACHMENT_REGEX.captures(part.name()) else {
-            return Err(AppError::MissingFieldError("id".to_string()));
+        let Some(name) = field.name() else {
+            return Err(RESTError::MissingField("name".into()));
+        };
+
+        let Some(filename) = field.file_name() else {
+            return Err(RESTError::MissingField("filename".into()));
+        };
+
+        builder.filename(filename.to_string());
+
+        let Some(caps) = ATTACHMENT_REGEX.captures(name) else {
+            return Err(RESTError::MalformedField("attachment ID could not be parsed from name".into()));
         };
         builder.id(caps["id"].parse::<u8>()?);
 
-        let Some(filename) = part.filename() else {
-            return Err(AppError::MissingFieldError("filename".to_string()));
-        };
-        builder.filename(filename.to_string());
+        let content_type = field
+            .content_type()
+            .map(String::from)
+            .unwrap_or("application/octet-stream".to_string());
 
-        let mut bytes: Vec<u8> = Vec::new();
-
-        // part.data() only returns a piece of the content at a time
-        while let Some(content) = part.data().await {
-            let Ok(content) = content else {
-                return Err(AppError::MalformedFieldError("content".to_string()));
-            };
-            bytes.put(content);
-        }
-
-        builder
+        Ok(builder
             .channel_id(channel)
             .message_id(message)
-            .content(bytes)
-            .content_type(
-                part.content_type()
-                    .map(String::from)
-                    .unwrap_or("application/octet-stream".to_string()),
-            )
-            .build()
-            .map_err(Into::into)
+            .content(field.bytes().await?)
+            .content_type(content_type)
+            .build()?)
     }
 
     /// Commit the attachment to the database. Uploads the contents to S3 implicitly.

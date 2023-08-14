@@ -1,66 +1,34 @@
+use axum::{
+    http::StatusCode,
+    routing::{get, patch, post},
+    Json, Router,
+};
 use secrecy::ExposeSecret;
 use serde_json::json;
-use warp::{filters::BoxedFilter, Filter};
 
-use super::common::needs_token;
-use crate::dispatch;
 use crate::models::{
     appstate::APP,
     auth::{Credentials, StoredCredentials, Token},
     gateway_event::{GatewayEvent, PresenceUpdatePayload},
     guild::Guild,
-    rejections::{BadRequest, InternalServerError, NotFound, Unauthorized},
     rest::CreateUser,
     user::{Presence, User},
 };
 use crate::rest::auth::{generate_hash, validate_credentials};
-use crate::utils::traits::{OptionExt, ResultExt};
+use crate::{dispatch, models::errors::RESTError};
+use serde_json::Value;
 
-/// Get all routes under `/users`.
-pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
-    let create_user = warp::path!("users")
-        .and(warp::post())
-        .and(warp::body::content_length_limit(1024 * 16))
-        .and(warp::body::json())
-        .and_then(create_user);
-
-    let login = warp::path!("users" / "auth")
-        .and(warp::post())
-        .and(warp::body::content_length_limit(1024 * 16))
-        .and(warp::body::json())
-        .and_then(auth_user);
-
-    let query_self = warp::path!("users" / "@self")
-        .and(warp::get())
-        .and(needs_token())
-        .and_then(fetch_self);
-
-    let fetch_self_guilds = warp::path!("users" / "@self" / "guilds")
-        .and(warp::get())
-        .and(needs_token())
-        .and_then(fetch_self_guilds);
-
-    let update_presence = warp::path!("users" / "@self" / "presence")
-        .and(warp::patch())
-        .and(needs_token())
-        .and(warp::body::content_length_limit(1024 * 16))
-        .and(warp::body::json())
-        .and_then(update_presence);
-
-    let query_username = warp::path!("usernames" / String)
-        .and(warp::get())
-        .and_then(query_username);
-
-    create_user
-        .or(login)
-        .or(query_self)
-        .or(fetch_self_guilds)
-        .or(update_presence)
-        .or(query_username)
-        .boxed()
+pub fn get_router() -> Router {
+    Router::new()
+        .route("users", post(create_user))
+        .route("users", post(auth_user))
+        .route("users/@self", get(fetch_self))
+        .route("users/@self/guilds", get(fetch_self_guilds))
+        .route("users/@self/presence", patch(update_presence))
+        .route("usernames/:username", get(query_username))
 }
 
-/// Create a new user and return the user data and token.
+/// Create a new user and return the user data.
 ///
 /// ## Arguments
 ///
@@ -73,45 +41,25 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 /// ## Endpoint
 ///
 /// POST `/users`
-async fn create_user(payload: CreateUser) -> Result<impl warp::Reply, warp::Rejection> {
+async fn create_user(Json(payload): Json<CreateUser>) -> Result<Json<User>, RESTError> {
     let password = payload.password.clone();
 
-    let user = match User::from_payload(payload).await {
-        Ok(user) => user,
-        Err(e) => {
-            tracing::debug!("Invalid user payload: {}", e);
-            return Err(warp::reject::custom(BadRequest::new(e.to_string().as_ref())));
-        }
-    };
+    let user = User::from_payload(payload).await?;
 
     if User::fetch_by_username(user.username()).await.is_some() {
-        tracing::debug!("User with username {} already exists", user.username());
-        return Err(warp::reject::custom(BadRequest::new(
-            format!("User with username {} already exists", user.username()).as_ref(),
+        return Err(RESTError::BadRequest(format!(
+            "User with username {} already exists",
+            user.username()
         )));
     }
 
-    let credentials = StoredCredentials::new(
-        user.id(),
-        generate_hash(&password).or_reject_and_log(
-            InternalServerError::new("Credential generation failed"),
-            "Failed to generate password hash",
-        )?,
-    );
+    let credentials = StoredCredentials::new(user.id(), generate_hash(&password)?);
 
     // User needs to be committed before credentials to avoid foreign key constraint
-    if let Err(e) = user.commit().await {
-        tracing::error!("Failed to commit user to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError::db()));
-    } else if let Err(e) = credentials.commit().await {
-        tracing::error!("Failed to commit credentials to database: {}", e);
-        return Err(warp::reject::custom(InternalServerError::db()));
-    }
+    user.commit().await?;
+    credentials.commit().await?;
 
-    Ok(warp::reply::with_status(
-        warp::reply::json(&user),
-        warp::http::StatusCode::CREATED,
-    ))
+    Ok(Json(user))
 }
 
 /// Validate a user's credentials and return a token if successful.
@@ -127,20 +75,14 @@ async fn create_user(payload: CreateUser) -> Result<impl warp::Reply, warp::Reje
 /// ## Endpoint
 ///
 /// POST `/users/auth`
-async fn auth_user(credentials: Credentials) -> Result<impl warp::Reply, warp::Rejection> {
-    let user_id = validate_credentials(credentials)
-        .await
-        .or_reject(Unauthorized::basic("login"))?;
+async fn auth_user(Json(credentials): Json<Credentials>) -> Result<Json<Value>, RESTError> {
+    let user_id = validate_credentials(credentials).await?;
+    let token = Token::new_for(user_id, "among us")?;
 
-    let token = Token::new_for(user_id, "among us").or_reject_and_log(
-        InternalServerError::new("Failed to generate token"),
-        format!("Failed to generate token for user {}", user_id).as_ref(),
-    )?;
-
-    Ok(warp::reply::with_status(
-        warp::reply::json(&json!({"user_id": user_id, "token": token.expose_secret()})),
-        warp::http::StatusCode::OK,
-    ))
+    Ok(Json(json!({
+        "user_id": user_id,
+        "token": token.expose_secret(),
+    })))
 }
 
 /// Get the current user's data.
@@ -156,15 +98,12 @@ async fn auth_user(credentials: Credentials) -> Result<impl warp::Reply, warp::R
 /// ## Endpoint
 ///
 /// GET `/users/@self`
-async fn fetch_self(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
+async fn fetch_self(token: Token) -> Result<Json<User>, RESTError> {
     let user = User::fetch(token.data().user_id())
         .await
-        .or_reject_and_log(InternalServerError::db(), "Failed to fetch user from database")?;
+        .ok_or(RESTError::NotFound("User not found".into()))?;
 
-    Ok(warp::reply::with_status(
-        warp::reply::json(&user),
-        warp::http::StatusCode::OK,
-    ))
+    Ok(Json(user))
 }
 
 /// Fetch a user's guilds.
@@ -180,16 +119,10 @@ async fn fetch_self(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
 /// ## Endpoint
 ///
 /// GET `/users/@self/guilds`
-async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejection> {
-    let guilds = Guild::fetch_all_for_user(token.data().user_id()).await.map_err(|e| {
-        tracing::error!(message = "Failed to fetch user guilds from database", user = %token.data().user_id(), error = %e);
-        warp::reject::custom(InternalServerError::db())
-    })?;
+async fn fetch_self_guilds(token: Token) -> Result<Json<Vec<Guild>>, RESTError> {
+    let guilds = Guild::fetch_all_for_user(token.data().user_id()).await?;
 
-    Ok(warp::reply::with_status(
-        warp::reply::json(&guilds),
-        warp::http::StatusCode::OK,
-    ))
+    Ok(Json(guilds))
 }
 
 /// Update the token-holder's presence.
@@ -210,7 +143,7 @@ async fn fetch_self_guilds(token: Token) -> Result<impl warp::Reply, warp::Rejec
 /// ## Endpoint
 ///
 /// PATCH `/users/@self/presence`
-pub async fn update_presence(token: Token, new_presence: Presence) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn update_presence(token: Token, Json(new_presence): Json<Presence>) -> Result<Json<Presence>, RESTError> {
     let user_id_i64: i64 = token.data().user_id().into();
     let db = APP.db.read().await;
 
@@ -220,11 +153,7 @@ pub async fn update_presence(token: Token, new_presence: Presence) -> Result<imp
         user_id_i64
     )
     .execute(db.pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(message = "Failed to update user presence", user = %token.data().user_id(), error = %e);
-        warp::reject::custom(InternalServerError::db())
-    })?;
+    .await?;
 
     if APP.gateway.read().await.is_connected(token.data().user_id()) {
         dispatch!(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
@@ -233,10 +162,7 @@ pub async fn update_presence(token: Token, new_presence: Presence) -> Result<imp
         }));
     }
 
-    Ok(warp::reply::with_status(
-        warp::reply::json(&new_presence),
-        warp::http::StatusCode::OK,
-    ))
+    Ok(Json(new_presence))
 }
 
 /// Check for the existence of a user with the given username.
@@ -248,14 +174,13 @@ pub async fn update_presence(token: Token, new_presence: Presence) -> Result<imp
 /// ## Endpoint
 ///
 /// GET `/users/{username}`
-pub async fn query_username(username: String) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn query_username(username: String) -> Result<StatusCode, RESTError> {
     let db = APP.db.read().await;
 
     sqlx::query!("SELECT id FROM users WHERE username = $1", username)
         .fetch_optional(db.pool())
-        .await
-        .ok()
-        .or_reject(NotFound::new("User not found"))?;
+        .await?
+        .ok_or(RESTError::NotFound("User not found".into()))?;
 
-    Ok(warp::reply::reply())
+    Ok(StatusCode::OK)
 }

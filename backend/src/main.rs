@@ -2,13 +2,12 @@ pub mod gateway;
 pub mod macros;
 pub mod models;
 pub mod rest;
-pub mod utils;
 use std::process::ExitCode;
 
+use axum::Router;
 use models::appstate::APP;
 use tokio::signal::ctrl_c;
 use tracing::level_filters::LevelFilter;
-use warp::Filter;
 
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
@@ -25,11 +24,13 @@ async fn handle_signals() {
             tracing::info!("Received keyboard interrupt, terminating...");
         }
     };
+    APP.close().await;
 }
 
 #[cfg(not(unix))]
 async fn handle_signals() {
     ctrl_c().await.expect("Failed to create CTRL+C signal listener");
+    APP.close().await;
 }
 
 #[tokio::main]
@@ -52,8 +53,8 @@ async fn main() -> ExitCode {
     /* console_subscriber::init(); */
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 
-    let gateway_routes = gateway::handler::get_routes();
-    let rest_routes = rest::routes::get_routes();
+    let gateway_routes = gateway::handler::get_router();
+    let rest_routes = rest::routes::get_router();
 
     // Initialize the database
     if let Err(e) = APP.init().await {
@@ -61,12 +62,15 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    tokio::select!(
-        _ = handle_signals() => {},
-        _ = warp::serve(gateway_routes.or(rest_routes))
-            .run(APP.config().listen_addr()) => {}
-    );
-    APP.close().await;
+    let app = Router::new()
+        .nest("/gateway/v1", gateway_routes)
+        .nest("/api/v1", rest_routes);
+
+    hyper::Server::bind(&APP.config().listen_addr())
+        .serve(app.into_make_service())
+        .with_graceful_shutdown(handle_signals())
+        .await
+        .expect("Failed creating server");
 
     ExitCode::SUCCESS
 }

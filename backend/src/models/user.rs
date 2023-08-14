@@ -9,7 +9,7 @@ use crate::models::guild::GuildRecord;
 
 use super::{
     appstate::APP,
-    errors::{BuilderError, AppError},
+    errors::{AppError, BuilderError},
     guild::Guild,
     rest::CreateUser,
     snowflake::Snowflake,

@@ -4,6 +4,12 @@ use std::{
     time::Duration,
 };
 
+use axum::{
+    extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -14,11 +20,6 @@ use tokio::sync::{
     Mutex,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use warp::{
-    filters::BoxedFilter,
-    ws::{Message, WebSocket},
-    Filter,
-};
 
 use crate::models::{
     appstate::APP,
@@ -168,22 +169,17 @@ impl Default for Gateway {
     }
 }
 
-/// Get routes for handling the gateway
+/// Get router for handling the gateway
 ///
 /// ## Returns
 ///
 /// A filter that can be used to handle the gateway
-pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
-    let inject_app = warp::any().map(move || &APP);
+pub fn get_router() -> Router {
+    Router::new().route("/gateway", get(websocket_handler))
+}
 
-    warp::path("gateway")
-        .and(warp::ws()) // <- The `ws()` filter will prepare Websocket handshake...
-        .and(inject_app) // <- Use our shared state...
-        .map(|ws: warp::ws::Ws, app: &'static _| {
-            ws.on_upgrade(move |socket| handle_connection(app, socket))
-            // <- call our handler
-        })
-        .boxed()
+async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_connection(socket))
 }
 
 /// Wait for and validate the IDENTIFY payload
@@ -202,46 +198,46 @@ async fn handle_handshake(
 ) -> Result<User, ()> {
     // IDENTIFY should be the first message sent
     let Some(Ok(maybe_ident)) = ws_stream.next().await else {
-        ws_sink.send(Message::close_with(
-            1005_u16,
-            serde_json::to_string(&GatewayEvent::InvalidSession("IDENTIFY expected".into())).unwrap(),
-        )).await.ok();
+        ws_sink.send(Message::Close(Some(CloseFrame {
+            code: 1005,
+            reason: "IDENTIFY expected".into(),
+        }))).await.ok();
         return Err(());
     };
 
-    if !maybe_ident.is_text() {
+    let Ok(text) = maybe_ident.to_text() else {
         ws_sink
-            .send(Message::close_with(
-                1003_u16,
-                serde_json::to_string(&GatewayEvent::InvalidSession("Invalid IDENTIFY payload".into())).unwrap(),
-            ))
+            .send(Message::Close(Some(CloseFrame {
+                code: 1003,
+                reason: "Invalid IDENTITY payload".into(),
+            })))
             .await
             .ok();
         return Err(());
-    }
+    };
 
-    let Ok(GatewayMessage::Identify(payload)) = serde_json::from_str(maybe_ident.to_str().unwrap()) else {
-        ws_sink.send(Message::close_with(
-            1003_u16,
-            serde_json::to_string(&GatewayEvent::InvalidSession("Invalid IDENTIFY payload".into())).unwrap(),
-        )).await.ok();
+    let Ok(GatewayMessage::Identify(payload)) = serde_json::from_str(text) else {
+        ws_sink.send(Message::Close(Some(CloseFrame {
+            code: 1003,
+            reason: "Invalid IDENTITY payload".into(),
+        }))).await.ok();
         return Err(());
     };
 
     let Ok(token) = Token::validate(payload.token.expose_secret(), "among us").await else {
-        ws_sink.send(Message::close_with(
-            1008_u16,
-            serde_json::to_string(&GatewayEvent::InvalidSession("Invalid token".into())).unwrap(),
-        )).await.ok();
+        ws_sink.send(Message::Close(Some(CloseFrame {
+            code: 1008,
+            reason: "Invalid token".into(),
+        }))).await.ok();
         return Err(());
     };
 
     let user_id = token.data().user_id();
     let Some(user) = User::fetch(user_id).await else {
-        ws_sink.send(Message::close_with(
-            1008_u16,
-            serde_json::to_string(&GatewayEvent::InvalidSession("User not found".into())).unwrap(),
-        )).await.ok();
+        ws_sink.send(Message::Close(Some(CloseFrame {
+            code: 1008,
+            reason: "User not found".into(),
+        }))).await.ok();
         return Err(());
     };
 
@@ -254,7 +250,7 @@ async fn handle_handshake(
 ///
 /// * `gateway` - The gateway state
 /// * `socket` - The websocket connection to handle
-async fn handle_connection(app: &'static APP, socket: WebSocket) {
+async fn handle_connection(socket: WebSocket) {
     let (mut ws_sink, mut ws_stream) = socket.split();
     // Handle handshake and get user
     let Ok(user) = handle_handshake(&mut ws_sink, &mut ws_stream).await else {
@@ -271,7 +267,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     let user_id_i64: i64 = user.id().into();
 
     let guild_ids = sqlx::query!("SELECT guild_id FROM members WHERE user_id = $1", user_id_i64)
-        .fetch_all(app.db.read().await.pool())
+        .fetch_all(APP.db.read().await.pool())
         .await
         .expect("Failed to fetch guilds during socket connection handling")
         .into_iter()
@@ -279,7 +275,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
         .collect::<HashSet<Snowflake>>();
 
     // Add user to peermap
-    app.gateway
+    APP.gateway
         .write()
         .await
         .peers
@@ -293,7 +289,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     let user = user.include_presence().await;
 
     ws_sink
-        .send(Message::text(
+        .send(Message::Text(
             serde_json::to_string(&GatewayEvent::Ready(ReadyPayload::new(user.clone(), guilds.clone()))).unwrap(),
         ))
         .await
@@ -305,7 +301,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
             .await
             .expect("Failed to fetch guild payload data");
         ws_sink
-            .send(Message::text(
+            .send(Message::Text(
                 serde_json::to_string(&GatewayEvent::GuildCreate(payload)).unwrap(),
             ))
             .await
@@ -316,7 +312,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     match user.last_presence() {
         Presence::Offline => {}
         _ => {
-            app.gateway
+            APP.gateway
                 .write()
                 .await
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
@@ -336,7 +332,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     // Send dispatched events to the user
     let send_events = tokio::spawn(async move {
         while let Some(payload) = receiver.next().await {
-            let message = Message::text(serde_json::to_string(&payload).unwrap());
+            let message = Message::Text(serde_json::to_string(&payload).unwrap());
             if let Err(e) = ws_sink.lock().await.send(message).await {
                 tracing::warn!("Error sending event to user {}: {}", user_id, e);
                 break;
@@ -349,7 +345,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     let keep_alive = tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-            if let Err(e) = ws_sink_clone.lock().await.send(Message::ping(vec![])).await {
+            if let Err(e) = ws_sink_clone.lock().await.send(Message::Ping(vec![1, 2, 3])).await {
                 tracing::debug!("Failed to keep alive socket connection to {}: {}", user_id, e);
                 break;
             }
@@ -360,7 +356,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     let listen_for_close = tokio::spawn(async move {
         while let Some(msg) = ws_stream.next().await {
             if let Ok(msg) = msg {
-                if msg.is_close() {
+                if let Message::Close(_) = msg {
                     break;
                 }
             }
@@ -375,7 +371,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     }
 
     // Disconnection logic
-    app.gateway.write().await.peers.remove(&user.id());
+    APP.gateway.write().await.peers.remove(&user.id());
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 
     // Refetch presence in case it changed
@@ -385,7 +381,7 @@ async fn handle_connection(app: &'static APP, socket: WebSocket) {
     match presence {
         Presence::Offline => {}
         _ => {
-            app.gateway
+            APP.gateway
                 .write()
                 .await
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {

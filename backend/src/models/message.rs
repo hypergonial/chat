@@ -1,14 +1,13 @@
+use axum::extract::Multipart;
 use chrono::{DateTime, Utc};
 use derive_builder::Builder;
 use serde::Serialize;
 use slice_group_by::GroupBy;
-use tokio_stream::StreamExt;
-use warp::{multipart::FormData, Buf};
 
 use super::{
     appstate::APP,
     attachment::{Attachment, AttachmentLike, AttachmentT},
-    errors::{BuilderError, AppError},
+    errors::{AppError, BuilderError, RESTError},
     member::UserLike,
     rest::CreateMessage,
     snowflake::Snowflake,
@@ -133,8 +132,8 @@ impl Message {
     pub async fn from_formdata(
         author: UserLike,
         channel: impl Into<Snowflake>,
-        mut form: FormData,
-    ) -> Result<Self, AppError> {
+        mut form: Multipart,
+    ) -> Result<Self, RESTError> {
         let id = Snowflake::gen_new().await;
         let channel_id: Snowflake = channel.into();
         let mut attachments: Vec<AttachmentLike> = Vec::new();
@@ -142,31 +141,26 @@ impl Message {
 
         builder.id(id).channel_id(channel_id).author(author);
 
-        while let Some(part) = form.next().await {
-            let Ok(mut part) = part else {
-                tracing::warn!("Failed to read form-data part, this error should not happen!");
-                continue // Unsure why this can fail
-            };
-
+        while let Some(part) = form.next_field().await? {
             tracing::debug!("Form-data part: {:?}", part);
 
-            if part.name() == "json" && part.content_type().is_some_and(|ct| ct == "application/json") {
-                let Some(Ok(data)) = part.data().await else {
-                    return Err(AppError::MalformedFieldError("json".to_string()));
+            if part.name() == Some("json") && part.content_type().is_some_and(|ct| ct == "application/json") {
+                let Ok(data) = part.bytes().await else {
+                    return Err(RESTError::MalformedField("json".to_string()));
                 };
-                let payload = serde_json::from_slice::<CreateMessage>(data.chunk())?;
+                let payload = serde_json::from_slice::<CreateMessage>(&data)?;
                 builder.content(payload.content).nonce(payload.nonce.clone());
             } else {
-                let attachment = Attachment::try_from_form_part(part, channel_id, id).await?;
+                let attachment = Attachment::try_from_field(part, channel_id, id).await?;
 
                 if attachments.iter().any(|a| a.id() == attachment.id()) {
-                    return Err(AppError::DuplicateFieldError("attachment.id".to_string()));
+                    return Err(RESTError::DuplicateField("attachment.id".to_string()));
                 }
                 attachments.push(AttachmentLike::Full(attachment));
             }
         }
 
-        builder.attachments(attachments).build().map_err(Into::into)
+        Ok(builder.attachments(attachments).build()?)
     }
 
     /// Turns all attachments into partial attachments, removing the attachment contents from memory.

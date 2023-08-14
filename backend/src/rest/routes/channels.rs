@@ -1,25 +1,24 @@
-use std::sync::Arc;
-
-use governor::{Quota, RateLimiter};
-use nonzero_ext::nonzero;
+use axum::{
+    extract::{DefaultBodyLimit, Multipart, Path, Query},
+    http::StatusCode,
+    routing::{delete, get, post},
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
-use warp::{filters::BoxedFilter, multipart::FormData, Filter};
+use tower_http::limit::RequestBodyLimitLayer;
 
-use super::common::SharedIDLimiter;
-use super::common::{needs_limit, needs_token};
+use crate::dispatch;
 use crate::models::{
     appstate::APP,
     auth::Token,
     channel::{Channel, ChannelLike},
+    errors::RESTError,
     gateway_event::{DeletePayload, GatewayEvent},
     guild::Guild,
     member::{Member, UserLike},
     message::Message,
-    rejections::{Forbidden, InternalServerError, NotFound},
     snowflake::Snowflake,
 };
-use crate::utils::traits::{OptionExt, ResultExt};
-use crate::{dispatch, models::rejections::BadRequest};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FetchMessagesQuery {
@@ -28,39 +27,18 @@ struct FetchMessagesQuery {
     after: Option<Snowflake>,
 }
 
-/// Get all routes under `/channels
-pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
-    let message_create_lim: SharedIDLimiter = Arc::new(RateLimiter::keyed(
-        Quota::per_second(nonzero!(5u32)).allow_burst(nonzero!(5u32)),
-    ));
+/* let message_create_lim: SharedIDLimiter = Arc::new(RateLimiter::keyed(
+    Quota::per_second(nonzero!(5u32)).allow_burst(nonzero!(5u32)),
+)); */
 
-    let fetch_channel = warp::path!("channels" / Snowflake)
-        .and(warp::get())
-        .and(needs_token())
-        .and_then(fetch_channel);
-
-    let delete_channel = warp::path!("channels" / Snowflake)
-        .and(warp::delete())
-        .and(needs_token())
-        .and_then(delete_channel);
-
-    let create_msg = warp::path!("channels" / Snowflake / "messages")
-        .and(warp::post())
-        .and(needs_limit(message_create_lim))
-        .and(warp::multipart::form().max_length(10485760))
-        .and_then(create_message);
-
-    let fetch_messages = warp::path!("channels" / Snowflake / "messages")
-        .and(warp::get())
-        .and(needs_token())
-        .and(warp::query::<FetchMessagesQuery>())
-        .and_then(fetch_messages);
-
-    fetch_channel
-        .or(create_msg)
-        .or(fetch_messages)
-        .or(delete_channel)
-        .boxed()
+pub fn get_router() -> Router {
+    Router::new()
+        .route(":channel_id", get(fetch_channel))
+        .route(":channel_id", delete(delete_channel))
+        .route(":channel_id/messages", post(create_message))
+        .route(":channel_id/messages", get(fetch_messages))
+        .layer(DefaultBodyLimit::disable())
+        .layer(RequestBodyLimitLayer::new(8 * 1024 * 1024 /* 8mb */))
 }
 
 /// Fetch a channel's data.
@@ -77,47 +55,59 @@ pub fn get_routes() -> BoxedFilter<(impl warp::Reply,)> {
 /// ## Endpoint
 ///
 /// GET `/channels/{channel_id}`
-async fn fetch_channel(channel_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
-    let channel = Channel::fetch(channel_id)
-        .await
-        .or_reject(NotFound::new("Channel does not exist or is not available."))?;
+async fn fetch_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Result<Json<Channel>, RESTError> {
+    let channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
+        "Channel does not exist or is not available.".to_string(),
+    ))?;
 
     // Check if the user is in the channel's guild
     Member::fetch(token.data().user_id(), channel.guild_id())
         .await
-        .or_reject(Forbidden::new("Not permitted to view resource."))?;
+        .ok_or(RESTError::Forbidden("Not permitted to view resource.".to_string()))?;
 
-    Ok(warp::reply::with_status(
-        warp::reply::json(&channel),
-        warp::http::StatusCode::OK,
-    ))
+    Ok(Json(channel))
 }
 
-async fn delete_channel(channel_id: Snowflake, token: Token) -> Result<impl warp::Reply, warp::Rejection> {
-    let channel = Channel::fetch(channel_id)
-        .await
-        .or_reject(NotFound::new("Channel does not exist or is not available."))?;
+/// Delete a channel.
+///
+/// ## Arguments
+///
+/// * `token` - The user's session token, already validated
+/// * `channel_id` - The ID of the channel to delete
+///
+/// ## Returns
+///
+/// * [`StatusCode`] - 204 No Content if successful
+///
+/// ## Dispatches
+///
+/// * [`GatewayEvent::ChannelRemove`] - To all members who can view the channel
+///
+/// ## Endpoint
+///
+/// DELETE `/channels/{channel_id}`
+async fn delete_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Result<StatusCode, RESTError> {
+    let channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
+        "Channel does not exist or is not available.".into(),
+    ))?;
 
     // Check guild owner_id
     let guild = Guild::fetch(channel.guild_id())
         .await
-        .or_reject(InternalServerError::db())?;
+        .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
 
     if guild.owner_id() != token.data().user_id() {
-        return Err(Forbidden::new("Not permitted to delete channel.").into());
+        return Err(RESTError::NotFound("Not permitted to delete channel.".into()));
     }
 
-    channel.delete().await.or_reject(InternalServerError::db())?;
+    channel.delete().await?;
 
     dispatch!(GatewayEvent::ChannelRemove(DeletePayload::new(
         channel_id,
         Some(guild.id())
     )));
 
-    Ok(warp::reply::with_status(
-        warp::reply::reply(),
-        warp::http::StatusCode::NO_CONTENT,
-    ))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Send a new message and return the message data.
@@ -139,35 +129,27 @@ async fn delete_channel(channel_id: Snowflake, token: Token) -> Result<impl warp
 ///
 /// POST `/channels/{channel_id}/messages`
 async fn create_message(
-    channel_id: Snowflake,
+    Path(channel_id): Path<Snowflake>,
     token: Token,
-    payload: FormData,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let channel = Channel::fetch(channel_id)
-        .await
-        .or_reject(NotFound::new("Channel does not exist or is not available."))?;
+    payload: Multipart,
+) -> Result<(StatusCode, Json<Message>), RESTError> {
+    let channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
+        "Channel does not exist or is not available.".into(),
+    ))?;
 
     let member = Member::fetch(token.data().user_id(), channel.guild_id())
         .await
-        .or_reject(Forbidden::new("Not permitted to access resource."))?;
+        .ok_or(RESTError::Forbidden("Not permitted to access resource.".into()))?;
 
-    let message = Message::from_formdata(UserLike::Member(member), channel_id, payload)
-        .await
-        .or_reject_and_log(
-            BadRequest::new("Invalid body. WIP ERROR"),
-            "Failed to deserialize message",
-        )?;
+    let message = Message::from_formdata(UserLike::Member(member), channel_id, payload).await?;
 
-    message
-        .commit()
-        .await
-        .or_reject_and_log(InternalServerError::db(), "Failed to commit message to database")?;
+    message.commit().await?;
 
     let message = message.strip_attachment_contents();
-    let reply = warp::reply::json(&message);
+    let reply = Json(message.clone());
 
     dispatch!(GatewayEvent::MessageCreate(message));
-    Ok(warp::reply::with_status(reply, warp::http::StatusCode::CREATED))
+    Ok((StatusCode::CREATED, reply))
 }
 
 /// Fetch a channel's messages.
@@ -186,18 +168,18 @@ async fn create_message(
 ///
 /// GET `/channels/{channel_id}/messages`
 async fn fetch_messages(
-    channel_id: Snowflake,
+    Path(channel_id): Path<Snowflake>,
     token: Token,
-    query: FetchMessagesQuery,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let channel = Channel::fetch(channel_id)
-        .await
-        .or_reject(NotFound::new("Channel does not exist or is not available."))?;
+    Query(query): Query<FetchMessagesQuery>,
+) -> Result<(StatusCode, Json<Vec<Message>>), RESTError> {
+    let channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
+        "Channel does not exist or is not available.".into(),
+    ))?;
 
     // Check if the user is in the channel's guild
     Member::fetch(token.data().user_id(), channel.guild_id())
         .await
-        .or_reject(Forbidden::new("Not permitted to view resource."))?;
+        .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
     let Channel::GuildText(txtchannel) = channel; /* else {
                                                       return Err(BadRequest::new("Cannot fetch messages from non-textable channel.").into());
@@ -205,11 +187,7 @@ async fn fetch_messages(
 
     let messages = txtchannel
         .fetch_messages(query.limit, query.before, query.after)
-        .await
-        .or_reject_and_log(InternalServerError::db(), "Failed to fetch messages from database")?;
+        .await?;
 
-    Ok(warp::reply::with_status(
-        warp::reply::json(&messages),
-        warp::http::StatusCode::OK,
-    ))
+    Ok((StatusCode::OK, Json(messages)))
 }

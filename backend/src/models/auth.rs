@@ -1,11 +1,18 @@
 use core::fmt::Debug;
 
+use axum::TypedHeader;
+use axum::{
+    extract::FromRequestParts,
+    headers::{authorization::Bearer, Authorization},
+    http::request::Parts,
+    RequestPartsExt,
+};
 use chrono::prelude::*;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::APP, snowflake::Snowflake};
+use super::{appstate::APP, errors::AuthError, snowflake::Snowflake};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TokenData {
@@ -158,6 +165,26 @@ impl Debug for Token {
             .field("data", &self.data)
             .field("token", &"**********")
             .finish()
+    }
+}
+
+/// Token extractor for axum.
+#[async_trait::async_trait]
+impl<S> FromRequestParts<S> for Token
+where
+    S: Send + Sync,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let TypedHeader(Authorization(bearer)) = parts
+            .extract::<TypedHeader<Authorization<Bearer>>>()
+            .await
+            .map_err(|_| AuthError::InvalidToken)?;
+        // Decode the user data
+        Token::validate(bearer.token(), "among us")
+            .await
+            .map_err(|_| AuthError::InvalidToken)
     }
 }
 
