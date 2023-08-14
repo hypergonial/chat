@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.15.0", features = ["full", "parking_lot", "tracing"] }
-serde = { version = "1.0.130", features = ["derive"] }
+tokio = { version = "1.31.0", features = ["full", "parking_lot", "tracing"] }
+serde = { version = "1.0.183", features = ["derive"] }
 sqlx = { version = "0.6.3", features = ["macros", "migrate", "sqlx-macros", "postgres", "runtime-tokio-rustls", "offline"] }
 chrono = { version = "0.4.24", default-features = false, features = ["alloc", "std", "clock"] }
 secrecy = { version = "0.8.0", features = ["serde"] }
@@ -24,7 +24,7 @@ lazy_static = "1.4.0"
 jsonwebtoken = "8"
 rs-snowflake = "0.6.0"
 dotenv = "0.15.0"
-async-trait = "0.1.68"
+async-trait = "0.1.73"
 rand = "0.8.5"
 regex = "1.8.1"
 governor = "0.5.1"
