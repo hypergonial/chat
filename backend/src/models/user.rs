@@ -9,7 +9,7 @@ use crate::models::guild::GuildRecord;
 
 use super::{
     appstate::APP,
-    errors::{BuilderError, ChatError},
+    errors::{BuilderError, AppError},
     guild::Guild,
     rest::CreateUser,
     snowflake::Snowflake,
@@ -167,7 +167,7 @@ impl User {
     /// Validates and sets a new username for this user.
     ///
     /// The username must be committed to the database for the change to take effect.
-    pub fn set_username(&mut self, username: String) -> Result<(), ChatError> {
+    pub fn set_username(&mut self, username: String) -> Result<(), AppError> {
         Self::validate_username(&username)?;
         self.username = username;
         Ok(())

@@ -27,7 +27,7 @@ impl From<String> for BuilderError {
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
-pub enum ChatError {
+pub enum AppError {
     #[error("Database transaction failed: {0}")]
     DatabaseError(#[from] sqlx::Error),
     #[error("S3 error: {0}")]
@@ -51,7 +51,7 @@ pub enum ChatError {
 }
 
 /// Hacky workaround for SdkError having a generic type parameter
-impl<E, R> From<SdkError<E, R>> for ChatError
+impl<E, R> From<SdkError<E, R>> for AppError
 where
     E: std::error::Error + Send + Sync + 'static,
     R: std::fmt::Debug,

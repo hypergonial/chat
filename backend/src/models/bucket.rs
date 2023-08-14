@@ -7,7 +7,7 @@ use bytes::{Bytes, BytesMut};
 use mime::Mime;
 use tokio_stream::StreamExt;
 
-use super::errors::ChatError;
+use super::errors::AppError;
 
 /// An abstraction for S3 buckets.
 pub struct Bucket {
@@ -38,7 +38,7 @@ impl Bucket {
     /// ## Errors
     ///
     /// * [`ChatError::S3Error`] - If the S3 request fails.
-    pub async fn get_object(&self, client: &Client, key: impl Into<String>) -> Result<Bytes, ChatError> {
+    pub async fn get_object(&self, client: &Client, key: impl Into<String>) -> Result<Bytes, AppError> {
         let key = key.into();
         let mut resp = client.get_object().bucket(&self.name).key(key).send().await?;
 
@@ -67,7 +67,7 @@ impl Bucket {
         key: impl Into<String>,
         data: impl Into<ByteStream>,
         content_type: Mime,
-    ) -> Result<(), ChatError> {
+    ) -> Result<(), AppError> {
         let key = key.into();
         let data = data.into();
 
@@ -103,7 +103,7 @@ impl Bucket {
         client: &Client,
         prefix: impl Into<String>,
         limit: Option<i32>,
-    ) -> Result<Vec<Object>, ChatError> {
+    ) -> Result<Vec<Object>, AppError> {
         let mut objects = Vec::new();
 
         // AWS-SDK has a nice pagination API to send continuation tokens implicitly, so we use that
@@ -136,7 +136,7 @@ impl Bucket {
     /// ## Errors
     ///
     /// * [`ChatError::S3Error`] - If the S3 request fails.
-    pub async fn delete_object(&self, client: &Client, key: impl Into<String>) -> Result<(), ChatError> {
+    pub async fn delete_object(&self, client: &Client, key: impl Into<String>) -> Result<(), AppError> {
         let key = key.into();
 
         client.delete_object().bucket(&self.name).key(key).send().await?;
@@ -154,7 +154,7 @@ impl Bucket {
     /// ## Errors
     ///
     /// * [`ChatError::S3Error`] - If the S3 request fails.
-    pub async fn delete_objects(&self, client: &Client, keys: Vec<impl Into<String>>) -> Result<(), ChatError> {
+    pub async fn delete_objects(&self, client: &Client, keys: Vec<impl Into<String>>) -> Result<(), AppError> {
         let objects: Vec<ObjectIdentifier> = keys
             .into_iter()
             .map(|k| ObjectIdentifier::builder().set_key(Some(k.into())).build())

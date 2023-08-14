@@ -1,6 +1,6 @@
 use super::{
     appstate::APP,
-    errors::{BuilderError, ChatError},
+    errors::{BuilderError, AppError},
     message::ExtendedMessageRecord,
 };
 use bytes::BufMut;
@@ -104,16 +104,16 @@ impl Attachment {
         mut part: Part,
         channel: impl Into<Snowflake>,
         message: impl Into<Snowflake>,
-    ) -> Result<Self, ChatError> {
+    ) -> Result<Self, AppError> {
         let mut builder = Attachment::builder();
 
         let Some(caps) = ATTACHMENT_REGEX.captures(part.name()) else {
-            return Err(ChatError::MissingFieldError("id".to_string()));
+            return Err(AppError::MissingFieldError("id".to_string()));
         };
         builder.id(caps["id"].parse::<u8>()?);
 
         let Some(filename) = part.filename() else {
-            return Err(ChatError::MissingFieldError("filename".to_string()));
+            return Err(AppError::MissingFieldError("filename".to_string()));
         };
         builder.filename(filename.to_string());
 
@@ -122,7 +122,7 @@ impl Attachment {
         // part.data() only returns a piece of the content at a time
         while let Some(content) = part.data().await {
             let Ok(content) = content else {
-                return Err(ChatError::MalformedFieldError("content".to_string()));
+                return Err(AppError::MalformedFieldError("content".to_string()));
             };
             bytes.put(content);
         }
@@ -145,7 +145,7 @@ impl Attachment {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn commit(&self) -> Result<(), ChatError> {
+    pub async fn commit(&self) -> Result<(), AppError> {
         let db = APP.db.read().await;
         let message_id: i64 = self.message_id.into();
         let channel_id: i64 = self.channel_id.into();
@@ -170,7 +170,7 @@ impl Attachment {
     }
 
     /// Upload the attachment content to S3. This function is called implicitly by [`Attachment`]`::commit`.
-    pub async fn upload(&self) -> Result<(), ChatError> {
+    pub async fn upload(&self) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
         bucket
             .put_object(APP.s3(), self.s3_key(), self.content.clone(), self.mime())
@@ -179,7 +179,7 @@ impl Attachment {
     }
 
     /// Download the attachment content from S3.
-    pub async fn download(&mut self) -> Result<(), ChatError> {
+    pub async fn download(&mut self) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
         self.content = bucket.get_object(APP.s3(), self.s3_key()).await?;
         Ok(())
@@ -187,7 +187,7 @@ impl Attachment {
 
     /// Delete the contents of the attachment from S3.
     /// This should be called after the attachment is deleted from the database.
-    pub async fn delete(&self) -> Result<(), ChatError> {
+    pub async fn delete(&self) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
         bucket.delete_object(APP.s3(), self.s3_key()).await?;
         Ok(())

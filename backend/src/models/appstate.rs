@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 use tokio::sync::RwLock;
 
 use super::db::Database;
-use super::{bucket::Bucket, errors::ChatError, snowflake::Snowflake};
+use super::{bucket::Bucket, errors::AppError, snowflake::Snowflake};
 use crate::gateway::handler::Gateway;
 
 lazy_static! {
@@ -196,7 +196,7 @@ impl Buckets {
     }
 
     /// Remove all S3 data for the given channel.
-    pub async fn remove_all_for_channel(&self, channel: impl Into<Snowflake>) -> Result<(), ChatError> {
+    pub async fn remove_all_for_channel(&self, channel: impl Into<Snowflake>) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
         let channel_id: Snowflake = channel.into();
         let attachments = bucket.list_objects(APP.s3(), channel_id.to_string(), None).await?;
@@ -217,7 +217,7 @@ impl Buckets {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    pub async fn remove_all_for_guild(&self, guild: impl Into<Snowflake>) -> Result<(), ChatError> {
+    pub async fn remove_all_for_guild(&self, guild: impl Into<Snowflake>) -> Result<(), AppError> {
         let guild_id: i64 = guild.into().into();
         let db = APP.db.read().await;
 

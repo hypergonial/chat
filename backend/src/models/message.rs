@@ -8,7 +8,7 @@ use warp::{multipart::FormData, Buf};
 use super::{
     appstate::APP,
     attachment::{Attachment, AttachmentLike, AttachmentT},
-    errors::{BuilderError, ChatError},
+    errors::{BuilderError, AppError},
     member::UserLike,
     rest::CreateMessage,
     snowflake::Snowflake,
@@ -134,7 +134,7 @@ impl Message {
         author: UserLike,
         channel: impl Into<Snowflake>,
         mut form: FormData,
-    ) -> Result<Self, ChatError> {
+    ) -> Result<Self, AppError> {
         let id = Snowflake::gen_new().await;
         let channel_id: Snowflake = channel.into();
         let mut attachments: Vec<AttachmentLike> = Vec::new();
@@ -152,7 +152,7 @@ impl Message {
 
             if part.name() == "json" && part.content_type().is_some_and(|ct| ct == "application/json") {
                 let Some(Ok(data)) = part.data().await else {
-                    return Err(ChatError::MalformedFieldError("json".to_string()));
+                    return Err(AppError::MalformedFieldError("json".to_string()));
                 };
                 let payload = serde_json::from_slice::<CreateMessage>(data.chunk())?;
                 builder.content(payload.content).nonce(payload.nonce.clone());
@@ -160,7 +160,7 @@ impl Message {
                 let attachment = Attachment::try_from_form_part(part, channel_id, id).await?;
 
                 if attachments.iter().any(|a| a.id() == attachment.id()) {
-                    return Err(ChatError::DuplicateFieldError("attachment.id".to_string()));
+                    return Err(AppError::DuplicateFieldError("attachment.id".to_string()));
                 }
                 attachments.push(AttachmentLike::Full(attachment));
             }
@@ -233,7 +233,7 @@ impl Message {
     /// Commit this message to the database. Uploads all attachments to S3.
     /// It is highly recommended to call [`Message::strip_attachment_contents`] after calling
     /// this method to remove the attachment contents from memory.
-    pub async fn commit(&self) -> Result<(), ChatError> {
+    pub async fn commit(&self) -> Result<(), AppError> {
         let db = APP.db.read().await;
         let id_i64: i64 = self.id.into();
         let author_id_i64: Option<i64> = self.author.as_ref().map(|u| u.id().into());

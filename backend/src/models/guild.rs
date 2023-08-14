@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::{channel::ChannelRecord, member::ExtendedMemberRecord};
 
 use super::{
-    appstate::APP, channel::Channel, errors::ChatError, member::Member, rest::CreateGuild, snowflake::Snowflake,
+    appstate::APP, channel::Channel, errors::AppError, member::Member, rest::CreateGuild, snowflake::Snowflake,
 };
 
 /// Represents a guild record stored in the database.
@@ -202,7 +202,7 @@ impl Guild {
     }
 
     /// Deletes the guild.
-    pub async fn delete(self) -> Result<(), ChatError> {
+    pub async fn delete(self) -> Result<(), AppError> {
         let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
 
