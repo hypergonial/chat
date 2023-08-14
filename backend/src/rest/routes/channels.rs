@@ -33,10 +33,10 @@ struct FetchMessagesQuery {
 
 pub fn get_router() -> Router {
     Router::new()
-        .route(":channel_id", get(fetch_channel))
-        .route(":channel_id", delete(delete_channel))
-        .route(":channel_id/messages", post(create_message))
-        .route(":channel_id/messages", get(fetch_messages))
+        .route("/channels/:channel_id", get(fetch_channel))
+        .route("/channels/:channel_id", delete(delete_channel))
+        .route("/channels/:channel_id/messages", post(create_message))
+        .route("/channels/:channel_id/messages", get(fetch_messages))
         .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(8 * 1024 * 1024 /* 8mb */))
 }

@@ -20,12 +20,12 @@ use serde_json::Value;
 
 pub fn get_router() -> Router {
     Router::new()
-        .route("users", post(create_user))
-        .route("users", post(auth_user))
-        .route("users/@self", get(fetch_self))
-        .route("users/@self/guilds", get(fetch_self_guilds))
-        .route("users/@self/presence", patch(update_presence))
-        .route("usernames/:username", get(query_username))
+        .route("/users", post(create_user))
+        .route("/users/auth", post(auth_user))
+        .route("/users/@self", get(fetch_self))
+        .route("/users/@self/guilds", get(fetch_self_guilds))
+        .route("/users/@self/presence", patch(update_presence))
+        .route("/usernames/:username", get(query_username))
 }
 
 /// Create a new user and return the user data.

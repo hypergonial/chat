@@ -30,10 +30,9 @@ pub fn get_router() -> Router {
         ])
         .max_age(Duration::from_secs(3600));
 
-    Router::new()
-        .nest("/channels", get_channel_router())
-        .nest("/guilds", get_guild_router())
-        .nest("/users", get_user_router())
+    get_channel_router()
+        .merge(get_guild_router())
+        .merge(get_user_router())
         .layer(cors)
 }
 

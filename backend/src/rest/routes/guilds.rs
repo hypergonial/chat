@@ -24,14 +24,14 @@ use crate::{
 
 pub fn get_router() -> Router {
     Router::new()
-        .route("", post(create_guild))
-        .route(":guild_id", get(fetch_guild))
-        .route(":guild_id/channels", post(create_channel))
-        .route(":guild_id/members", post(create_member))
-        .route(":guild_id/members/@self", get(fetch_member_self))
-        .route(":guild_id/members/:member_id", get(fetch_member))
-        .route(":guild_id/members/@self", delete(leave_guild))
-        .route(":guild_id", delete(delete_guild))
+        .route("/guilds", post(create_guild))
+        .route("/guilds/:guild_id", get(fetch_guild))
+        .route("/guilds/:guild_id/channels", post(create_channel))
+        .route("/guilds/:guild_id/members", post(create_member))
+        .route("/guilds/:guild_id/members/@self", get(fetch_member_self))
+        .route("/guilds/:guild_id/members/:member_id", get(fetch_member))
+        .route("/guilds/:guild_id/members/@self", delete(leave_guild))
+        .route("/guilds/:guild_id", delete(delete_guild))
 }
 
 /// Create a new guild and return the guild data.
