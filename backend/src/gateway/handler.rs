@@ -179,7 +179,7 @@ pub fn get_router() -> Router {
 }
 
 async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_connection(socket))
+    ws.on_upgrade(handle_connection)
 }
 
 /// Wait for and validate the IDENTIFY payload
@@ -355,10 +355,8 @@ async fn handle_connection(socket: WebSocket) {
     // Listen for a close socket event
     let listen_for_close = tokio::spawn(async move {
         while let Some(msg) = ws_stream.next().await {
-            if let Ok(msg) = msg {
-                if let Message::Close(_) = msg {
-                    break;
-                }
+            if let Ok(Message::Close(_)) = msg {
+                break;
             }
         }
     });
