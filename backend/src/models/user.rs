@@ -128,10 +128,6 @@ impl User {
     }
 
     /// Retrieve the user's presence.
-    ///
-    /// ## Locks
-    ///
-    /// * `APP.gateway` (read)
     pub async fn presence(&self) -> &Presence {
         if APP.gateway().is_connected(self.id()) {
             &self.last_presence
@@ -152,10 +148,6 @@ impl User {
     }
 
     /// Transform this object to also include the user's presence.
-    ///
-    /// ## Locks
-    ///
-    /// * `APP.gateway` (read)
     pub async fn include_presence(self) -> Self {
         let presence = self.presence().await;
         Self {

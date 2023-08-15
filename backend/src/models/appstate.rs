@@ -217,10 +217,6 @@ impl Buckets {
     }
 
     /// Remove all S3 data for the given guild.
-    ///
-    /// ## Locks
-    ///
-    /// * `APP.db` (read)
     pub async fn remove_all_for_guild(&self, guild: impl Into<Snowflake>) -> Result<(), AppError> {
         let guild_id: i64 = guild.into().into();
         let db = APP.db.read().await;
