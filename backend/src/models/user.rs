@@ -133,7 +133,7 @@ impl User {
     ///
     /// * `APP.gateway` (read)
     pub async fn presence(&self) -> &Presence {
-        if APP.gateway.read().await.is_connected(self.id()) {
+        if APP.gateway().is_connected(self.id()) {
             &self.last_presence
         } else {
             &Presence::Offline

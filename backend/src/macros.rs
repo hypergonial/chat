@@ -13,6 +13,6 @@
 #[macro_export]
 macro_rules! dispatch {
     ($event:expr) => {
-        APP.gateway.write().await.dispatch($event);
+        APP.gateway().dispatch($event);
     };
 }

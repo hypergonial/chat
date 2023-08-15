@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use axum::{
     extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
@@ -10,6 +6,7 @@ use axum::{
     routing::get,
     Router,
 };
+use dashmap::DashMap;
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -30,7 +27,7 @@ use crate::models::{
 };
 
 /// Mapping of <user_id, handle>
-pub type PeerMap = HashMap<Snowflake, ConnectionHandle>;
+pub type PeerMap = DashMap<Snowflake, ConnectionHandle>;
 
 /// A struct containing connection details for a user
 ///
@@ -92,13 +89,14 @@ impl Gateway {
     /// ## Arguments
     ///
     /// * `payload` - The event payload
-    pub fn dispatch(&mut self, event: GatewayEvent) {
+    pub fn dispatch(&self, event: GatewayEvent) {
         tracing::debug!("Dispatching event: {:?}", event);
 
         // TODO: Figure out how to use the `HashMap::retain` method here without killing borrowck
         let mut to_drop: Vec<Snowflake> = Vec::new();
 
-        for (uid, handle) in self.peers.iter() {
+        for peer in self.peers.iter() {
+            let (uid, handle) = peer.pair();
             // If the event is guild-specific, only send it to users that are members of that guild
             if let Some(event_guild) = event.extract_guild_id() {
                 if !handle.guild_ids().contains(&event_guild) {
@@ -123,21 +121,21 @@ impl Gateway {
     }
 
     /// Registers a new guild member instance to an existing connection
-    pub fn add_member(&mut self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
-        if let Some(handle) = self.peers.get_mut(&user.into()) {
+    pub fn add_member(&self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
+        if let Some(mut handle) = self.peers.get_mut(&user.into()) {
             handle.guild_ids_mut().insert(guild.into());
         }
     }
 
     /// Removes a guild member instance from an existing connection
-    pub fn remove_member(&mut self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
-        if let Some(handle) = self.peers.get_mut(&user.into()) {
+    pub fn remove_member(&self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
+        if let Some(mut handle) = self.peers.get_mut(&user.into()) {
             handle.guild_ids_mut().remove(&guild.into());
         }
     }
 
     /// Send an event to a specific user. If they are not connected, the event is dropped.
-    pub fn send_to(&mut self, user: impl Into<Snowflake>, event: GatewayEvent) {
+    pub fn send_to(&self, user: impl Into<Snowflake>, event: GatewayEvent) {
         let user_id: Snowflake = user.into();
         if let Some(handle) = self.peers.get(&user_id) {
             if let Err(_disconnected) = handle.send(event) {
@@ -275,9 +273,7 @@ async fn handle_connection(socket: WebSocket) {
         .collect::<HashSet<Snowflake>>();
 
     // Add user to peermap
-    APP.gateway
-        .write()
-        .await
+    APP.gateway()
         .peers
         .insert(user.id(), ConnectionHandle::new(sender, guild_ids.clone()));
 
@@ -312,9 +308,7 @@ async fn handle_connection(socket: WebSocket) {
     match user.last_presence() {
         Presence::Offline => {}
         _ => {
-            APP.gateway
-                .write()
-                .await
+            APP.gateway()
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
                     user_id: user.id(),
                     presence: *user.last_presence(),
@@ -369,7 +363,7 @@ async fn handle_connection(socket: WebSocket) {
     }
 
     // Disconnection logic
-    APP.gateway.write().await.peers.remove(&user.id());
+    APP.gateway().peers.remove(&user.id());
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 
     // Refetch presence in case it changed
@@ -379,9 +373,7 @@ async fn handle_connection(socket: WebSocket) {
     match presence {
         Presence::Offline => {}
         _ => {
-            APP.gateway
-                .write()
-                .await
+            APP.gateway()
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
                     user_id: user.id(),
                     presence: Presence::Offline,

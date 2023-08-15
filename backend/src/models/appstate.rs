@@ -19,7 +19,7 @@ lazy_static! {
 /// Contains all the application state and manages application state changes.
 pub struct ApplicationState {
     pub db: RwLock<Database>,
-    pub gateway: RwLock<Gateway>,
+    gateway: Gateway,
     config: Config,
     s3: Client,
     buckets: Buckets,
@@ -42,7 +42,7 @@ impl ApplicationState {
         ApplicationState {
             db: RwLock::new(Database::new()),
             config,
-            gateway: RwLock::new(Gateway::new()),
+            gateway: Gateway::new(),
             s3: Client::from_conf(s3conf),
             buckets,
         }
@@ -56,6 +56,10 @@ impl ApplicationState {
     /// All S3 buckets used by the application.
     pub fn buckets(&self) -> &Buckets {
         &self.buckets
+    }
+
+    pub fn gateway(&self) -> &Gateway {
+        &self.gateway
     }
 
     /// The S3 SDK client.

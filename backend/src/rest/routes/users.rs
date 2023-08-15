@@ -155,7 +155,7 @@ pub async fn update_presence(token: Token, Json(new_presence): Json<Presence>) -
     .execute(db.pool())
     .await?;
 
-    if APP.gateway.read().await.is_connected(token.data().user_id()) {
+    if APP.gateway().is_connected(token.data().user_id()) {
         dispatch!(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
             presence: new_presence,
             user_id: token.data().user_id(),
