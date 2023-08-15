@@ -32,6 +32,22 @@ impl From<String> for BuilderError {
     }
 }
 
+impl IntoResponse for BuilderError {
+    fn into_response(self) -> Response {
+        let status = match self {
+            Self::UninitializedField(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ValidationError(_) => StatusCode::BAD_REQUEST,
+        };
+        if let StatusCode::INTERNAL_SERVER_ERROR = status {
+            tracing::error!(error = %self);
+        }
+        let body = Json(json!({
+            "error": self.to_string()
+        }));
+        (status, body).into_response()
+    }
+}
+
 /// Errors that can occur in the application.
 #[derive(Error, Debug)]
 #[non_exhaustive]
@@ -45,7 +61,7 @@ pub enum AppError {
     #[error("Failed to parse multipart/form-data: {0}")]
     Multipart(#[from] MultipartError),
     #[error("Failed to parse JWT: {0}")]
-    JWTError(#[from] jsonwebtoken::errors::Error),
+    JWT(#[from] jsonwebtoken::errors::Error),
     #[error("Failed to match regex: {0}")]
     Regex(#[from] regex::Error),
     #[error("Failed to build object: {0}")]
@@ -65,9 +81,9 @@ impl IntoResponse for AppError {
             Self::S3(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::JSON(_) => StatusCode::BAD_REQUEST,
             Self::Multipart(_) => StatusCode::BAD_REQUEST,
-            Self::JWTError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::JWT(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Regex(_) => StatusCode::BAD_REQUEST,
-            Self::Builder(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Builder(e) => return e.into_response(),
             Self::ParseInt(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Auth(e) => return e.into_response(),
             Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
