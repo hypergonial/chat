@@ -175,7 +175,7 @@ impl Default for Gateway {
 ///
 /// A filter that can be used to handle the gateway
 pub fn get_router() -> Router {
-    Router::new().route("/gateway", get(websocket_handler))
+    Router::new().route("/", get(websocket_handler))
 }
 
 async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {

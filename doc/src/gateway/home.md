@@ -4,7 +4,7 @@ The gateway is a websocket connection that allows for real-time communication wi
 
 ## Authentication flow
 
-After connecting to the gateway (located at `/gateway`), the client is expected to send an `IDENTIFY` payload, the format of which is as follows:
+After connecting to the gateway (located at `/gateway/v1`), the client is expected to send an `IDENTIFY` payload, the format of which is as follows:
 
 ```json
 {
