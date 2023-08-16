@@ -77,13 +77,13 @@ impl Token {
     /// # Errors
     ///
     /// Returns an error if the token could not be generated or contains invalid data.
-    pub fn new(data: &TokenData, secret: &str) -> Result<Self, jsonwebtoken::errors::Error> {
+    pub fn new(data: &TokenData) -> Result<Self, jsonwebtoken::errors::Error> {
         Ok(Token {
             data: data.clone(),
             token: Secret::new(encode(
                 &Header::default(),
                 &data,
-                &EncodingKey::from_secret(secret.as_ref()),
+                &EncodingKey::from_secret(APP.config().app_secret().expose_secret().as_ref()),
             )?),
         })
     }
@@ -98,8 +98,8 @@ impl Token {
     /// # Errors
     ///
     /// Returns an error if the token could not be generated or contains invalid data.
-    pub fn new_for(user_id: Snowflake, secret: &str) -> Result<Self, jsonwebtoken::errors::Error> {
-        Self::new(&TokenData::new(user_id, Utc::now().timestamp() as usize), secret)
+    pub fn new_for(user_id: Snowflake) -> Result<Self, jsonwebtoken::errors::Error> {
+        Self::new(&TokenData::new(user_id, Utc::now().timestamp() as usize))
     }
 
     /// Decode an existing token and return it. This will not validate the token.
@@ -112,10 +112,10 @@ impl Token {
     /// # Errors
     ///
     /// Returns an error if the token could not be decoded or the secret was invalid.
-    fn decode(token: &str, secret: &str) -> Result<Self, jsonwebtoken::errors::Error> {
+    fn decode(token: &str) -> Result<Self, jsonwebtoken::errors::Error> {
         let decoded = decode::<TokenData>(
             token,
-            &DecodingKey::from_secret(secret.as_ref()),
+            &DecodingKey::from_secret(APP.config().app_secret().expose_secret().as_ref()),
             &Validation::default(),
         )?;
         Ok(Token {
@@ -135,8 +135,8 @@ impl Token {
     ///
     /// Returns an error if the token could not be decoded or the secret was invalid.
     /// Returns an error if the token was issued before the last password change.
-    pub async fn validate(token: &str, secret: &str) -> Result<Self, anyhow::Error> {
-        let token = Self::decode(token, secret)?;
+    pub async fn validate(token: &str) -> Result<Self, anyhow::Error> {
+        let token = Self::decode(token)?;
         let stored_creds = StoredCredentials::fetch(token.data().user_id())
             .await
             .ok_or(anyhow::anyhow!("User credentials not found"))?;
@@ -182,7 +182,7 @@ where
             .await
             .map_err(|_| AuthError::InvalidToken)?;
         // Decode the user data
-        Token::validate(bearer.token(), "among us")
+        Token::validate(bearer.token())
             .await
             .map_err(|_| AuthError::InvalidToken)
     }
@@ -329,21 +329,9 @@ mod tests {
             iat: 123,
             exp: Utc::now().timestamp() as usize + 1000000,
         };
-        let token = Token::new(&data, "among us").unwrap();
-        let decoded_token = Token::decode(token.expose_secret(), "among us").unwrap();
+        let token = Token::new(&data).unwrap();
+        let decoded_token = Token::decode(token.expose_secret()).unwrap();
         assert_eq!(decoded_token.data().user_id, 123_u64.into());
         assert_eq!(decoded_token.data().iat, 123);
-    }
-
-    #[test]
-    fn test_different_secret_fail() {
-        let data = TokenData {
-            user_id: 123_u64.into(),
-            iat: 123,
-            exp: Utc::now().timestamp() as usize + 1000000,
-        };
-        let token = Token::new(&data, "among us").unwrap();
-        let err = Token::decode(token.expose_secret(), "sussage").unwrap_err();
-        assert_eq!(err.to_string(), "InvalidSignature");
     }
 }

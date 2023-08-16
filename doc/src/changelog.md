@@ -2,7 +2,11 @@
 
 Only breaking/important changes are listed here. For a full list of changes, see the [commit history](https://github.com/hypergonial/chat/commits/main/).
 
-# 2023.08.15-1
+## 2023.08.16-1
+
+- Added envvar `APP_SECRET` to the `.env` file. This is used to sign & decode the JWTs that are sent to clients. It is recommended to generate a random string and use that as the secret.
+
+## 2023.08.15-1
 
 - Migrated the entire backend from `warp` to `axum`.
 - All existing REST routes are now prefixed with `/api/v1/`, so for example, to create a channel, you would send a `POST` request to `/api/v1/guilds/{guild_id}/channels`.

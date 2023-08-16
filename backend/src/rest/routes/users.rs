@@ -77,7 +77,7 @@ async fn create_user(Json(payload): Json<CreateUser>) -> Result<Json<User>, REST
 /// POST `/users/auth`
 async fn auth_user(Json(credentials): Json<Credentials>) -> Result<Json<Value>, RESTError> {
     let user_id = validate_credentials(credentials).await?;
-    let token = Token::new_for(user_id, "among us")?;
+    let token = Token::new_for(user_id)?;
 
     Ok(Json(json!({
         "user_id": user_id,

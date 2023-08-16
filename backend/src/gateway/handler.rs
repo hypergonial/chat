@@ -222,7 +222,7 @@ async fn handle_handshake(
         return Err(());
     };
 
-    let Ok(token) = Token::validate(payload.token.expose_secret(), "among us").await else {
+    let Ok(token) = Token::validate(payload.token.expose_secret()).await else {
         ws_sink.send(Message::Close(Some(CloseFrame {
             code: 1008,
             reason: "Invalid token".into(),

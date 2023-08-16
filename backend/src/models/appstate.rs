@@ -4,12 +4,18 @@ use aws_sdk_s3::{
     config::{Credentials, Region},
     Client, Config as S3Config,
 };
+use derive_builder::Builder;
 use dotenv::dotenv;
 use lazy_static::lazy_static;
+use secrecy::{ExposeSecret, Secret};
 use tokio::sync::RwLock;
 
 use super::db::Database;
-use super::{bucket::Bucket, errors::AppError, snowflake::Snowflake};
+use super::{
+    bucket::Bucket,
+    errors::{AppError, BuilderError},
+    snowflake::Snowflake,
+};
 use crate::gateway::handler::Gateway;
 
 lazy_static! {
@@ -30,7 +36,13 @@ impl ApplicationState {
         let config = Config::from_env();
         let buckets = Buckets::new();
 
-        let s3creds = Credentials::new(config.minio_access_key(), config.minio_secret_key(), None, None, "chat");
+        let s3creds = Credentials::new(
+            config.minio_access_key().expose_secret(),
+            config.minio_secret_key().expose_secret(),
+            None,
+            None,
+            "chat",
+        );
 
         let s3conf = S3Config::builder()
             .region(Region::new("vault"))
@@ -69,7 +81,11 @@ impl ApplicationState {
 
     /// Initializes the application
     pub async fn init(&self) -> Result<(), sqlx::Error> {
-        self.db.write().await.connect(self.config.database_url()).await
+        self.db
+            .write()
+            .await
+            .connect(self.config.database_url().expose_secret())
+            .await
     }
 
     /// Closes the application and cleans up resources.
@@ -79,52 +95,42 @@ impl ApplicationState {
 }
 
 /// Application configuration
+#[derive(Debug, Builder)]
+#[builder(setter(into), build_fn(error = "BuilderError"))]
 pub struct Config {
-    database_url: String,
+    database_url: Secret<String>,
     minio_url: String,
-    minio_access_key: String,
-    minio_secret_key: String,
+    minio_access_key: Secret<String>,
+    minio_secret_key: Secret<String>,
     listen_addr: SocketAddr,
     machine_id: i32,
     process_id: i32,
+    app_secret: Secret<String>,
 }
 
 impl Config {
-    /// Creates a new config instance.
-    pub const fn new(
-        database_url: String,
-        minio_url: String,
-        minio_access_key: String,
-        minio_secret_key: String,
-        machine_id: i32,
-        process_id: i32,
-        listen_addr: SocketAddr,
-    ) -> Self {
-        Config {
-            database_url,
-            minio_url,
-            minio_access_key,
-            minio_secret_key,
-            machine_id,
-            process_id,
-            listen_addr,
-        }
+    /// Create a new builder to construct a [`Config`].
+    pub fn builder() -> ConfigBuilder {
+        ConfigBuilder::default()
     }
 
-    /// The database url.
-    pub fn database_url(&self) -> &str {
+    /// The database URL.
+    pub fn database_url(&self) -> &Secret<String> {
         &self.database_url
     }
 
+    /// The URL for the MinIO server, an S3-compatible storage backend.
     pub fn minio_url(&self) -> &str {
         &self.minio_url
     }
 
-    pub fn minio_access_key(&self) -> &str {
+    /// The access key for S3.
+    pub fn minio_access_key(&self) -> &Secret<String> {
         &self.minio_access_key
     }
 
-    pub fn minio_secret_key(&self) -> &str {
+    /// The secret key for S3.
+    pub fn minio_secret_key(&self) -> &Secret<String> {
         &self.minio_secret_key
     }
 
@@ -143,6 +149,11 @@ impl Config {
         self.listen_addr
     }
 
+    /// APP secret used to create JWT tokens.
+    pub fn app_secret(&self) -> &Secret<String> {
+        &self.app_secret
+    }
+
     /// Creates a new config from environment variables
     ///
     /// ## Panics
@@ -151,33 +162,36 @@ impl Config {
     /// or if they are not in a valid format.
     pub fn from_env() -> Self {
         dotenv().ok();
-        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set");
-        let minio_url = std::env::var("MINIO_URL").expect("MINIO_URL environment variable must be set");
-        let minio_access_key =
-            std::env::var("MINIO_ACCESS_KEY").expect("MINIO_ACCESS_KEY environment variable must be set");
-        let minio_secret_key =
-            std::env::var("MINIO_SECRET_KEY").expect("MINIO_SECRET_KEY environment variable must be set");
-        let machine_id = std::env::var("MACHINE_ID")
-            .expect("MACHINE_ID environment variable must be set")
-            .parse::<i32>()
-            .expect("MACHINE_ID must be a valid integer");
-        let process_id = std::env::var("PROCESS_ID")
-            .expect("PROCESS_ID environment variable must be set")
-            .parse::<i32>()
-            .expect("PROCESS_ID must be a valid integer");
-        let listen_addr = std::env::var("LISTEN_ADDR")
-            .expect("LISTEN_ADDR environment variable must be set")
-            .parse::<SocketAddr>()
-            .expect("LISTEN_ADDR must be a valid socket address");
-        Config::new(
-            database_url,
-            minio_url,
-            minio_access_key,
-            minio_secret_key,
-            machine_id,
-            process_id,
-            listen_addr,
-        )
+        Config::builder()
+            .database_url(std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set"))
+            .minio_url(std::env::var("MINIO_URL").expect("MINIO_URL environment variable must be set"))
+            .minio_access_key(
+                std::env::var("MINIO_ACCESS_KEY").expect("MINIO_ACCESS_KEY environment variable must be set"),
+            )
+            .minio_secret_key(
+                std::env::var("MINIO_SECRET_KEY").expect("MINIO_SECRET_KEY environment variable must be set"),
+            )
+            .machine_id(
+                std::env::var("MACHINE_ID")
+                    .expect("MACHINE_ID environment variable must be set")
+                    .parse::<i32>()
+                    .expect("MACHINE_ID must be a valid integer"),
+            )
+            .process_id(
+                std::env::var("PROCESS_ID")
+                    .expect("PROCESS_ID environment variable must be set")
+                    .parse::<i32>()
+                    .expect("PROCESS_ID must be a valid integer"),
+            )
+            .listen_addr(
+                std::env::var("LISTEN_ADDR")
+                    .expect("LISTEN_ADDR environment variable must be set")
+                    .parse::<SocketAddr>()
+                    .expect("LISTEN_ADDR must be a valid socket address"),
+            )
+            .app_secret(std::env::var("APP_SECRET").expect("APP_SECRET environment variable must be set"))
+            .build()
+            .expect("Failed to create application configuration.")
     }
 }
 
