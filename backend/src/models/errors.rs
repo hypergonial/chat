@@ -166,7 +166,7 @@ impl IntoResponse for RESTError {
 pub enum AuthError {
     #[error("Wrong credentials")]
     WrongCredentials,
-    #[error("Missing credentials")]
+    #[error("Missing or malformed credentials")]
     MissingCredentials,
     #[error("User not found")]
     UserNotFound,

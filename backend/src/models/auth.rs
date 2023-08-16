@@ -12,7 +12,7 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::APP, errors::AuthError, snowflake::Snowflake};
+use super::{appstate::APP, errors::{AuthError, RESTError}, snowflake::Snowflake};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TokenData {
@@ -33,7 +33,7 @@ impl TokenData {
     ///
     /// * `user_id` - The user id to store in the token
     /// * `iat` - The issuer time of the token
-    pub fn new(user_id: Snowflake, iat: usize) -> Self {
+    fn new(user_id: Snowflake, iat: usize) -> Self {
         TokenData {
             user_id,
             iat,
@@ -77,7 +77,7 @@ impl Token {
     /// # Errors
     ///
     /// Returns an error if the token could not be generated or contains invalid data.
-    pub fn new(data: &TokenData) -> Result<Self, jsonwebtoken::errors::Error> {
+    fn new(data: &TokenData) -> Result<Self, jsonwebtoken::errors::Error> {
         Ok(Token {
             data: data.clone(),
             token: Secret::new(encode(
@@ -135,14 +135,13 @@ impl Token {
     ///
     /// Returns an error if the token could not be decoded or the secret was invalid.
     /// Returns an error if the token was issued before the last password change.
-    pub async fn validate(token: &str) -> Result<Self, anyhow::Error> {
+    pub async fn validate(token: &str) -> Result<Self, RESTError> {
         let token = Self::decode(token)?;
         let stored_creds = StoredCredentials::fetch(token.data().user_id())
-            .await
-            .ok_or(anyhow::anyhow!("User credentials not found"))?;
+            .await.ok_or(RESTError::NotFound("User entry for token not found".into()))?;
         // Check that the token's iat is after the last changed time of the stored credentials
         if token.data().iat() < stored_creds.last_changed.timestamp() as usize {
-            return Err(anyhow::anyhow!("Token issued before last password change"));
+            return Err(AuthError::InvalidToken.into());
         }
         Ok(token)
     }
@@ -174,17 +173,16 @@ impl<S> FromRequestParts<S> for Token
 where
     S: Send + Sync,
 {
-    type Rejection = AuthError;
+    type Rejection = RESTError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
-            .map_err(|_| AuthError::InvalidToken)?;
+            .map_err(|_| AuthError::MissingCredentials)?;
         // Decode the user data
         Token::validate(bearer.token())
             .await
-            .map_err(|_| AuthError::InvalidToken)
     }
 }
 

@@ -58,7 +58,7 @@ pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake,
 /// * `Ok(())` - If the password candidate matches the hash.
 /// * `Err(AuthError::WrongCredentials)` - If the password candidate does not match the hash.
 /// * `Err(AuthError::PasswordHash)` - If the password candidate could not be hashed.
-pub fn verify_password_hash(
+fn verify_password_hash(
     expected_hash: Secret<String>,
     password_candidate: Secret<String>,
 ) -> Result<(), AuthError> {
