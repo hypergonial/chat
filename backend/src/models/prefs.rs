@@ -81,11 +81,11 @@ impl Prefs {
     pub fn new(user_id: Snowflake) -> Self {
         Prefs {
             user_id,
-            flags: PrefFlags::empty(),
+            flags: PrefFlags::default(),
             message_grouping_timeout: 60,
             layout: Layout::Normal,
-            text_size: 0,
-            locale: String::new(),
+            text_size: 12,
+            locale: String::from("en_US"),
         }
     }
 
@@ -171,11 +171,11 @@ impl Default for Prefs {
     fn default() -> Self {
         Prefs {
             user_id: Snowflake::default(),
-            flags: PrefFlags::empty(),
+            flags: PrefFlags::default(),
             message_grouping_timeout: 60,
             layout: Layout::Normal,
             text_size: 12,
-            locale: String::new(),
+            locale: String::from("en_US"),
         }
     }
 }
