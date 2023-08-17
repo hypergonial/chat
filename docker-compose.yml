@@ -95,7 +95,6 @@ services:
 
   backend:
     build:
-        context: ./backend
         dockerfile: Dockerfile
         args:
           - BUILD_TYPE=${BUILD_TYPE:-release}
@@ -110,7 +109,6 @@ services:
       - APP_SECRET=${APP_SECRET:?err}
     ports:
       - 8080:8080
-    command: ["backend"]
     depends_on:
       - db
       - nginx

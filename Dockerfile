@@ -19,6 +19,6 @@ RUN apt-get update
 # Required by AWS-SDK which in turn needs rustls to verify the certificates
 RUN apt-get install -y ca-certificates
 RUN rm -rf /var/lib/apt/lists/*
-COPY --from=builder /usr/local/cargo/bin/backend /usr/local/bin/backend
+COPY --from=builder /usr/local/cargo/bin/chat-backend /usr/local/bin/chat-backend
 
-CMD ["backend"]
+CMD ["chat-backend"]
