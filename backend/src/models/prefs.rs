@@ -15,7 +15,7 @@ bitflags! {
 
 impl Default for PrefFlags {
     fn default() -> Self {
-        PrefFlags::empty()
+        PrefFlags::RENDER_ATTACHMENTS | PrefFlags::AUTOPLAY_GIF
     }
 }
 
