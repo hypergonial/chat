@@ -12,7 +12,11 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::APP, errors::{AuthError, RESTError}, snowflake::Snowflake};
+use super::{
+    appstate::APP,
+    errors::{AuthError, RESTError},
+    snowflake::Snowflake,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TokenData {
@@ -138,7 +142,8 @@ impl Token {
     pub async fn validate(token: &str) -> Result<Self, RESTError> {
         let token = Self::decode(token)?;
         let stored_creds = StoredCredentials::fetch(token.data().user_id())
-            .await.ok_or(RESTError::NotFound("User entry for token not found".into()))?;
+            .await
+            .ok_or(RESTError::NotFound("User entry for token not found".into()))?;
         // Check that the token's iat is after the last changed time of the stored credentials
         if token.data().iat() < stored_creds.last_changed.timestamp() as usize {
             return Err(AuthError::InvalidToken.into());
@@ -181,8 +186,7 @@ where
             .await
             .map_err(|_| AuthError::MissingCredentials)?;
         // Decode the user data
-        Token::validate(bearer.token())
-            .await
+        Token::validate(bearer.token()).await
     }
 }
 

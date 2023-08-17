@@ -26,7 +26,7 @@ impl Snowflake {
     }
 
     /// Generate a new snowflake using the current time.
-    pub async fn gen_new() -> Self {
+    pub fn gen_new() -> Self {
         let app = &APP;
         let mut gen = get_generator(app.config().machine_id(), app.config().process_id());
         gen.generate().into()
@@ -53,6 +53,12 @@ impl Snowflake {
     /// Returns the process ID that generated this snowflake.
     pub fn process_id(&self) -> u64 {
         (self.value & 0x1F000) >> 12
+    }
+}
+
+impl Default for Snowflake {
+    fn default() -> Self {
+        Self::gen_new()
     }
 }
 

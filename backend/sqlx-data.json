@@ -45,6 +45,56 @@
     },
     "query": "UPDATE users SET last_presence = $1 WHERE id = $2"
   },
+  "1027e72b00a770443be441ff049ff6a0613a9d451dc7a540506ee52022978e95": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Int8"
+        },
+        {
+          "name": "flags",
+          "ordinal": 1,
+          "type_info": "Int8"
+        },
+        {
+          "name": "message_grouping_timeout",
+          "ordinal": 2,
+          "type_info": "Int4"
+        },
+        {
+          "name": "layout",
+          "ordinal": 3,
+          "type_info": "Int2"
+        },
+        {
+          "name": "text_size",
+          "ordinal": 4,
+          "type_info": "Int2"
+        },
+        {
+          "name": "locale",
+          "ordinal": 5,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int8"
+        ]
+      }
+    },
+    "query": "SELECT user_id, flags, message_grouping_timeout, layout, text_size, locale\n            FROM prefs\n            WHERE user_id = $1"
+  },
   "1e4ae5b21ea0466dc2e3c0d48c065efe4f281a263e51b43ef9d309a6725cd824": {
     "describe": {
       "columns": [],
@@ -491,6 +541,23 @@
       }
     },
     "query": "SELECT * FROM channels WHERE guild_id = $1"
+  },
+  "9c60a22a06659c3a408f1c76ec2646238a766bd6302fd46a68f961e4ea557c27": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Int8",
+          "Int8",
+          "Int4",
+          "Int2",
+          "Int2",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "INSERT INTO prefs (user_id, flags, message_grouping_timeout, layout, text_size, locale)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ON CONFLICT (user_id)\n            DO UPDATE SET flags = $2, message_grouping_timeout = $3, layout = $4, text_size = $5, locale = $6"
   },
   "a1fbaac7941f8dc321c32e36f8caf2fec098f23317cc20bce9f8847a624c24e7": {
     "describe": {

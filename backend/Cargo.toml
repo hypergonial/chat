@@ -40,3 +40,4 @@ thiserror = "1.0.44"
 bytes = "1.4.0"
 mime = "0.3.17"
 dashmap = "5.5.0"
+bitflags = {version ="2.4.0", features = ["serde"]}

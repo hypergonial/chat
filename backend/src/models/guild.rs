@@ -59,7 +59,7 @@ impl Guild {
 
     /// Constructs a new guild from a payload and owner ID.
     pub async fn from_payload(payload: CreateGuild, owner: impl Into<Snowflake>) -> Self {
-        Self::new(Snowflake::gen_new().await, payload.name, owner.into())
+        Self::new(Snowflake::gen_new(), payload.name, owner.into())
     }
 
     /// Fetches a guild from the database by ID.

@@ -66,7 +66,7 @@ impl Channel {
     pub async fn from_payload(payload: CreateChannel, guild_id: Snowflake) -> Self {
         match payload {
             CreateChannel::GuildText { name } => {
-                Self::GuildText(TextChannel::new(Snowflake::gen_new().await, guild_id, name))
+                Self::GuildText(TextChannel::new(Snowflake::gen_new(), guild_id, name))
             }
         }
     }

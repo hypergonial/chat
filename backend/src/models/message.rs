@@ -134,7 +134,7 @@ impl Message {
         channel: impl Into<Snowflake>,
         mut form: Multipart,
     ) -> Result<Self, RESTError> {
-        let id = Snowflake::gen_new().await;
+        let id = Snowflake::gen_new();
         let channel_id: Snowflake = channel.into();
         let mut attachments: Vec<AttachmentLike> = Vec::new();
         let mut builder = Message::builder();

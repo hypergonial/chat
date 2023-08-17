@@ -57,7 +57,7 @@ async fn create_guild(token: Token, Json(payload): Json<CreateGuild>) -> Result<
     guild.commit().await?;
     guild.create_member(token.data().user_id()).await?;
 
-    let general = TextChannel::new(Snowflake::gen_new().await, &guild, "general".to_string());
+    let general = TextChannel::new(Snowflake::gen_new(), &guild, "general".to_string());
     general.commit().await?;
 
     let member = Member::fetch(token.data().user_id(), &guild)

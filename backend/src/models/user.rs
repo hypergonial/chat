@@ -92,7 +92,7 @@ impl User {
     pub async fn from_payload(payload: CreateUser) -> Result<Self, anyhow::Error> {
         Self::validate_username(&payload.username)?;
         Ok(User {
-            id: Snowflake::gen_new().await,
+            id: Snowflake::gen_new(),
             username: payload.username.clone(),
             display_name: None,
             last_presence: Presence::default(),
