@@ -39,7 +39,6 @@ impl Bucket {
     ///
     /// * [`ChatError::S3Error`] - If the S3 request fails.
     pub async fn get_object(&self, client: &Client, key: impl Into<String>) -> Result<Bytes, AppError> {
-        let key = key.into();
         let mut resp = client.get_object().bucket(&self.name).key(key).send().await?;
 
         let mut bytes = BytesMut::new();
@@ -68,15 +67,12 @@ impl Bucket {
         data: impl Into<ByteStream>,
         content_type: Mime,
     ) -> Result<(), AppError> {
-        let key = key.into();
-        let data = data.into();
-
         client
             .put_object()
             .bucket(&self.name)
             .content_type(content_type.to_string())
             .key(key)
-            .body(data)
+            .body(data.into())
             .send()
             .await?;
 
@@ -116,9 +112,7 @@ impl Bucket {
         let mut paginator = req.into_paginator().send();
 
         while let Some(resp) = paginator.next().await {
-            let resp = resp?;
-
-            if let Some(contents) = resp.contents {
+            if let Some(contents) = resp?.contents {
                 objects.extend(contents);
             }
         }
@@ -137,8 +131,6 @@ impl Bucket {
     ///
     /// * [`ChatError::S3Error`] - If the S3 request fails.
     pub async fn delete_object(&self, client: &Client, key: impl Into<String>) -> Result<(), AppError> {
-        let key = key.into();
-
         client.delete_object().bucket(&self.name).key(key).send().await?;
 
         Ok(())
