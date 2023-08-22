@@ -40,7 +40,7 @@ impl Snowflake {
     /// Returns the creation time of this snowflake.
     pub fn created_at(&self) -> DateTime<Utc> {
         DateTime::<Utc>::from_utc(
-            NaiveDateTime::from_timestamp_opt(self.timestamp() as i64, 0).unwrap(),
+            NaiveDateTime::from_timestamp_millis(self.timestamp() as i64).unwrap(),
             Utc,
         )
     }

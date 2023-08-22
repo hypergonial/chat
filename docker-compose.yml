@@ -99,14 +99,14 @@ services:
         args:
           - BUILD_TYPE=${BUILD_TYPE:-release}
     environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?err}@db:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-chat}
-      - MINIO_URL=${MINIO_URL:-http://nginx:9000}
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?err}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?err}
-      - MACHINE_ID=${MACHINE_ID:?err}
-      - PROCESS_ID=${PROCESS_ID:?err}
-      - LISTEN_ADDR=0.0.0.0:8080
-      - APP_SECRET=${APP_SECRET:?err}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?err}@db:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-chat}
+      MINIO_URL: ${MINIO_URL:-http://nginx:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?err}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?err}
+      MACHINE_ID: ${MACHINE_ID:?err}
+      PROCESS_ID: ${PROCESS_ID:?err}
+      LISTEN_ADDR: 0.0.0.0:8080
+      APP_SECRET: ${APP_SECRET:?err}
     ports:
       - 8080:8080
     depends_on:
