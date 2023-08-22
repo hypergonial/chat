@@ -2,12 +2,13 @@ pub mod gateway;
 pub mod macros;
 pub mod models;
 pub mod rest;
-use std::process::ExitCode;
 
 use axum::Router;
 use models::appstate::APP;
 use tokio::signal::ctrl_c;
 use tracing::level_filters::LevelFilter;
+use color_eyre::eyre::Result;
+use tower_http::trace::TraceLayer;
 
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
@@ -34,7 +35,9 @@ async fn handle_signals() {
 }
 
 #[tokio::main]
-async fn main() -> ExitCode {
+async fn main() -> Result<()> {
+    color_eyre::install()?;
+
     #[cfg(debug_assertions)]
     let subscriber = tracing_subscriber::fmt()
         .compact()
@@ -57,14 +60,12 @@ async fn main() -> ExitCode {
     let rest_routes = rest::routes::get_router();
 
     // Initialize the database
-    if let Err(e) = APP.init().await {
-        tracing::error!(message = "Failed initializing application", error = %e);
-        return ExitCode::FAILURE;
-    }
+    APP.init().await?;
 
     let app = Router::new()
         .nest("/gateway/v1", gateway_routes)
-        .nest("/api/v1", rest_routes);
+        .nest("/api/v1", rest_routes)
+        .layer(TraceLayer::new_for_http());
 
     hyper::Server::bind(&APP.config().listen_addr())
         .serve(app.into_make_service())
@@ -72,5 +73,5 @@ async fn main() -> ExitCode {
         .await
         .expect("Failed creating server");
 
-    ExitCode::SUCCESS
+    Ok(())
 }

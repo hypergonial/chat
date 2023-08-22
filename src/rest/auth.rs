@@ -16,8 +16,8 @@ use crate::models::{
 ///
 /// # Returns
 ///
-/// * `Ok(Snowflake)` - The user id of the user that owns the credentials.
-/// * `Err(anyhow::Error)` - If the credentials are invalid or the user was not found.
+/// * [`Ok(Snowflake)`] - The user id of the user that owns the credentials.
+/// * [`Err(AuthError)`] - If the credentials are invalid or the user was not found.
 pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake, AuthError> {
     let mut user_id: Option<Snowflake> = None;
     // We set up a dummy hash here so verify_password_hash is always run.

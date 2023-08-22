@@ -124,7 +124,7 @@ impl Message {
     ///
     /// ## Errors
     ///
-    /// * `anyhow::Error` - If the formdata is invalid
+    /// * [`RESTError`] - If the formdata is invalid
     ///
     /// ## Locks
     ///

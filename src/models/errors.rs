@@ -70,8 +70,8 @@ pub enum AppError {
     ParseInt(#[from] ParseIntError),
     #[error("Authentication failure: {0}")]
     Auth(#[from] AuthError),
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+/*     #[error(transparent)]
+    Other(#[from] anyhow::Error), */
 }
 
 impl IntoResponse for AppError {
@@ -86,7 +86,7 @@ impl IntoResponse for AppError {
             Self::Builder(e) => return e.into_response(),
             Self::ParseInt(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Auth(e) => return e.into_response(),
-            Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            // Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         if let StatusCode::INTERNAL_SERVER_ERROR = status {
             tracing::error!(error = %self);

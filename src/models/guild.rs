@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::{channel::ChannelRecord, member::ExtendedMemberRecord};
 
 use super::{
-    appstate::APP, channel::Channel, errors::AppError, member::Member, rest::CreateGuild, snowflake::Snowflake,
+    appstate::APP, channel::Channel, errors::{AppError, RESTError}, member::Member, rest::CreateGuild, snowflake::Snowflake,
 };
 
 /// Represents a guild record stored in the database.
@@ -163,10 +163,10 @@ impl Guild {
     /// Removes a member from a guild.
     ///
     /// Note: If the member is the owner of the guild, this will fail.
-    pub async fn remove_member(&self, user: impl Into<Snowflake>) -> Result<(), anyhow::Error> {
+    pub async fn remove_member(&self, user: impl Into<Snowflake>) -> Result<(), RESTError> {
         let user_id = user.into();
         if self.owner_id == user_id {
-            anyhow::bail!("Cannot remove owner from guild");
+            return Err(RESTError::Forbidden("Cannot remove owner from guild".into()));
         }
 
         let db = APP.db.read().await;

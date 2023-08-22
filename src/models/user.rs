@@ -89,7 +89,7 @@ impl User {
     }
 
     /// Creates a new user object from a create user payload.
-    pub async fn from_payload(payload: CreateUser) -> Result<Self, anyhow::Error> {
+    pub async fn from_payload(payload: CreateUser) -> Result<Self, BuilderError> {
         Self::validate_username(&payload.username)?;
         Ok(User {
             id: Snowflake::gen_new(),
@@ -165,12 +165,12 @@ impl User {
         Ok(())
     }
 
-    fn validate_username(username: &str) -> Result<(), anyhow::Error> {
+    fn validate_username(username: &str) -> Result<(), BuilderError> {
         if !USERNAME_REGEX.is_match(username) {
-            anyhow::bail!("Invalid username, must match regex: {}", USERNAME_REGEX.to_string());
+            return Err(BuilderError::ValidationError(format!("Invalid username, must match regex: {}", USERNAME_REGEX.as_str())));
         }
         if username.len() > 32 || username.len() < 3 {
-            anyhow::bail!("Invalid username, must be between 3 and 32 characters long");
+            return Err(BuilderError::ValidationError("Invalid username, must be between 3 and 32 characters long".to_string()));
         }
         Ok(())
     }

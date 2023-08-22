@@ -7,11 +7,11 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.31.0", features = ["full", "parking_lot", "tracing"] }
-axum = { version = "0.6.20", features = ["ws", "headers", "multipart"] }
+axum = { version = "0.6.20", features = ["ws", "headers", "multipart", "tracing"] }
 serde = { version = "1.0.183", features = ["derive"] }
 sqlx = { version = "0.6.3", features = ["macros", "migrate", "sqlx-macros", "postgres", "runtime-tokio-rustls", "offline"] }
 chrono = { version = "0.4.24", default-features = false, features = ["alloc", "std", "clock"] }
-tower-http = { version = "0.4.3", features = ["limit", "cors"] }
+tower-http = { version = "0.4.3", features = ["limit", "cors", "trace"] }
 secrecy = { version = "0.8.0", features = ["serde"] }
 argon2 = { version = "0.5.0", features = ["std"] }
 hyper = { version = "0.14", features = ["full"] }
@@ -20,7 +20,6 @@ aws-sdk-s3 = "0.29.0"
 serde_json = "1.0"
 futures = "0.3.28"
 futures-util = "0.3.28"
-anyhow = "1.0.44"
 tokio-stream = "0.1.14"
 lazy_static = "1.4.0"
 jsonwebtoken = "8"
@@ -41,6 +40,10 @@ bytes = "1.4.0"
 mime = "0.3.17"
 dashmap = "5.5.0"
 bitflags = {version ="2.4.0", features = ["serde"]}
+color-eyre = "0.6"
 
 [profile.dev.package.sqlx-macros]
+opt-level = 3
+
+[profile.dev.package.backtrace]
 opt-level = 3
