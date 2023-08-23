@@ -11,11 +11,14 @@ use derive_builder::UninitializedFieldError;
 use serde_json::json;
 use thiserror::Error;
 
+/// Errors triggered by builders.
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum BuilderError {
+    /// A field was not initialized before calling `.build()`.
     #[error("Uninitialized field: {0}")]
     UninitializedField(&'static str),
+    /// A validation check failed when calling `.build()`.
     #[error("Validation error: {0}")]
     ValidationError(String),
 }
