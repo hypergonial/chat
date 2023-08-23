@@ -1,7 +1,6 @@
 use futures::future;
 use secrecy::Secret;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use super::{
     channel::{Channel, ChannelLike},
@@ -129,9 +128,10 @@ impl EventLike for User {
 
 /// A wrapper object around an ID with an optional guild_id to aid gateway event filtering.
 /// The guild_id field is not serialized and sent through the API.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DeletePayload {
     id: Snowflake,
+    #[serde(skip)]
     guild_id: Option<Snowflake>,
 }
 
@@ -147,12 +147,6 @@ impl EventLike for DeletePayload {
     }
     fn extract_user_id(&self) -> Option<Snowflake> {
         None
-    }
-}
-
-impl Serialize for DeletePayload {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        json!({"id": self.id}).serialize(serializer)
     }
 }
 
@@ -189,6 +183,10 @@ impl GuildCreatePayload {
     ///
     /// * `APP.gateway` (read)
     /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the database query fails.
     pub async fn from_guild(guild: Guild) -> Result<Self, sqlx::Error> {
         // Presences need to be included in the payload
         let members = future::join_all(guild.fetch_members().await?.into_iter().map(|m| m.include_presence())).await;

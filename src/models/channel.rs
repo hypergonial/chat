@@ -3,7 +3,7 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
 
-use super::{appstate::APP, errors::AppError, message::ExtendedMessageRecord, rest::CreateChannel};
+use super::{appstate::APP, errors::AppError, message::ExtendedMessageRecord, requests::CreateChannel};
 use super::{message::Message, snowflake::Snowflake};
 
 #[async_trait]
@@ -203,6 +203,15 @@ impl ChannelLike for TextChannel {
     }
 
     /// Deletes the channel.
+    /// 
+    /// ## Locks
+    /// 
+    /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`AppError::S3`] - If the S3 request to delete all attachments fails.
+    /// * [`AppError::Database`] - If the database query fails.
     async fn delete(self) -> Result<(), AppError> {
         let db = APP.db.read().await;
         let id_64: i64 = self.id.into();

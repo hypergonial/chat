@@ -83,11 +83,11 @@ impl IntoResponse for AppError {
             Self::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::S3(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::JSON(_) => StatusCode::BAD_REQUEST,
-            Self::Multipart(_) => StatusCode::BAD_REQUEST,
+            Self::Multipart(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::JWT(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Regex(_) => StatusCode::BAD_REQUEST,
             Self::Builder(e) => return e.into_response(),
-            Self::ParseInt(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ParseInt(_) => StatusCode::BAD_REQUEST,
             Self::Auth(e) => return e.into_response(),
             // Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };

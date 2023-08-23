@@ -80,7 +80,7 @@ impl Token {
     ///
     /// # Errors
     ///
-    /// Returns an error if the token could not be generated or contains invalid data.
+    /// [`jsonwebtoken::errors::Error`] - If the token could not be generated.
     fn new(data: &TokenData) -> Result<Self, jsonwebtoken::errors::Error> {
         Ok(Token {
             data: data.clone(),
@@ -101,7 +101,7 @@ impl Token {
     ///
     /// # Errors
     ///
-    /// Returns an error if the token could not be generated or contains invalid data.
+    /// [`jsonwebtoken::errors::Error`] - If the token could not be generated.
     pub fn new_for(user_id: Snowflake) -> Result<Self, jsonwebtoken::errors::Error> {
         Self::new(&TokenData::new(user_id, Utc::now().timestamp() as usize))
     }
@@ -115,7 +115,7 @@ impl Token {
     ///
     /// # Errors
     ///
-    /// Returns an error if the token could not be decoded or the secret was invalid.
+    /// [`jsonwebtoken::errors::Error`] - If the token could not be decoded.
     fn decode(token: &str) -> Result<Self, jsonwebtoken::errors::Error> {
         let decoded = decode::<TokenData>(
             token,
@@ -137,8 +137,9 @@ impl Token {
     ///
     /// # Errors
     ///
-    /// Returns an error if the token could not be decoded or the secret was invalid.
-    /// Returns an error if the token was issued before the last password change.
+    /// [`jsonwebtoken::errors::Error`] - If the token could not be decoded.
+    /// [`AuthError::InvalidToken`] - If the token is invalid.
+    /// [`RESTError::NotFound`] - If the user entry for the token could not be found.
     pub async fn validate(token: &str) -> Result<Self, RESTError> {
         let token = Self::decode(token)?;
         let stored_creds = StoredCredentials::fetch(token.data().user_id())
@@ -180,6 +181,7 @@ where
 {
     type Rejection = RESTError;
 
+    /// Extract a token from request Authorization header
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
@@ -198,6 +200,7 @@ pub struct Credentials {
 }
 
 impl Credentials {
+    /// Create a new set of credentials.
     pub fn new(username: String, password: String) -> Self {
         Credentials {
             username,
@@ -205,15 +208,18 @@ impl Credentials {
         }
     }
 
+    /// The username belonging to this set of credentials.
     pub fn username(&self) -> &str {
         &self.username
     }
 
+    /// The password belonging to this set of credentials.
     pub fn password(&self) -> &Secret<String> {
         &self.password
     }
 }
 
+/// Credentials, as stored in the DB
 pub struct StoredCredentials {
     user_id: Snowflake,
     hash: Secret<String>,
@@ -222,9 +228,9 @@ pub struct StoredCredentials {
 
 impl StoredCredentials {
     /// Create a new set of stored credentials.
-    pub fn new(user_id: Snowflake, hash: String) -> Self {
+    pub fn new(user: impl Into<Snowflake>, hash: String) -> Self {
         StoredCredentials {
-            user_id,
+            user_id: user.into(),
             hash: Secret::new(hash),
             last_changed: Utc::now(),
         }
@@ -240,6 +246,15 @@ impl StoredCredentials {
         &self.hash
     }
 
+    /// Fetch a set of credentials from the database.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `user` - The user to fetch credentials for.
+    /// 
+    /// # Returns
+    /// 
+    /// * `Option<StoredCredentials>` - The credentials if they exist.
     pub async fn fetch(user: impl Into<Snowflake>) -> Option<StoredCredentials> {
         let db = APP.db.read().await;
         let user_id: i64 = user.into().into();
@@ -294,8 +309,7 @@ impl StoredCredentials {
     ///
     /// # Errors
     ///
-    /// Returns an error if the credentials could not be committed,
-    /// this could be due to the user not existing in the database.
+    /// * [`sqlx::Error`] - If the query fails. This could be due to the user not existing in the DB.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
         let db = APP.db.read().await;
         let user_id: i64 = self.user_id.into();
@@ -327,13 +341,13 @@ mod tests {
     #[test]
     fn test_decode_token() {
         let data = TokenData {
-            user_id: 123_u64.into(),
+            user_id: 123_i64.into(),
             iat: 123,
             exp: Utc::now().timestamp() as usize + 1000000,
         };
         let token = Token::new(&data).unwrap();
         let decoded_token = Token::decode(token.expose_secret()).unwrap();
-        assert_eq!(decoded_token.data().user_id, 123_u64.into());
+        assert_eq!(decoded_token.data().user_id, 123_i64.into());
         assert_eq!(decoded_token.data().iat, 123);
     }
 }

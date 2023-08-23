@@ -80,6 +80,10 @@ impl ApplicationState {
     }
 
     /// Initializes the application
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the database connection fails.
     pub async fn init(&self) -> Result<(), sqlx::Error> {
         self.db
             .write()
@@ -214,6 +218,14 @@ impl Buckets {
     }
 
     /// Remove all S3 data for the given channel.
+    /// 
+    /// ## Arguments
+    /// 
+    /// * `channel` - The channel to remove all data for.
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn remove_all_for_channel(&self, channel: impl Into<Snowflake>) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
         let channel_id: Snowflake = channel.into();
@@ -231,6 +243,14 @@ impl Buckets {
     }
 
     /// Remove all S3 data for the given guild.
+    /// 
+    /// ## Arguments
+    /// 
+    /// * `guild` - The guild to remove all data for.
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn remove_all_for_guild(&self, guild: impl Into<Snowflake>) -> Result<(), AppError> {
         let guild_id: i64 = guild.into().into();
         let db = APP.db.read().await;

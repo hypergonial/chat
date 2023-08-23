@@ -13,7 +13,7 @@ use crate::models::{
     gateway_event::{DeletePayload, GatewayEvent},
     guild::Guild,
     member::Member,
-    rest::{CreateChannel, CreateGuild},
+    requests::{CreateChannel, CreateGuild},
     snowflake::Snowflake,
     user::User,
 };

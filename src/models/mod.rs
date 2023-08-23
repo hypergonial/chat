@@ -10,6 +10,6 @@ pub mod guild;
 pub mod member;
 pub mod message;
 pub mod prefs;
-pub mod rest;
+pub mod requests;
 pub mod snowflake;
 pub mod user;

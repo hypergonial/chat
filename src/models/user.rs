@@ -9,9 +9,9 @@ use crate::models::guild::GuildRecord;
 
 use super::{
     appstate::APP,
-    errors::{AppError, BuilderError},
+    errors::BuilderError,
     guild::Guild,
-    rest::CreateUser,
+    requests::CreateUser,
     snowflake::Snowflake,
 };
 
@@ -159,7 +159,11 @@ impl User {
     /// Validates and sets a new username for this user.
     ///
     /// The username must be committed to the database for the change to take effect.
-    pub fn set_username(&mut self, username: String) -> Result<(), AppError> {
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`BuilderError::ValidationError`] - If the username is invalid.
+    pub fn set_username(&mut self, username: String) -> Result<(), BuilderError> {
         Self::validate_username(&username)?;
         self.username = username;
         Ok(())
@@ -249,6 +253,10 @@ impl User {
     /// ## Locks
     ///
     /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_guilds(&self) -> Result<Vec<Guild>, sqlx::Error> {
         let db = APP.db.read().await;
         let id_i64: i64 = self.id.into();
@@ -272,6 +280,10 @@ impl User {
     /// ## Locks
     ///
     /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the database query fails.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
         let db = APP.db.read().await;
         let id_i64: i64 = self.id.into();

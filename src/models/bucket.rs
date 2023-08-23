@@ -37,7 +37,7 @@ impl Bucket {
     ///
     /// ## Errors
     ///
-    /// * [`AppError::S3Error`] - If the S3 request fails.
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn get_object(&self, client: &Client, key: impl Into<String>) -> Result<Bytes, AppError> {
         let mut resp = client.get_object().bucket(&self.name).key(key).send().await?;
 
@@ -59,7 +59,7 @@ impl Bucket {
     ///
     /// ## Errors
     ///
-    /// * [`AppError::S3Error`] - If the S3 request fails.
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn put_object(
         &self,
         client: &Client,
@@ -93,7 +93,7 @@ impl Bucket {
     ///
     /// ## Errors
     ///
-    /// * [`AppError::S3Error`] - If the S3 request fails.
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn list_objects(
         &self,
         client: &Client,
@@ -129,7 +129,7 @@ impl Bucket {
     ///
     /// ## Errors
     ///
-    /// * [`AppError::S3Error`] - If the S3 request fails.
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn delete_object(&self, client: &Client, key: impl Into<String>) -> Result<(), AppError> {
         client.delete_object().bucket(&self.name).key(key).send().await?;
 
@@ -145,7 +145,7 @@ impl Bucket {
     ///
     /// ## Errors
     ///
-    /// * [`AppError::S3Error`] - If the S3 request fails.
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn delete_objects(&self, client: &Client, keys: Vec<impl Into<String>>) -> Result<(), AppError> {
         let objects: Vec<ObjectIdentifier> = keys
             .into_iter()

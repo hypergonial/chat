@@ -99,6 +99,23 @@ impl Attachment {
         AttachmentBuilder::default()
     }
 
+    /// Try to build a new [`Attachment`] from a multipart/form-data field.
+    /// 
+    /// ## Arguments
+    /// 
+    /// * `field` - The field to build from.
+    /// * `channel` - The ID of the channel the message was sent to.
+    /// * `message` - The ID of the message this attachment belongs to.
+    /// 
+    /// ## Returns
+    /// 
+    /// [`Attachment`] - The built attachment.
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`RESTError::MissingField`] - If a required field is missing.
+    /// * [`RESTError::MalformedField`] - If the attachment ID could not be parsed from the field name.
+    /// * [`RESTError::App`] - If the field contents could not be read.
     pub async fn try_from_field(
         field: Field<'_>,
         channel: impl Into<Snowflake>,
@@ -114,23 +131,22 @@ impl Attachment {
             return Err(RESTError::MissingField("filename".into()));
         };
 
-        builder.filename(filename.to_string());
+        builder.filename(filename);
 
         let Some(caps) = ATTACHMENT_REGEX.captures(name) else {
             return Err(RESTError::MalformedField("attachment ID could not be parsed from name".into()));
         };
-        builder.id(caps["id"].parse::<u8>()?);
+        builder.id(caps["id"].parse::<u8>().expect("attachment ID should have been a valid number"));
 
         let content_type = field
             .content_type()
-            .map(String::from)
-            .unwrap_or("application/octet-stream".to_string());
+            .unwrap_or("application/octet-stream");
 
         Ok(builder
             .channel_id(channel)
             .message_id(message)
-            .content(field.bytes().await?)
             .content_type(content_type)
+            .content(field.bytes().await?)
             .build()?)
     }
 
@@ -164,6 +180,10 @@ impl Attachment {
     }
 
     /// Upload the attachment content to S3. This function is called implicitly by [`Attachment`]`::commit`.
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn upload(&self) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
         bucket
@@ -173,6 +193,10 @@ impl Attachment {
     }
 
     /// Download the attachment content from S3.
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn download(&mut self) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
         self.content = bucket.get_object(APP.s3(), self.s3_key()).await?;
@@ -181,6 +205,10 @@ impl Attachment {
 
     /// Delete the contents of the attachment from S3.
     /// This should be called after the attachment is deleted from the database.
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn delete(&self) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
         bucket.delete_object(APP.s3(), self.s3_key()).await?;
@@ -231,6 +259,7 @@ pub struct PartialAttachment {
     /// The ID of the message this attachment belongs to.
     #[serde(skip)]
     message_id: Snowflake,
+    /// The ID of the channel the message was sent to.
     #[serde(skip)]
     channel_id: Snowflake,
 }
@@ -254,7 +283,11 @@ impl PartialAttachment {
     }
 
     /// Download the attachment content from S3, turning this into a full attachment.
-    pub async fn download(self) -> Attachment {
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`AppError::S3`] - If the S3 request fails.
+    pub async fn download(self) -> Result<Attachment, AppError> {
         let mut attachment = Attachment::new(
             self.id,
             self.filename,
@@ -263,8 +296,8 @@ impl PartialAttachment {
             self.channel_id,
             self.message_id,
         );
-        attachment.download().await.unwrap();
-        attachment
+        attachment.download().await?;
+        Ok(attachment)
     }
 
     /// Fetches a single attachment from the database.
@@ -277,6 +310,10 @@ impl PartialAttachment {
     /// ## Locks
     ///
     /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the SQL query fails.
     pub async fn fetch(id: u8, message: impl Into<Snowflake>) -> Result<Option<Self>, sqlx::Error> {
         let db = APP.db.read().await;
         let message_id: i64 = message.into().into();
@@ -303,6 +340,10 @@ impl PartialAttachment {
     /// ## Locks
     ///
     /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the SQL query fails.
     pub async fn fetch_all(message: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
         let db = APP.db.read().await;
         let message_id: i64 = message.into().into();
@@ -356,14 +397,14 @@ impl TryFrom<&ExtendedMessageRecord> for PartialAttachment {
             .as_ref()
             .ok_or("No attachment filename".to_string())?;
         Ok(Self {
-            id: id.try_into().unwrap(),
+            id: id.try_into().expect("attachment ID should be a single positive digit"),
             channel_id: record.channel_id.into(),
             message_id: record.id.into(),
             filename: filename.clone(),
             content_type: record
                 .attachment_content_type
                 .clone()
-                .unwrap_or("application/octet-stream".to_string()),
+                .unwrap_or("application/octet-stream".into()),
         })
     }
 }

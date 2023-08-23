@@ -11,7 +11,7 @@ use crate::models::{
     auth::{Credentials, StoredCredentials, Token},
     gateway_event::{GatewayEvent, PresenceUpdatePayload},
     guild::Guild,
-    rest::CreateUser,
+    requests::CreateUser,
     user::{Presence, User},
 };
 use crate::rest::auth::{generate_hash, validate_credentials};

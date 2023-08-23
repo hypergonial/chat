@@ -67,6 +67,8 @@ async fn main() -> Result<()> {
         .nest("/api/v1", rest_routes)
         .layer(TraceLayer::new_for_http());
 
+    tracing::info!("Listening on {}", APP.config().listen_addr());
+
     hyper::Server::bind(&APP.config().listen_addr())
         .serve(app.into_make_service())
         .with_graceful_shutdown(handle_signals())

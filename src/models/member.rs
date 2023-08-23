@@ -129,6 +129,10 @@ impl Member {
     }
 
     /// Fetch a member from the database by id and guild id.
+    /// 
+    /// ## Locks
+    /// 
+    /// * `APP.db` (read)
     pub async fn fetch(user: impl Into<Snowflake>, guild: impl Into<Snowflake>) -> Option<Self> {
         let db = APP.db.read().await;
         let id_64: i64 = user.into().into();
@@ -151,6 +155,14 @@ impl Member {
     }
 
     /// Commit the member to the database.
+    /// 
+    /// ## Locks
+    /// 
+    /// * `APP.db` (read)
+    /// 
+    /// ## Errors
+    /// 
+    /// * [`sqlx::Error`] - If the database query fails.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
         let db = APP.db.read().await;
         let id_64: i64 = self.user.id().into();
