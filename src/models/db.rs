@@ -28,13 +28,13 @@ impl Database {
     }
 
     /// Connects to the database
-    /// 
+    ///
     /// ## Arguments
-    /// 
+    ///
     /// * `url` - The postgres connection URL
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`sqlx::Error`] - If the database connection fails
     pub async fn connect(&mut self, url: &str) -> Result<(), sqlx::Error> {
         self.pool = Some(PgPool::connect(url).await?);

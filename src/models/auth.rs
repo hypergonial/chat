@@ -247,13 +247,13 @@ impl StoredCredentials {
     }
 
     /// Fetch a set of credentials from the database.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `user` - The user to fetch credentials for.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
     pub async fn fetch(user: impl Into<Snowflake>) -> Option<StoredCredentials> {
         let db = APP.db.read().await;

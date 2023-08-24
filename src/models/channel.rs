@@ -203,13 +203,13 @@ impl ChannelLike for TextChannel {
     }
 
     /// Deletes the channel.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`AppError::S3`] - If the S3 request to delete all attachments fails.
     /// * [`AppError::Database`] - If the database query fails.
     async fn delete(self) -> Result<(), AppError> {

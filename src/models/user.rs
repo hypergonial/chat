@@ -7,13 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::guild::GuildRecord;
 
-use super::{
-    appstate::APP,
-    errors::BuilderError,
-    guild::Guild,
-    requests::CreateUser,
-    snowflake::Snowflake,
-};
+use super::{appstate::APP, errors::BuilderError, guild::Guild, requests::CreateUser, snowflake::Snowflake};
 
 lazy_static! {
     static ref USERNAME_REGEX: Regex =
@@ -159,9 +153,9 @@ impl User {
     /// Validates and sets a new username for this user.
     ///
     /// The username must be committed to the database for the change to take effect.
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`BuilderError::ValidationError`] - If the username is invalid.
     pub fn set_username(&mut self, username: String) -> Result<(), BuilderError> {
         Self::validate_username(&username)?;
@@ -171,10 +165,15 @@ impl User {
 
     fn validate_username(username: &str) -> Result<(), BuilderError> {
         if !USERNAME_REGEX.is_match(username) {
-            return Err(BuilderError::ValidationError(format!("Invalid username, must match regex: {}", USERNAME_REGEX.as_str())));
+            return Err(BuilderError::ValidationError(format!(
+                "Invalid username, must match regex: {}",
+                USERNAME_REGEX.as_str()
+            )));
         }
         if username.len() > 32 || username.len() < 3 {
-            return Err(BuilderError::ValidationError("Invalid username, must be between 3 and 32 characters long".to_string()));
+            return Err(BuilderError::ValidationError(
+                "Invalid username, must be between 3 and 32 characters long".to_string(),
+            ));
         }
         Ok(())
     }
@@ -253,9 +252,9 @@ impl User {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_guilds(&self) -> Result<Vec<Guild>, sqlx::Error> {
         let db = APP.db.read().await;
@@ -280,9 +279,9 @@ impl User {
     /// ## Locks
     ///
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
         let db = APP.db.read().await;

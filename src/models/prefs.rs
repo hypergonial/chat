@@ -114,17 +114,17 @@ impl Prefs {
     }
 
     /// Fetch the preferences for a user.
-    /// 
+    ///
     /// ## Arguments
-    /// 
+    ///
     /// * `user` - The user to fetch preferences for.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch(user: impl Into<Snowflake>) -> Result<Self, sqlx::Error> {
         let db = APP.db.read().await;
@@ -157,13 +157,13 @@ impl Prefs {
     }
 
     /// Commit the preferences to the database.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
         let db = APP.db.read().await;

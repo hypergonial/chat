@@ -4,11 +4,11 @@ pub mod models;
 pub mod rest;
 
 use axum::Router;
+use color_eyre::eyre::Result;
 use models::appstate::APP;
 use tokio::signal::ctrl_c;
-use tracing::level_filters::LevelFilter;
-use color_eyre::eyre::Result;
 use tower_http::trace::TraceLayer;
+use tracing::level_filters::LevelFilter;
 
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};

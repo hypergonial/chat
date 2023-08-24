@@ -196,10 +196,13 @@ async fn handle_handshake(
 ) -> Result<User, ()> {
     // IDENTIFY should be the first message sent
     let Some(Ok(maybe_ident)) = ws_stream.next().await else {
-        ws_sink.send(Message::Close(Some(CloseFrame {
-            code: 1005,
-            reason: "IDENTIFY expected".into(),
-        }))).await.ok();
+        ws_sink
+            .send(Message::Close(Some(CloseFrame {
+                code: 1005,
+                reason: "IDENTIFY expected".into(),
+            })))
+            .await
+            .ok();
         return Err(());
     };
 
@@ -215,27 +218,36 @@ async fn handle_handshake(
     };
 
     let Ok(GatewayMessage::Identify(payload)) = serde_json::from_str(text) else {
-        ws_sink.send(Message::Close(Some(CloseFrame {
-            code: 1003,
-            reason: "Invalid IDENTITY payload".into(),
-        }))).await.ok();
+        ws_sink
+            .send(Message::Close(Some(CloseFrame {
+                code: 1003,
+                reason: "Invalid IDENTITY payload".into(),
+            })))
+            .await
+            .ok();
         return Err(());
     };
 
     let Ok(token) = Token::validate(payload.token.expose_secret()).await else {
-        ws_sink.send(Message::Close(Some(CloseFrame {
-            code: 1008,
-            reason: "Invalid token".into(),
-        }))).await.ok();
+        ws_sink
+            .send(Message::Close(Some(CloseFrame {
+                code: 1008,
+                reason: "Invalid token".into(),
+            })))
+            .await
+            .ok();
         return Err(());
     };
 
     let user_id = token.data().user_id();
     let Some(user) = User::fetch(user_id).await else {
-        ws_sink.send(Message::Close(Some(CloseFrame {
-            code: 1008,
-            reason: "User not found".into(),
-        }))).await.ok();
+        ws_sink
+            .send(Message::Close(Some(CloseFrame {
+                code: 1008,
+                reason: "User not found".into(),
+            })))
+            .await
+            .ok();
         return Err(());
     };
 

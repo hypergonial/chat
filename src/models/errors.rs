@@ -73,7 +73,7 @@ pub enum AppError {
     ParseInt(#[from] ParseIntError),
     #[error("Authentication failure: {0}")]
     Auth(#[from] AuthError),
-/*     #[error(transparent)]
+    /*     #[error(transparent)]
     Other(#[from] anyhow::Error), */
 }
 

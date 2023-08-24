@@ -183,9 +183,9 @@ impl GuildCreatePayload {
     ///
     /// * `APP.gateway` (read)
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn from_guild(guild: Guild) -> Result<Self, sqlx::Error> {
         // Presences need to be included in the payload

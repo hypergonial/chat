@@ -227,13 +227,13 @@ impl Message {
     /// Commit this message to the database. Uploads all attachments to S3.
     /// It is highly recommended to call [`Message::strip_attachment_contents`] after calling
     /// this method to remove the attachment contents from memory.
-    /// 
+    ///
     /// ## Locks
-    /// 
+    ///
     /// * `APP.db` (read)
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// * [`AppError::S3`] - If the S3 request to upload one of the attachments fails.
     /// * [`AppError::Database`] - If the database request fails.
     pub async fn commit(&self) -> Result<(), AppError> {
