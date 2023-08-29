@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use axum::Router;
-use hyper::{header, Method};
+use http::{header, Method};
 use tower_http::cors::{Any, CorsLayer};
 
 use super::channels::get_router as get_channel_router;

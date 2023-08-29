@@ -40,7 +40,7 @@ impl Snowflake {
 
     /// Returns the creation time of this snowflake.
     pub fn created_at(&self) -> DateTime<Utc> {
-        DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp_millis(self.timestamp()).unwrap(), Utc)
+        DateTime::<Utc>::from_naive_utc_and_offset(NaiveDateTime::from_timestamp_millis(self.timestamp()).unwrap(), Utc)
     }
 
     /// Returns the worker ID that generated this snowflake.

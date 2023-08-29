@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
 
     tracing::info!("Listening on {}", APP.config().listen_addr());
 
-    hyper::Server::bind(&APP.config().listen_addr())
+    axum::Server::bind(&APP.config().listen_addr())
         .serve(app.into_make_service())
         .with_graceful_shutdown(handle_signals())
         .await
