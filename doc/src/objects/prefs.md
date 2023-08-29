@@ -31,7 +31,7 @@ The following layouts are currently defined:
 | --- | --- | --- |
 | `COMPACT` | `0` | The compact layout. |
 | `NORMAL` | `1` | The normal layout. (Default) |
-| `COMFY` | `1` | The "comfy" layout. |
+| `COMFY` | `2` | The "comfy" layout. |
 
 > Note: It is up to the client to decide how to render these layouts.
 
