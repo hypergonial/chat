@@ -5,7 +5,7 @@ use aws_sdk_s3::{
     Client, Config as S3Config,
 };
 use derive_builder::Builder;
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use lazy_static::lazy_static;
 use secrecy::{ExposeSecret, Secret};
 use tokio::sync::RwLock;
