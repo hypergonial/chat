@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO secrets (user_id, password, last_changed) VALUES ($1, $2, $3)\n            ON CONFLICT (user_id) DO UPDATE SET password = $2, last_changed = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c4fc5cb66c404905a2040d36ddf5e90aacc5763e731c687f42b3601123288489"
+}

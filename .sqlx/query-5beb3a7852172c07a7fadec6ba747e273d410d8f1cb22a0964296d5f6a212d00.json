@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO attachments (id, filename, message_id, channel_id, content_type)\n            VALUES ($1, $2, $3, $4, $5) \n            ON CONFLICT (id, message_id) \n            DO UPDATE SET filename = $2, content_type = $5",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text",
+        "Int8",
+        "Int8",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5beb3a7852172c07a7fadec6ba747e273d410d8f1cb22a0964296d5f6a212d00"
+}

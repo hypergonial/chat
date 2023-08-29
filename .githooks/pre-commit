@@ -4,4 +4,4 @@ REPO_PATH=$(/usr/bin/git rev-parse --show-toplevel)
 cd $REPO_PATH
 cargo sqlx prepare
 /usr/bin/git update-index --again :/:
-/usr/bin/git add $REPO_PATH/sqlx-data.json
+/usr/bin/git add $REPO_PATH/.sqlx

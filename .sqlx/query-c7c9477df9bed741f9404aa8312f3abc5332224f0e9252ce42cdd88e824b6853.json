@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO channels (id, guild_id, name, channel_type)\n            VALUES ($1, $2, $3, 'TEXT_CHANNEL')\n            ON CONFLICT (id) DO UPDATE\n            SET name = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c7c9477df9bed741f9404aa8312f3abc5332224f0e9252ce42cdd88e824b6853"
+}

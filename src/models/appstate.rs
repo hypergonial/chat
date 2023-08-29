@@ -167,7 +167,7 @@ impl Config {
     pub fn from_env() -> Self {
         dotenv().ok();
         Config::builder()
-            .database_url(std::env::var("POSTGRES_DSN").expect("POSTGRES_DSN environment variable must be set"))
+            .database_url(std::env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set"))
             .minio_url(std::env::var("MINIO_URL").expect("MINIO_URL environment variable must be set"))
             .minio_access_key(
                 std::env::var("MINIO_ACCESS_KEY").expect("MINIO_ACCESS_KEY environment variable must be set"),

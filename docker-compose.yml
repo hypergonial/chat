@@ -99,7 +99,8 @@ services:
         args:
           - BUILD_TYPE=${BUILD_TYPE:-release}
     environment:
-      POSTGRES_DSN: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?err}@db:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-chat}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?err}@db:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-chat}
+      SQLX_OFFLINE: true # DB is not running when building the image
       MINIO_URL: ${MINIO_URL:-http://nginx:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?err}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?err}

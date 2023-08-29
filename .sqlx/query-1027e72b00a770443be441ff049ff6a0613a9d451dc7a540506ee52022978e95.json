@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT user_id, flags, message_grouping_timeout, layout, text_size, locale\n            FROM prefs\n            WHERE user_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "flags",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "message_grouping_timeout",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "layout",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 4,
+        "name": "text_size",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 5,
+        "name": "locale",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1027e72b00a770443be441ff049ff6a0613a9d451dc7a540506ee52022978e95"
+}

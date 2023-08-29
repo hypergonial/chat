@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO prefs (user_id, flags, message_grouping_timeout, layout, text_size, locale)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ON CONFLICT (user_id)\n            DO UPDATE SET flags = $2, message_grouping_timeout = $3, layout = $4, text_size = $5, locale = $6",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int4",
+        "Int2",
+        "Int2",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9c60a22a06659c3a408f1c76ec2646238a766bd6302fd46a68f961e4ea557c27"
+}
