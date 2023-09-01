@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use aws_sdk_s3::{
-    config::{Credentials, Region},
+    config::{Credentials as S3Creds, Region},
     Client, Config as S3Config,
 };
 use derive_builder::Builder;
@@ -36,7 +36,7 @@ impl ApplicationState {
         let config = Config::from_env();
         let buckets = Buckets::new();
 
-        let s3creds = Credentials::new(
+        let s3creds = S3Creds::new(
             config.minio_access_key().expose_secret(),
             config.minio_secret_key().expose_secret(),
             None,

@@ -272,7 +272,10 @@ impl StoredCredentials {
         Some(Self {
             user_id: result.user_id.try_into().expect("user_id is negative for some reason"),
             hash: Secret::new(result.password),
-            last_changed: DateTime::from_naive_utc_and_offset(NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(), Utc)
+            last_changed: DateTime::from_naive_utc_and_offset(
+                NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
+                Utc,
+            ),
         })
     }
 
@@ -301,7 +304,10 @@ impl StoredCredentials {
         Some(Self {
             user_id: result.id.try_into().expect("user_id is negative for some reason"),
             hash: Secret::new(result.password),
-            last_changed: DateTime::from_naive_utc_and_offset(NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(), Utc)
+            last_changed: DateTime::from_naive_utc_and_offset(
+                NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
+                Utc,
+            ),
         })
     }
 

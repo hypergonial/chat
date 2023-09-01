@@ -5,8 +5,7 @@ use super::{appstate::APP, snowflake::Snowflake};
 
 bitflags! {
     /// Boolean flags for user preferences
-    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-    #[serde(transparent)]
+    #[derive(Debug, Clone, Copy)]
     pub struct PrefFlags: u64 {
         const RENDER_ATTACHMENTS = 1;
         const AUTOPLAY_GIF = 1 << 1;
@@ -16,6 +15,19 @@ bitflags! {
 impl Default for PrefFlags {
     fn default() -> Self {
         PrefFlags::RENDER_ATTACHMENTS | PrefFlags::AUTOPLAY_GIF
+    }
+}
+
+impl Serialize for PrefFlags {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u64(self.bits())
+    }
+}
+
+impl<'de> Deserialize<'de> for PrefFlags {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let flags = u64::deserialize(deserializer)?;
+        Ok(PrefFlags::from_bits(flags).unwrap_or_default())
     }
 }
 
