@@ -144,6 +144,11 @@ impl Attachment {
 
         let content_type = field.content_type().unwrap_or("application/octet-stream");
 
+        // Ensure the content type is valid
+        content_type.parse::<Mime>().map_err(|_| {
+            RESTError::MalformedField("content type could not be parsed".into())
+        })?;
+
         Ok(builder
             .channel_id(channel)
             .message_id(message)
@@ -236,7 +241,7 @@ impl AttachmentT for Attachment {
     }
 
     fn mime(&self) -> Mime {
-        self.content_type.parse().unwrap()
+        self.content_type.parse().expect("Invalid MIME type")
     }
 }
 
