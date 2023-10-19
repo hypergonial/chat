@@ -45,3 +45,11 @@ opt-level = 3
 
 [profile.dev.package.backtrace]
 opt-level = 3
+
+# Enable incremental compilation for dev builds to improve re-compilation time.
+[profile.dev]
+incremental = true
+
+# Enable LTO for release builds to reduce binary size.
+[profile.release]
+lto = true
