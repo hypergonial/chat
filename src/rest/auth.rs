@@ -8,6 +8,8 @@ use crate::models::{
     errors::AuthError,
 };
 
+// TODO: Add auth attempts logging and authenticated endpoint to query it.
+
 /// Verify a set of credentials against the database in constant time.
 ///
 /// # Arguments
