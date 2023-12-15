@@ -167,16 +167,19 @@ impl IntoResponse for RESTError {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum AuthError {
-    #[error("Wrong credentials")]
-    WrongCredentials,
+    /// Sent when the user provides invalid username/password.
+    #[error("Invalid credentials")]
+    InvalidCredentials,
+    /// Sent when authorization is required but no token was provided.
     #[error("Missing or malformed credentials")]
     MissingCredentials,
-    #[error("User not found")]
-    UserNotFound,
+    /// Sent when the server fails to create a token.
     #[error("Token creation failed")]
     TokenCreation,
+    /// Sent when the user provides an invalid token.
     #[error("Invalid token")]
     InvalidToken,
+    /// Sent when the server fails to hash a password.
     #[error("Failed to generate password hash: {0}")]
     PasswordHash(#[from] argon2::password_hash::Error),
 }
@@ -184,9 +187,8 @@ pub enum AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let status = match self {
-            Self::WrongCredentials => StatusCode::UNAUTHORIZED,
+            Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
             Self::MissingCredentials => StatusCode::UNAUTHORIZED,
-            Self::UserNotFound => StatusCode::NOT_FOUND,
             Self::TokenCreation => StatusCode::INTERNAL_SERVER_ERROR,
             Self::InvalidToken => StatusCode::UNAUTHORIZED,
             Self::PasswordHash(_) => StatusCode::INTERNAL_SERVER_ERROR,

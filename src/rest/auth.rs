@@ -40,7 +40,7 @@ pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake,
 
     // If the user doesn't actually exist, fail.
     if user_id.is_none() {
-        return Err(AuthError::UserNotFound);
+        return Err(AuthError::InvalidCredentials);
     }
 
     Ok(user_id.unwrap())
@@ -62,7 +62,7 @@ fn verify_password_hash(expected_hash: Secret<String>, password_candidate: Secre
     let expected_hash = PasswordHash::new(expected_hash.expose_secret())?;
     Argon2::default()
         .verify_password(password_candidate.expose_secret().as_bytes(), &expected_hash)
-        .map_err(|_| AuthError::WrongCredentials)
+        .map_err(|_| AuthError::InvalidCredentials)
 }
 
 /// Generate a hash for a new password.
