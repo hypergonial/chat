@@ -1,11 +1,9 @@
 use core::fmt::Debug;
 
-use axum::TypedHeader;
-use axum::{
-    extract::FromRequestParts,
+use axum::{extract::FromRequestParts, http::request::Parts, RequestPartsExt};
+use axum_extra::{
     headers::{authorization::Bearer, Authorization},
-    http::request::Parts,
-    RequestPartsExt,
+    TypedHeader,
 };
 use chrono::prelude::*;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};

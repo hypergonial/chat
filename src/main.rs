@@ -8,6 +8,8 @@ use color_eyre::eyre::Result;
 use models::appstate::APP;
 use tokio::signal::ctrl_c;
 use tower_http::trace::TraceLayer;
+
+#[cfg(debug_assertions)]
 use tracing::level_filters::LevelFilter;
 
 #[cfg(unix)]
@@ -67,10 +69,13 @@ async fn main() -> Result<()> {
         .nest("/api/v1", rest_routes)
         .layer(TraceLayer::new_for_http());
 
+    let listener = tokio::net::TcpListener::bind(APP.config().listen_addr())
+        .await
+        .expect("Failed to bind to address");
+
     tracing::info!("Listening on {}", APP.config().listen_addr());
 
-    axum::Server::bind(&APP.config().listen_addr())
-        .serve(app.into_make_service())
+    axum::serve(listener, app)
         .with_graceful_shutdown(handle_signals())
         .await
         .expect("Failed creating server");
