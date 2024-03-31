@@ -270,10 +270,7 @@ impl StoredCredentials {
         Some(Self {
             user_id: result.user_id.into(),
             hash: Secret::new(result.password),
-            last_changed: DateTime::from_naive_utc_and_offset(
-                NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
-                Utc,
-            ),
+            last_changed: DateTime::from_timestamp(result.last_changed, 0).unwrap(),
         })
     }
 
@@ -302,10 +299,7 @@ impl StoredCredentials {
         Some(Self {
             user_id: result.id.into(),
             hash: Secret::new(result.password),
-            last_changed: DateTime::from_naive_utc_and_offset(
-                NaiveDateTime::from_timestamp_opt(result.last_changed, 0).unwrap(),
-                Utc,
-            ),
+            last_changed: DateTime::from_timestamp(result.last_changed, 0).unwrap(),
         })
     }
 
