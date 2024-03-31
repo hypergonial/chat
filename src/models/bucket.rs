@@ -5,7 +5,6 @@ use aws_sdk_s3::{
 };
 use bytes::{Bytes, BytesMut};
 use mime::Mime;
-use tokio_stream::StreamExt;
 
 use super::errors::AppError;
 
@@ -149,13 +148,13 @@ impl Bucket {
     pub async fn delete_objects(&self, client: &Client, keys: Vec<impl Into<String>>) -> Result<(), AppError> {
         let objects: Vec<ObjectIdentifier> = keys
             .into_iter()
-            .map(|k| ObjectIdentifier::builder().set_key(Some(k.into())).build())
+            .map(|k| ObjectIdentifier::builder().set_key(Some(k.into())).build().unwrap())
             .collect();
 
         client
             .delete_objects()
             .bucket(&self.name)
-            .delete(Delete::builder().set_objects(Some(objects)).build())
+            .delete(Delete::builder().set_objects(Some(objects)).build().unwrap())
             .send()
             .await?;
 

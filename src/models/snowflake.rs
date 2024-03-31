@@ -21,7 +21,7 @@ pub struct Snowflake {
 }
 
 impl Snowflake {
-    /// Create a new snowflake from a 64-bit unsigned integer.
+    /// Create a new snowflake from a 64-bit integer.
     pub fn new(value: i64) -> Self {
         Snowflake { value }
     }
