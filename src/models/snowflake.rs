@@ -12,7 +12,7 @@ pub const EPOCH: i64 = 1672531200000;
 
 /// A snowflake ID used to identify entities.
 ///
-/// Snowflakes are 64-bit unsigned integers that are guaranteed to be unique.
+/// Snowflakes are 64-bit integers that are guaranteed to be unique.
 /// The first 41 bits are a timestamp, the next 10 are a worker ID, and the last 12 are a process ID.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type)]
 pub struct Snowflake {
