@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
@@ -6,7 +5,6 @@ use sqlx::Error as SqlxError;
 use super::{appstate::APP, errors::AppError, message::ExtendedMessageRecord, requests::CreateChannel};
 use super::{message::Message, snowflake::Snowflake};
 
-#[async_trait]
 #[enum_dispatch(Channel)]
 pub trait ChannelLike {
     /// The Snowflake ID of a channel.
@@ -156,7 +154,6 @@ impl TextChannel {
     }
 }
 
-#[async_trait]
 impl ChannelLike for TextChannel {
     fn id(&self) -> Snowflake {
         self.id

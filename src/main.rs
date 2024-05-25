@@ -1,3 +1,5 @@
+#![allow(async_fn_in_trait)]
+
 pub mod gateway;
 pub mod macros;
 pub mod models;
