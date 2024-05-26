@@ -7,7 +7,7 @@ use secrecy::ExposeSecret;
 use serde_json::json;
 
 use crate::models::{
-    appstate::APP,
+    appstate::app,
     auth::{Credentials, StoredCredentials, Token},
     gateway_event::{GatewayEvent, PresenceUpdatePayload},
     guild::Guild,
@@ -145,17 +145,16 @@ async fn fetch_self_guilds(token: Token) -> Result<Json<Vec<Guild>>, RESTError> 
 /// PATCH `/users/@self/presence`
 pub async fn update_presence(token: Token, Json(new_presence): Json<Presence>) -> Result<Json<Presence>, RESTError> {
     let user_id_i64: i64 = token.data().user_id().into();
-    let db = APP.db.read().await;
 
     sqlx::query!(
         "UPDATE users SET last_presence = $1 WHERE id = $2",
         new_presence as i16,
         user_id_i64
     )
-    .execute(db.pool())
+    .execute(app().db.pool())
     .await?;
 
-    if APP.gateway().is_connected(token.data().user_id()) {
+    if app().gateway.is_connected(token.data().user_id()) {
         dispatch!(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
             presence: new_presence,
             user_id: token.data().user_id(),
@@ -175,10 +174,8 @@ pub async fn update_presence(token: Token, Json(new_presence): Json<Presence>) -
 ///
 /// GET `/users/{username}`
 pub async fn query_username(username: String) -> Result<StatusCode, RESTError> {
-    let db = APP.db.read().await;
-
     sqlx::query!("SELECT id FROM users WHERE username = $1", username)
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await?
         .ok_or(RESTError::NotFound("User not found".into()))?;
 

@@ -1,8 +1,8 @@
 use sqlx::{migrate, postgres::PgPool};
 
+#[derive(Debug)]
 pub struct Database {
     pool: Option<PgPool>,
-    is_connected: bool,
 }
 
 impl Database {
@@ -10,10 +10,7 @@ impl Database {
     ///
     /// Note: The database is not connected by default
     pub const fn new() -> Self {
-        Database {
-            pool: None,
-            is_connected: false,
-        }
+        Database { pool: None }
     }
 
     /// The database pool
@@ -27,6 +24,18 @@ impl Database {
             .expect("Database is not connected or has been closed.")
     }
 
+    /// Checks if the database is connected
+    ///
+    /// ## Returns
+    ///
+    /// `true` if the database is connected, `false` otherwise
+    pub fn is_connected(&self) -> bool {
+        match self.pool {
+            Some(ref pool) => !pool.is_closed(),
+            None => false,
+        }
+    }
+
     /// Connects to the database
     ///
     /// ## Arguments
@@ -38,16 +47,13 @@ impl Database {
     /// * [`sqlx::Error`] - If the database connection fails
     pub async fn connect(&mut self, url: &str) -> Result<(), sqlx::Error> {
         self.pool = Some(PgPool::connect(url).await?);
-        self.is_connected = true;
         migrate!("./migrations").run(self.pool()).await?;
         Ok(())
     }
 
     /// Closes the database connection
-    pub async fn close(&mut self) {
+    pub async fn close(&self) {
         self.pool().close().await;
-        self.pool = None;
-        self.is_connected = false;
     }
 }
 

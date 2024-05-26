@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::OnceLock};
 
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
@@ -7,9 +7,7 @@ use aws_sdk_s3::{
 };
 use derive_builder::Builder;
 use dotenvy::dotenv;
-use lazy_static::lazy_static;
 use secrecy::{ExposeSecret, Secret};
-use tokio::sync::RwLock;
 
 use super::db::Database;
 use super::{
@@ -19,21 +17,23 @@ use super::{
 };
 use crate::gateway::handler::Gateway;
 
-lazy_static! {
-    pub static ref APP: ApplicationState = ApplicationState::new();
+pub static APP: OnceLock<ApplicationState> = OnceLock::new();
+
+pub fn app() -> &'static ApplicationState {
+    APP.get().expect("ApplicationState was not initialized")
 }
 
 /// Contains all the application state and manages application state changes.
 pub struct ApplicationState {
-    pub db: RwLock<Database>,
-    gateway: Gateway,
-    config: Config,
-    s3: Client,
-    buckets: Buckets,
+    pub db: Database,
+    pub gateway: Gateway,
+    pub config: Config,
+    pub s3: Client,
+    pub buckets: Buckets,
 }
 
 impl ApplicationState {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let config = Config::from_env();
         let buckets = Buckets::new();
 
@@ -54,7 +54,7 @@ impl ApplicationState {
             .build();
 
         ApplicationState {
-            db: RwLock::new(Database::new()),
+            db: Database::new(),
             config,
             gateway: Gateway::new(),
             s3: Client::from_conf(s3conf),
@@ -62,41 +62,24 @@ impl ApplicationState {
         }
     }
 
-    /// The application config.
-    pub fn config(&self) -> &Config {
-        &self.config
-    }
-
-    /// All S3 buckets used by the application.
-    pub fn buckets(&self) -> &Buckets {
-        &self.buckets
-    }
-
-    pub fn gateway(&self) -> &Gateway {
-        &self.gateway
-    }
-
-    /// The S3 SDK client.
-    pub fn s3(&self) -> &Client {
-        &self.s3
-    }
-
     /// Initializes the application
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database connection fails.
-    pub async fn init(&self) -> Result<(), sqlx::Error> {
-        self.db
-            .write()
-            .await
-            .connect(self.config.database_url().expose_secret())
-            .await
+    pub async fn init(&mut self) -> Result<(), sqlx::Error> {
+        self.db.connect(self.config.database_url().expose_secret()).await
     }
 
     /// Closes the application and cleans up resources.
     pub async fn close(&self) {
-        self.db.write().await.close().await
+        self.db.close().await
+    }
+}
+
+impl Default for ApplicationState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -229,12 +212,12 @@ impl Buckets {
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn remove_all_for_channel(&self, channel: impl Into<Snowflake>) -> Result<(), AppError> {
-        let bucket = APP.buckets().attachments();
+        let bucket = app().buckets.attachments();
         let channel_id: Snowflake = channel.into();
-        let attachments = bucket.list_objects(APP.s3(), channel_id.to_string(), None).await?;
+        let attachments = bucket.list_objects(&app().s3, channel_id.to_string(), None).await?;
         bucket
             .delete_objects(
-                APP.s3(),
+                &app().s3,
                 attachments
                     .into_iter()
                     .map(|o| o.key.unwrap_or(channel_id.to_string()))
@@ -255,10 +238,9 @@ impl Buckets {
     /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn remove_all_for_guild(&self, guild: impl Into<Snowflake>) -> Result<(), AppError> {
         let guild_id: i64 = guild.into().into();
-        let db = APP.db.read().await;
 
         let channel_ids: Vec<i64> = sqlx::query!("SELECT id FROM channels WHERE guild_id = $1", guild_id)
-            .fetch_all(db.pool())
+            .fetch_all(app().db.pool())
             .await?
             .into_iter()
             .map(|r| r.id)

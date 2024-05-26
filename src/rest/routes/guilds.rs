@@ -6,7 +6,7 @@ use axum::{
 };
 
 use crate::models::{
-    appstate::APP,
+    appstate::app,
     auth::Token,
     channel::{Channel, ChannelLike},
     errors::RESTError,
@@ -66,7 +66,7 @@ async fn create_guild(token: Token, Json(payload): Json<CreateGuild>) -> Result<
             "A member should have been created".into(),
         ))?;
 
-    APP.gateway().add_member(token.data().user_id(), &guild);
+    app().gateway.add_member(token.data().user_id(), &guild);
 
     dispatch!(GatewayEvent::GuildCreate(GuildCreatePayload::new(
         guild.clone(),
@@ -262,10 +262,10 @@ async fn create_member(Path(guild_id): Path<Snowflake>, token: Token) -> Result<
     let gc_payload = GatewayEvent::GuildCreate(GuildCreatePayload::from_guild(guild).await?);
 
     // Send GUILD_CREATE to the user who joined
-    APP.gateway().send_to(&member, gc_payload);
+    app().gateway.send_to(&member, gc_payload);
 
     // Add the member to the gateway's cache
-    APP.gateway().add_member(&member, guild_id);
+    app().gateway.add_member(&member, guild_id);
 
     // Dispatch the member create event to all guild members
     dispatch!(GatewayEvent::MemberCreate(member.clone()));
@@ -307,7 +307,7 @@ async fn leave_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<St
     guild.remove_member(token.data().user_id()).await?;
 
     // Remove the member from the gateway's cache
-    APP.gateway().remove_member(token.data().user_id(), guild_id);
+    app().gateway.remove_member(token.data().user_id(), guild_id);
     // Dispatch the member remove event
     dispatch!(GatewayEvent::MemberRemove(DeletePayload::new(
         member.user().id(),
@@ -315,7 +315,7 @@ async fn leave_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<St
     )));
 
     // Send GUILD_REMOVE to the user who left
-    APP.gateway().send_to(
+    app().gateway.send_to(
         member.user().id(),
         GatewayEvent::GuildRemove(DeletePayload::new(guild_id, Some(guild_id))),
     );

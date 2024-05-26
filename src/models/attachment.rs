@@ -1,5 +1,5 @@
 use super::{
-    appstate::APP,
+    appstate::app,
     errors::{AppError, BuilderError, RESTError},
     message::ExtendedMessageRecord,
 };
@@ -161,9 +161,8 @@ impl FullAttachment {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     pub async fn commit(&self) -> Result<(), AppError> {
-        let db = APP.db.read().await;
         let message_id: i64 = self.message_id.into();
         let channel_id: i64 = self.channel_id.into();
 
@@ -180,7 +179,7 @@ impl FullAttachment {
             channel_id,
             self.content_type,
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
 
         Ok(())
@@ -192,9 +191,9 @@ impl FullAttachment {
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn upload(&self) -> Result<(), AppError> {
-        let bucket = APP.buckets().attachments();
+        let bucket = app().buckets.attachments();
         bucket
-            .put_object(APP.s3(), self.s3_key(), self.content.clone(), self.mime())
+            .put_object(&app().s3, self.s3_key(), self.content.clone(), self.mime())
             .await
     }
 
@@ -204,8 +203,8 @@ impl FullAttachment {
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn download(&mut self) -> Result<(), AppError> {
-        let bucket = APP.buckets().attachments();
-        self.content = bucket.get_object(APP.s3(), self.s3_key()).await?;
+        let bucket = app().buckets.attachments();
+        self.content = bucket.get_object(&app().s3, self.s3_key()).await?;
         Ok(())
     }
 
@@ -216,8 +215,8 @@ impl FullAttachment {
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn delete(&self) -> Result<(), AppError> {
-        let bucket = APP.buckets().attachments();
-        bucket.delete_object(APP.s3(), self.s3_key()).await
+        let bucket = app().buckets.attachments();
+        bucket.delete_object(&app().s3, self.s3_key()).await
     }
 }
 
@@ -314,13 +313,12 @@ impl PartialAttachment {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the SQL query fails.
     pub async fn fetch(id: u8, message: impl Into<Snowflake>) -> Result<Option<Self>, sqlx::Error> {
-        let db = APP.db.read().await;
         let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
@@ -331,7 +329,7 @@ impl PartialAttachment {
             id as i32,
             message_id
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await?
         .map(|record| record.into()))
     }
@@ -344,13 +342,12 @@ impl PartialAttachment {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the SQL query fails.
     pub async fn fetch_all(message: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
-        let db = APP.db.read().await;
         let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
@@ -360,7 +357,7 @@ impl PartialAttachment {
             WHERE message_id = $1",
             message_id
         )
-        .fetch_all(db.pool())
+        .fetch_all(app().db.pool())
         .await?
         .into_iter()
         .map(|record| record.into())

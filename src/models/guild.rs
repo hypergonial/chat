@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::{channel::ChannelRecord, member::ExtendedMemberRecord};
 
 use super::{
-    appstate::APP,
+    appstate::app,
     channel::Channel,
     errors::{AppError, RESTError},
     member::Member,
@@ -83,14 +83,13 @@ impl Guild {
     ///
     /// * `guild` - The ID of the guild to fetch.
     pub async fn fetch(guild: impl Into<Snowflake>) -> Option<Self> {
-        let db = APP.db.read().await;
         let id_64: i64 = guild.into().into();
         let record = sqlx::query_as!(
             GuildRecord,
             "SELECT id, name, owner_id FROM guilds WHERE id = $1",
             id_64
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await
         .ok()??;
 
@@ -103,7 +102,6 @@ impl Guild {
     ///
     /// * `user` - The ID of the user to fetch guilds for.
     pub async fn fetch_all_for_user(user: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
-        let db = APP.db.read().await;
         let user_id_64: i64 = user.into().into();
         let records = sqlx::query!(
             "SELECT guilds.id, guilds.name, guilds.owner_id 
@@ -111,7 +109,7 @@ impl Guild {
             WHERE members.user_id = $1",
             user_id_64
         )
-        .fetch_all(db.pool())
+        .fetch_all(app().db.pool())
         .await?;
 
         Ok(records
@@ -130,7 +128,7 @@ impl Guild {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     pub async fn fetch_owner(&self) -> Member {
         Member::fetch(self.owner_id, self.id)
             .await
@@ -141,13 +139,12 @@ impl Guild {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_members(&self) -> Result<Vec<Member>, sqlx::Error> {
-        let db = APP.db.read().await;
         let guild_id_64: i64 = self.id.into();
 
         let records = sqlx::query_as!(
@@ -158,7 +155,7 @@ impl Guild {
             WHERE members.guild_id = $1",
             guild_id_64
         )
-        .fetch_all(db.pool())
+        .fetch_all(app().db.pool())
         .await?;
 
         Ok(records.into_iter().map(Member::from_extended_record).collect())
@@ -168,17 +165,16 @@ impl Guild {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_channels(&self) -> Result<Vec<Channel>, sqlx::Error> {
-        let db = APP.db.read().await;
         let guild_id_64: i64 = self.id.into();
 
         let records = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE guild_id = $1", guild_id_64)
-            .fetch_all(db.pool())
+            .fetch_all(app().db.pool())
             .await?;
 
         Ok(records.into_iter().map(Channel::from_record).collect())
@@ -188,7 +184,7 @@ impl Guild {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
@@ -196,7 +192,6 @@ impl Guild {
     ///
     /// Note: This is faster than creating a member and then committing it.
     pub async fn create_member(&self, user: impl Into<Snowflake>) -> Result<(), sqlx::Error> {
-        let db = APP.db.read().await;
         let user_id_64: i64 = user.into().into();
         let guild_id_64: i64 = self.id.into();
         sqlx::query!(
@@ -206,7 +201,7 @@ impl Guild {
             guild_id_64,
             Utc::now().timestamp(),
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
         Ok(())
     }
@@ -215,7 +210,7 @@ impl Guild {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
@@ -229,7 +224,6 @@ impl Guild {
             return Err(RESTError::Forbidden("Cannot remove owner from guild".into()));
         }
 
-        let db = APP.db.read().await;
         let user_id_64: i64 = user_id.into();
         let guild_id_64: i64 = self.id.into();
         sqlx::query!(
@@ -237,7 +231,7 @@ impl Guild {
             user_id_64,
             guild_id_64
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
         Ok(())
     }
@@ -246,13 +240,12 @@ impl Guild {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
         let owner_id_i64: i64 = self.owner_id.into();
         sqlx::query!(
@@ -264,7 +257,7 @@ impl Guild {
             self.name,
             owner_id_i64
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
         Ok(())
     }
@@ -273,20 +266,19 @@ impl Guild {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request to delete all attachments fails.
     /// * [`AppError::Database`] - If the database query fails.
     pub async fn delete(self) -> Result<(), AppError> {
-        let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
 
-        APP.buckets().remove_all_for_guild(self).await?;
+        app().buckets.remove_all_for_guild(self).await?;
 
         sqlx::query!("DELETE FROM guilds WHERE id = $1", id_64)
-            .execute(db.pool())
+            .execute(app().db.pool())
             .await?;
         Ok(())
     }

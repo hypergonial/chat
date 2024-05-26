@@ -13,6 +13,6 @@
 #[macro_export]
 macro_rules! dispatch {
     ($event:expr) => {
-        APP.gateway().dispatch($event);
+        $crate::models::appstate::app().gateway.dispatch($event);
     };
 }

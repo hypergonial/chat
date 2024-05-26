@@ -7,7 +7,7 @@ pub mod rest;
 
 use axum::Router;
 use color_eyre::eyre::Result;
-use models::appstate::APP;
+use models::appstate::app;
 use tokio::signal::ctrl_c;
 use tower_http::trace::TraceLayer;
 
@@ -17,8 +17,12 @@ use tracing::level_filters::LevelFilter;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
 
+use crate::models::appstate::{ApplicationState, APP};
+
 #[cfg(unix)]
 async fn handle_signals() {
+    use std::process::exit;
+
     let mut sigterm = signal(SignalKind::terminate()).expect("Failed to create SIGTERM signal listener");
 
     tokio::select! {
@@ -29,13 +33,13 @@ async fn handle_signals() {
             tracing::info!("Received keyboard interrupt, terminating...");
         }
     };
-    APP.close().await;
+    APP.get().unwrap_or_else(|| exit(1)).close().await;
 }
 
 #[cfg(not(unix))]
 async fn handle_signals() {
     ctrl_c().await.expect("Failed to create CTRL+C signal listener");
-    APP.close().await;
+    app().close().await;
 }
 
 #[tokio::main]
@@ -63,21 +67,24 @@ async fn main() -> Result<()> {
     let gateway_routes = gateway::handler::get_router();
     let rest_routes = rest::routes::get_router();
 
-    // Initialize the database
-    APP.init().await?;
+    // Initialize the application state
+    let mut state = ApplicationState::new();
+    state.init().await?;
+    APP.set(state)
+        .unwrap_or_else(|_| panic!("Failed to set application state"));
 
-    let app = Router::new()
+    let router = Router::new()
         .nest("/gateway/v1", gateway_routes)
         .nest("/api/v1", rest_routes)
         .layer(TraceLayer::new_for_http());
 
-    let listener = tokio::net::TcpListener::bind(APP.config().listen_addr())
+    let listener = tokio::net::TcpListener::bind(app().config.listen_addr())
         .await
         .expect("Failed to bind to address");
 
-    tracing::info!("Listening on {}", APP.config().listen_addr());
+    tracing::info!("Listening on {}", app().config.listen_addr());
 
-    axum::serve(listener, app)
+    axum::serve(listener, router)
         .with_graceful_shutdown(handle_signals())
         .await
         .expect("Failed creating server");

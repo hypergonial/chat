@@ -9,7 +9,6 @@ use tower_http::limit::RequestBodyLimitLayer;
 
 use crate::dispatch;
 use crate::models::{
-    appstate::APP,
     auth::Token,
     channel::{Channel, ChannelLike},
     errors::RESTError,

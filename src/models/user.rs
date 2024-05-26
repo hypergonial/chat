@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::guild::GuildRecord;
 
-use super::{appstate::APP, errors::BuilderError, guild::Guild, requests::CreateUser, snowflake::Snowflake};
+use super::{appstate::app, errors::BuilderError, guild::Guild, requests::CreateUser, snowflake::Snowflake};
 
 lazy_static! {
     static ref USERNAME_REGEX: Regex =
@@ -123,7 +123,7 @@ impl User {
 
     /// Retrieve the user's presence.
     pub async fn presence(&self) -> &Presence {
-        if APP.gateway().is_connected(self.id()) {
+        if app().gateway.is_connected(self.id()) {
             &self.last_presence
         } else {
             &Presence::Offline
@@ -182,9 +182,8 @@ impl User {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     pub async fn fetch(id: impl Into<Snowflake>) -> Option<Self> {
-        let db = APP.db.read().await;
         let id_i64: i64 = id.into().into();
         let row = sqlx::query_as!(
             UserRecord,
@@ -193,7 +192,7 @@ impl User {
             WHERE id = $1",
             id_i64
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await
         .ok()??;
 
@@ -204,9 +203,8 @@ impl User {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     pub async fn fetch_presence(user: impl Into<Snowflake>) -> Option<Presence> {
-        let db = APP.db.read().await;
         let id_i64: i64 = user.into().into();
         let row = sqlx::query!(
             "SELECT last_presence
@@ -214,7 +212,7 @@ impl User {
             WHERE id = $1",
             id_i64
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await
         .ok()??;
 
@@ -225,16 +223,15 @@ impl User {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     pub async fn fetch_by_username(username: &str) -> Option<Self> {
-        let db = APP.db.read().await;
         let row = sqlx::query!(
             "SELECT id, username, display_name, last_presence
             FROM users
             WHERE username = $1",
             username
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await
         .ok()??;
 
@@ -251,13 +248,12 @@ impl User {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_guilds(&self) -> Result<Vec<Guild>, sqlx::Error> {
-        let db = APP.db.read().await;
         let id_i64: i64 = self.id.into();
 
         let records = sqlx::query_as!(
@@ -268,7 +264,7 @@ impl User {
             WHERE members.user_id = $1",
             id_i64
         )
-        .fetch_all(db.pool())
+        .fetch_all(app().db.pool())
         .await?;
 
         Ok(records.into_iter().map(Guild::from_record).collect())
@@ -278,13 +274,12 @@ impl User {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = APP.db.read().await;
         let id_i64: i64 = self.id.into();
         sqlx::query!(
             "INSERT INTO users (id, username, display_name, last_presence)
@@ -296,7 +291,7 @@ impl User {
             self.display_name,
             self.last_presence as i16
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
         Ok(())
     }

@@ -181,8 +181,8 @@ impl GuildCreatePayload {
     ///
     /// ## Locks
     ///
-    /// * `APP.gateway` (read)
-    /// * `APP.db` (read)
+    /// * `app().gateway` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///

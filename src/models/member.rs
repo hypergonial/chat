@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use super::appstate::APP;
+use super::appstate::app;
 
 use super::{snowflake::Snowflake, user::User};
 
@@ -87,7 +87,7 @@ impl Member {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     pub async fn from_record(record: MemberRecord) -> Self {
         Self::new(
             User::fetch(record.user_id).await.unwrap(),
@@ -132,9 +132,8 @@ impl Member {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     pub async fn fetch(user: impl Into<Snowflake>, guild: impl Into<Snowflake>) -> Option<Self> {
-        let db = APP.db.read().await;
         let id_64: i64 = user.into().into();
         let guild_id_64: i64 = guild.into().into();
 
@@ -147,7 +146,7 @@ impl Member {
             id_64,
             guild_id_64
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await
         .ok()??;
 
@@ -158,13 +157,12 @@ impl Member {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = APP.db.read().await;
         let id_64: i64 = self.user.id().into();
         let guild_id_64: i64 = self.guild_id.into();
         sqlx::query!(
@@ -177,7 +175,7 @@ impl Member {
             self.nickname,
             self.joined_at
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
 
         let mut hasher = DefaultHasher::new();

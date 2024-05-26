@@ -2,7 +2,7 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
 
-use super::{appstate::APP, errors::AppError, message::ExtendedMessageRecord, requests::CreateChannel};
+use super::{appstate::app, errors::AppError, message::ExtendedMessageRecord, requests::CreateChannel};
 use super::{message::Message, snowflake::Snowflake};
 
 #[enum_dispatch(Channel)]
@@ -50,11 +50,10 @@ impl Channel {
     }
 
     pub async fn fetch(id: Snowflake) -> Option<Self> {
-        let db = APP.db.read().await;
         let id_64: i64 = id.into();
 
         let record = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE id = $1", id_64)
-            .fetch_optional(db.pool())
+            .fetch_optional(app().db.pool())
             .await
             .ok()??;
 
@@ -100,7 +99,7 @@ impl TextChannel {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
@@ -113,7 +112,6 @@ impl TextChannel {
     ) -> Result<Vec<Message>, sqlx::Error> {
         let limit = limit.unwrap_or(50).min(100);
 
-        let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
 
         let records: Vec<ExtendedMessageRecord> = if before.is_none() && after.is_none() {
@@ -130,7 +128,7 @@ impl TextChannel {
                 id_64,
                 limit as i64
             )
-            .fetch_all(db.pool())
+            .fetch_all(app().db.pool())
             .await?
         } else {
             // SAFETY: Ditto, see above.
@@ -147,7 +145,7 @@ impl TextChannel {
                 after.map(|s| s.into()).unwrap_or(i64::MIN),
                 limit as i64
             )
-            .fetch_all(db.pool())
+            .fetch_all(app().db.pool())
             .await?
         };
         Ok(Message::from_records(&records))
@@ -175,13 +173,12 @@ impl ChannelLike for TextChannel {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     async fn commit(&self) -> Result<(), SqlxError> {
-        let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
         let guild_id_64: i64 = self.guild_id.into();
         sqlx::query!(
@@ -193,7 +190,7 @@ impl ChannelLike for TextChannel {
             guild_id_64,
             self.name
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
 
         Ok(())
@@ -203,20 +200,19 @@ impl ChannelLike for TextChannel {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request to delete all attachments fails.
     /// * [`AppError::Database`] - If the database query fails.
     async fn delete(self) -> Result<(), AppError> {
-        let db = APP.db.read().await;
         let id_64: i64 = self.id.into();
 
-        APP.buckets().remove_all_for_channel(self).await?;
+        app().buckets.remove_all_for_channel(self).await?;
 
         sqlx::query!("DELETE FROM channels WHERE id = $1", id_64)
-            .execute(db.pool())
+            .execute(app().db.pool())
             .await?;
 
         Ok(())

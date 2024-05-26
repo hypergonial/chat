@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::APP, snowflake::Snowflake};
+use super::{appstate::app, snowflake::Snowflake};
 
 bitflags! {
     /// Boolean flags for user preferences
@@ -133,13 +133,12 @@ impl Prefs {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch(user: impl Into<Snowflake>) -> Result<Self, sqlx::Error> {
-        let db = APP.db.read().await;
         let user_id: Snowflake = user.into();
         let user_id_i64: i64 = user_id.into();
 
@@ -149,7 +148,7 @@ impl Prefs {
             WHERE user_id = $1",
             user_id_i64
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await?;
 
         if result.is_none() {
@@ -172,13 +171,12 @@ impl Prefs {
     ///
     /// ## Locks
     ///
-    /// * `APP.db` (read)
+    /// * `app().db` (read)
     ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = APP.db.read().await;
         let user_id: i64 = self.user_id.into();
         let flags: i64 = self.flags.bits().try_into().expect("Cannot fit flag into i64");
 
@@ -194,7 +192,7 @@ impl Prefs {
             self.text_size as i32,
             self.locale,
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
 
         Ok(())

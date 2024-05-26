@@ -11,7 +11,7 @@ use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    appstate::APP,
+    appstate::app,
     errors::{AuthError, RESTError},
     snowflake::Snowflake,
 };
@@ -85,7 +85,7 @@ impl Token {
             token: Secret::new(encode(
                 &Header::default(),
                 &data,
-                &EncodingKey::from_secret(APP.config().app_secret().expose_secret().as_ref()),
+                &EncodingKey::from_secret(app().config.app_secret().expose_secret().as_ref()),
             )?),
         })
     }
@@ -117,7 +117,7 @@ impl Token {
     fn decode(token: &str) -> Result<Self, jsonwebtoken::errors::Error> {
         let decoded = decode::<TokenData>(
             token,
-            &DecodingKey::from_secret(APP.config().app_secret().expose_secret().as_ref()),
+            &DecodingKey::from_secret(app().config.app_secret().expose_secret().as_ref()),
             &Validation::default(),
         )?;
         Ok(Token {
@@ -254,7 +254,6 @@ impl StoredCredentials {
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
     pub async fn fetch(user: impl Into<Snowflake>) -> Option<StoredCredentials> {
-        let db = APP.db.read().await;
         let user_id: i64 = user.into().into();
 
         let result = sqlx::query!(
@@ -263,7 +262,7 @@ impl StoredCredentials {
             WHERE user_id = $1",
             user_id
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await
         .ok()??;
 
@@ -284,15 +283,13 @@ impl StoredCredentials {
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
     pub async fn fetch_by_username(username: String) -> Option<StoredCredentials> {
-        let db = APP.db.read().await;
-
         let result = sqlx::query!(
             "SELECT users.id, secrets.password, secrets.last_changed
             FROM users JOIN secrets ON users.id = secrets.user_id
             WHERE users.username = $1",
             username
         )
-        .fetch_optional(db.pool())
+        .fetch_optional(app().db.pool())
         .await
         .ok()??;
 
@@ -309,7 +306,6 @@ impl StoredCredentials {
     ///
     /// * [`sqlx::Error`] - If the query fails. This could be due to the user not existing in the DB.
     pub async fn commit(&self) -> Result<(), sqlx::Error> {
-        let db = APP.db.read().await;
         let user_id: i64 = self.user_id.into();
 
         sqlx::query!(
@@ -319,7 +315,7 @@ impl StoredCredentials {
             self.hash.expose_secret(),
             self.last_changed.timestamp()
         )
-        .execute(db.pool())
+        .execute(app().db.pool())
         .await?;
 
         Ok(())
