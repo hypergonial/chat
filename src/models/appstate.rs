@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
     config::{Credentials as S3Creds, Region},
     Client, Config as S3Config,
@@ -49,7 +50,7 @@ impl ApplicationState {
             .endpoint_url(config.minio_url())
             .credentials_provider(s3creds)
             .force_path_style(true) // MinIO does not support virtual hosts
-            .behavior_version(BehaviorVersion::latest())
+            .behavior_version(BehaviorVersion::v2023_11_09())
             .build();
 
         ApplicationState {
