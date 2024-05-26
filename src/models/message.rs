@@ -6,7 +6,7 @@ use slice_group_by::GroupBy;
 
 use super::{
     appstate::APP,
-    attachment::{Attachment, AttachmentLike, AttachmentT},
+    attachment::{Attachment, AttachmentLike, FullAttachment},
     errors::{AppError, BuilderError, RESTError},
     member::UserLike,
     requests::CreateMessage,
@@ -61,7 +61,7 @@ pub struct Message {
 
     /// Attachments sent with this message.
     #[builder(default)]
-    attachments: Vec<AttachmentLike>,
+    attachments: Vec<Attachment>,
 }
 
 impl MessageBuilder {
@@ -104,7 +104,7 @@ impl Message {
 
                 for record in group {
                     if let Ok(attachment) = record.try_into() {
-                        attachments.push(AttachmentLike::Partial(attachment));
+                        attachments.push(Attachment::Partial(attachment));
                     }
                 }
 
@@ -136,7 +136,7 @@ impl Message {
     ) -> Result<Self, RESTError> {
         let id = Snowflake::gen_new();
         let channel_id: Snowflake = channel.into();
-        let mut attachments: Vec<AttachmentLike> = Vec::new();
+        let mut attachments: Vec<Attachment> = Vec::new();
         let mut builder = Message::builder();
 
         builder.id(id).channel_id(channel_id).author(author);
@@ -151,12 +151,12 @@ impl Message {
                 let payload = serde_json::from_slice::<CreateMessage>(&data)?;
                 builder.content(payload.content).nonce(payload.nonce.clone());
             } else {
-                let attachment = Attachment::try_from_field(part, channel_id, id).await?;
+                let attachment = FullAttachment::try_from_field(part, channel_id, id).await?;
 
                 if attachments.iter().any(|a| a.id() == attachment.id()) {
                     return Err(RESTError::DuplicateField("attachment.id".to_string()));
                 }
-                attachments.push(AttachmentLike::Full(attachment));
+                attachments.push(Attachment::Full(attachment));
             }
         }
 
@@ -169,8 +169,8 @@ impl Message {
             .attachments
             .into_iter()
             .map(|a| {
-                if let AttachmentLike::Full(f) = a {
-                    AttachmentLike::Partial(f.into())
+                if let Attachment::Full(f) = a {
+                    Attachment::Partial(f.into())
                 } else {
                     a
                 }
@@ -255,7 +255,7 @@ impl Message {
         .await?;
 
         for attachment in &self.attachments {
-            if let AttachmentLike::Full(f) = attachment {
+            if let Attachment::Full(f) = attachment {
                 f.commit().await?;
             }
         }

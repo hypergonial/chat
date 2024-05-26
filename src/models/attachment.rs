@@ -19,8 +19,8 @@ lazy_static! {
 }
 
 /// Trait used for enum dispatch
-#[enum_dispatch(AttachmentLike)]
-pub trait AttachmentT {
+#[enum_dispatch(Attachment)]
+pub trait AttachmentLike {
     /// The ID of the attachment.
     /// This determines the ordering of attachments within a message, starting from 0.
     fn id(&self) -> u8;
@@ -50,14 +50,14 @@ pub trait AttachmentT {
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 #[enum_dispatch]
-pub enum AttachmentLike {
-    Full(Attachment),
+pub enum Attachment {
+    Full(FullAttachment),
     Partial(PartialAttachment),
 }
 
 #[derive(Debug, Clone, Builder, Serialize)]
 #[builder(setter(into), build_fn(error = "BuilderError"))]
-pub struct Attachment {
+pub struct FullAttachment {
     /// Describes the ordering of attachments within a message, starting from 0.
     id: u8,
     /// The name of the attachment file, including the file extension.
@@ -75,7 +75,7 @@ pub struct Attachment {
     channel_id: Snowflake,
 }
 
-impl Attachment {
+impl FullAttachment {
     /// Create a new attachment with the given ID, filename, and content.
     pub fn new(
         id: u8,
@@ -95,8 +95,8 @@ impl Attachment {
         }
     }
 
-    pub fn builder() -> AttachmentBuilder {
-        AttachmentBuilder::default()
+    pub fn builder() -> FullAttachmentBuilder {
+        FullAttachmentBuilder::default()
     }
 
     /// Try to build a new [`Attachment`] from a multipart/form-data field.
@@ -121,7 +121,7 @@ impl Attachment {
         channel: impl Into<Snowflake>,
         message: impl Into<Snowflake>,
     ) -> Result<Self, RESTError> {
-        let mut builder = Attachment::builder();
+        let mut builder = FullAttachment::builder();
 
         let Some(name) = field.name() else {
             return Err(RESTError::MissingField("name".into()));
@@ -145,9 +145,9 @@ impl Attachment {
         let content_type = field.content_type().unwrap_or("application/octet-stream");
 
         // Ensure the content type is valid
-        content_type.parse::<Mime>().map_err(|_| {
-            RESTError::MalformedField("content type could not be parsed".into())
-        })?;
+        content_type
+            .parse::<Mime>()
+            .map_err(|_| RESTError::MalformedField("content type could not be parsed".into()))?;
 
         Ok(builder
             .channel_id(channel)
@@ -167,6 +167,8 @@ impl Attachment {
         let message_id: i64 = self.message_id.into();
         let channel_id: i64 = self.channel_id.into();
 
+        self.upload().await?;
+
         sqlx::query!(
             "INSERT INTO attachments (id, filename, message_id, channel_id, content_type)
             VALUES ($1, $2, $3, $4, $5) 
@@ -181,8 +183,6 @@ impl Attachment {
         .execute(db.pool())
         .await?;
 
-        self.upload().await?;
-
         Ok(())
     }
 
@@ -195,8 +195,7 @@ impl Attachment {
         let bucket = APP.buckets().attachments();
         bucket
             .put_object(APP.s3(), self.s3_key(), self.content.clone(), self.mime())
-            .await?;
-        Ok(())
+            .await
     }
 
     /// Download the attachment content from S3.
@@ -218,12 +217,11 @@ impl Attachment {
     /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn delete(&self) -> Result<(), AppError> {
         let bucket = APP.buckets().attachments();
-        bucket.delete_object(APP.s3(), self.s3_key()).await?;
-        Ok(())
+        bucket.delete_object(APP.s3(), self.s3_key()).await
     }
 }
 
-impl AttachmentT for Attachment {
+impl AttachmentLike for FullAttachment {
     fn id(&self) -> u8 {
         self.id
     }
@@ -294,8 +292,8 @@ impl PartialAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn download(self) -> Result<Attachment, AppError> {
-        let mut attachment = Attachment::new(
+    pub async fn download(self) -> Result<FullAttachment, AppError> {
+        let mut attachment = FullAttachment::new(
             self.id,
             self.filename,
             Vec::new(),
@@ -370,8 +368,8 @@ impl PartialAttachment {
     }
 }
 
-impl From<Attachment> for PartialAttachment {
-    fn from(attachment: Attachment) -> Self {
+impl From<FullAttachment> for PartialAttachment {
+    fn from(attachment: FullAttachment) -> Self {
         Self {
             id: attachment.id,
             filename: attachment.filename,
@@ -416,7 +414,7 @@ impl TryFrom<&ExtendedMessageRecord> for PartialAttachment {
     }
 }
 
-impl AttachmentT for PartialAttachment {
+impl AttachmentLike for PartialAttachment {
     fn id(&self) -> u8 {
         self.id
     }
