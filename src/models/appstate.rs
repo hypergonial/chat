@@ -49,6 +49,7 @@ impl ApplicationState {
             .endpoint_url(config.minio_url())
             .credentials_provider(s3creds)
             .force_path_style(true) // MinIO does not support virtual hosts
+            .behavior_version(BehaviorVersion::latest())
             .build();
 
         ApplicationState {
