@@ -1,7 +1,8 @@
+use std::sync::OnceLock;
+
 use chrono::prelude::*;
 use chrono::DateTime;
 use derive_builder::Builder;
-use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -9,9 +10,10 @@ use crate::models::guild::GuildRecord;
 
 use super::{appstate::app, errors::BuilderError, guild::Guild, requests::CreateUser, snowflake::Snowflake};
 
-lazy_static! {
-    static ref USERNAME_REGEX: Regex =
-        Regex::new(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*[a-zA-Z0-9])$").unwrap();
+fn username_regex() -> &'static Regex {
+    static USERNAME_REGEX: OnceLock<Regex> = OnceLock::new();
+    USERNAME_REGEX
+        .get_or_init(|| Regex::new(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*[a-zA-Z0-9])$").unwrap())
 }
 
 /// Represents the presence of a user.
@@ -164,10 +166,10 @@ impl User {
     }
 
     fn validate_username(username: &str) -> Result<(), BuilderError> {
-        if !USERNAME_REGEX.is_match(username) {
+        if !username_regex().is_match(username) {
             return Err(BuilderError::ValidationError(format!(
                 "Invalid username, must match regex: {}",
-                USERNAME_REGEX.as_str()
+                username_regex().as_str()
             )));
         }
         if username.len() > 32 || username.len() < 3 {

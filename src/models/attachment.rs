@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use super::{
     appstate::app,
     errors::{AppError, BuilderError, RESTError},
@@ -7,15 +9,15 @@ use axum::extract::multipart::Field;
 use bytes::Bytes;
 use derive_builder::Builder;
 use enum_dispatch::enum_dispatch;
-use lazy_static::lazy_static;
 use mime::Mime;
 use regex::Regex;
 use serde::Serialize;
 
 use super::snowflake::Snowflake;
 
-lazy_static! {
-    static ref ATTACHMENT_REGEX: Regex = Regex::new(r"attachment-(?P<id>[0-9])").unwrap();
+fn attachment_regex() -> &'static Regex {
+    static ATTACH_REGEX: OnceLock<Regex> = OnceLock::new();
+    ATTACH_REGEX.get_or_init(|| Regex::new(r"attachment-(?P<id>[0-9])").unwrap())
 }
 
 /// Trait used for enum dispatch
@@ -133,7 +135,7 @@ impl FullAttachment {
 
         builder.filename(filename);
 
-        let Some(caps) = ATTACHMENT_REGEX.captures(name) else {
+        let Some(caps) = attachment_regex().captures(name) else {
             return Err(RESTError::MalformedField(
                 "attachment ID could not be parsed from name".into(),
             ));
