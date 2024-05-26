@@ -18,7 +18,7 @@ pub trait ChannelLike {
     /// Commit this channel's current state to the database.
     async fn commit(&self) -> Result<(), SqlxError>;
     /// Deletes the channel.
-    async fn delete(self) -> Result<(), AppError>;
+    async fn delete(&mut self) -> Result<(), AppError>;
 }
 
 /// Represents a row representing a channel.
@@ -206,10 +206,10 @@ impl ChannelLike for TextChannel {
     ///
     /// * [`AppError::S3`] - If the S3 request to delete all attachments fails.
     /// * [`AppError::Database`] - If the database query fails.
-    async fn delete(self) -> Result<(), AppError> {
+    async fn delete(&mut self) -> Result<(), AppError> {
         let id_64: i64 = self.id.into();
 
-        app().buckets.remove_all_for_channel(self).await?;
+        app().buckets.remove_all_for_channel(self.id()).await?;
 
         sqlx::query!("DELETE FROM channels WHERE id = $1", id_64)
             .execute(app().db.pool())
@@ -239,6 +239,18 @@ impl From<&Channel> for Snowflake {
 
 impl From<&TextChannel> for Snowflake {
     fn from(channel: &TextChannel) -> Self {
+        channel.id()
+    }
+}
+
+impl From<&mut Channel> for Snowflake {
+    fn from(channel: &mut Channel) -> Self {
+        channel.id()
+    }
+}
+
+impl From<&mut TextChannel> for Snowflake {
+    fn from(channel: &mut TextChannel) -> Self {
         channel.id()
     }
 }

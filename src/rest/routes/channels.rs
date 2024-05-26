@@ -12,7 +12,7 @@ use crate::models::{
     auth::Token,
     channel::{Channel, ChannelLike},
     errors::RESTError,
-    gateway_event::{DeletePayload, GatewayEvent},
+    gateway_event::GatewayEvent,
     guild::Guild,
     member::{Member, UserLike},
     message::Message,
@@ -86,7 +86,7 @@ async fn fetch_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Resul
 ///
 /// DELETE `/channels/{channel_id}`
 async fn delete_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Result<StatusCode, RESTError> {
-    let channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
+    let mut channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
         "Channel does not exist or is not available.".into(),
     ))?;
 
@@ -101,10 +101,7 @@ async fn delete_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Resu
 
     channel.delete().await?;
 
-    dispatch!(GatewayEvent::ChannelRemove(DeletePayload::new(
-        channel_id,
-        Some(guild.id())
-    )));
+    dispatch!(GatewayEvent::ChannelRemove(channel.clone()));
 
     Ok(StatusCode::NO_CONTENT)
 }

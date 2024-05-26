@@ -62,7 +62,7 @@ Sent when a guild is created or on initial connection. The client is expected to
 
 ### Summary
 
-Sent when a guild is deleted.
+A [`Guild`](../objects/guild.md) guild object representing the guild that was deleted.
 
 ### Data
 
@@ -76,7 +76,7 @@ Sent when a channel is created.
 
 ### Data
 
-A [Channel](../objects/channel.md) object.
+A [Channel](../objects/channel.md) object representing the channel that was created.
 
 ## CHANNEL_REMOVE
 
@@ -86,7 +86,7 @@ Sent when a channel is deleted.
 
 ### Data
 
-The ID of the channel that was deleted.
+A [Channel](../objects/channel.md) object representing the channel that was deleted.
 
 ## READY
 

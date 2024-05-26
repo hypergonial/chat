@@ -26,11 +26,11 @@ pub enum GatewayEvent {
     /// A guild was created.
     GuildCreate(GuildCreatePayload),
     /// A guild was deleted.
-    GuildRemove(DeletePayload),
+    GuildRemove(Guild),
     /// A channel was created.
     ChannelCreate(Channel),
     /// A channel was deleted.
-    ChannelRemove(DeletePayload),
+    ChannelRemove(Channel),
     // A user's presence was updated.
     PresenceUpdate(PresenceUpdatePayload),
     /// The server is ready to accept messages.

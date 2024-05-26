@@ -272,7 +272,7 @@ impl Guild {
     ///
     /// * [`AppError::S3`] - If the S3 request to delete all attachments fails.
     /// * [`AppError::Database`] - If the database query fails.
-    pub async fn delete(self) -> Result<(), AppError> {
+    pub async fn delete(&mut self) -> Result<(), AppError> {
         let id_64: i64 = self.id.into();
 
         app().buckets.remove_all_for_guild(self).await?;
@@ -292,6 +292,12 @@ impl From<Guild> for Snowflake {
 
 impl From<&Guild> for Snowflake {
     fn from(guild: &Guild) -> Self {
+        guild.id()
+    }
+}
+
+impl From<&mut Guild> for Snowflake {
+    fn from(guild: &mut Guild) -> Self {
         guild.id()
     }
 }

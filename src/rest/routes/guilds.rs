@@ -159,7 +159,7 @@ async fn fetch_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<Js
 ///
 /// DELETE `/guilds/{guild_id}`
 async fn delete_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<StatusCode, RESTError> {
-    let guild = Guild::fetch(guild_id)
+    let mut guild = Guild::fetch(guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
 
@@ -169,7 +169,7 @@ async fn delete_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<S
 
     guild.delete().await?;
 
-    dispatch!(GatewayEvent::GuildRemove(DeletePayload::new(guild_id, Some(guild_id))));
+    dispatch!(GatewayEvent::GuildRemove(guild));
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -315,10 +315,9 @@ async fn leave_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<St
     )));
 
     // Send GUILD_REMOVE to the user who left
-    app().gateway.send_to(
-        member.user().id(),
-        GatewayEvent::GuildRemove(DeletePayload::new(guild_id, Some(guild_id))),
-    );
+    app()
+        .gateway
+        .send_to(member.user().id(), GatewayEvent::GuildRemove(guild));
 
     Ok(StatusCode::NO_CONTENT)
 }
