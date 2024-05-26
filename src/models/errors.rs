@@ -84,7 +84,7 @@ impl IntoResponse for AppError {
             Self::S3(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::JSON(_) => StatusCode::BAD_REQUEST,
             Self::Multipart(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::JWT(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::JWT(_) => StatusCode::BAD_REQUEST,
             Self::Regex(_) => StatusCode::BAD_REQUEST,
             Self::Builder(e) => return e.into_response(),
             Self::ParseInt(_) => StatusCode::BAD_REQUEST,
