@@ -228,8 +228,7 @@ impl Buckets {
                     .map(|o| o.key.unwrap_or(channel_id.to_string()))
                     .collect(),
             )
-            .await?;
-        Ok(())
+            .await
     }
 
     /// Remove all S3 data for the given guild.
