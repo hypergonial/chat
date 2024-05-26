@@ -215,6 +215,11 @@ impl Buckets {
         let bucket = app().buckets.attachments();
         let channel_id: Snowflake = channel.into();
         let attachments = bucket.list_objects(&app().s3, channel_id.to_string(), None).await?;
+
+        if attachments.is_empty() {
+            return Ok(());
+        }
+
         bucket
             .delete_objects(
                 &app().s3,
