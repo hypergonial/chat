@@ -621,23 +621,24 @@ async fn receive_events(
             break;
         };
 
-        let Ok(req) = serde_json::from_str::<GatewayRequest>(&text) else {
-            ws_sink
-                .lock()
-                .await
-                .send(Message::Close(Some(CloseFrame {
-                    code: GatewayCloseCode::InvalidPayload.into(),
-                    reason: "Invalid message payload".into(),
-                })))
-                .await
-                .ok();
-            break;
-        };
-
-        // TODO: Pattern match on other request variants if/when they are implemented
-        let GatewayRequest::Message(msg) = req;
-
-        broadcaster.send(msg).ok();
+        match serde_json::from_str::<GatewayRequest>(&text) {
+            Ok(req) => {
+                let GatewayRequest::Message(msg) = req;
+                broadcaster.send(msg).ok();
+            }
+            Err(e) => {
+                ws_sink
+                    .lock()
+                    .await
+                    .send(Message::Close(Some(CloseFrame {
+                        code: GatewayCloseCode::InvalidPayload.into(),
+                        reason: format!("Invalid request payload: {}", e).into(),
+                    })))
+                    .await
+                    .ok();
+                break;
+            }
+        }
     }
 }
 
