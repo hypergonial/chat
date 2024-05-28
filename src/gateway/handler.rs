@@ -161,7 +161,10 @@ impl ConnectionHandle {
     }
 
     /// Send a message to the client
-    #[allow(clippy::result_large_err)]
+    ///
+    /// ## Arguments
+    ///
+    /// * `message` - The message to send
     pub fn send(&self, message: Arc<GatewayEvent>) -> Result<(), SendError<GatewayResponse>> {
         let resp = GatewayResponse::Event(message);
         self.sender.send(resp)
@@ -169,6 +172,11 @@ impl ConnectionHandle {
 
     /// Close the connection with the given code and reason
     /// This will also remove the handle from the gateway state
+    ///
+    /// ## Arguments
+    ///
+    /// * `code` - The close code to send
+    /// * `reason` - The reason for closing the connection
     pub fn close(&self, code: GatewayCloseCode, reason: String) -> Result<(), SendError<GatewayResponse>> {
         let resp = GatewayResponse::Close(code, reason);
         self.sender.send(resp)
@@ -208,6 +216,10 @@ impl Gateway {
     /// ## Arguments
     ///
     /// * `payload` - The event payload
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (write)
     pub fn dispatch(&self, event: GatewayEvent) {
         tracing::debug!("Dispatching event: {:?}", event);
 
@@ -244,6 +256,15 @@ impl Gateway {
     }
 
     /// Registers a new guild member instance to an existing connection
+    ///
+    /// ## Arguments
+    ///
+    /// * `user` - The user to add to the connection
+    /// * `guild` - The guild to add the user to
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (write)
     pub fn add_member(&self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
         if let Some(mut handle) = self.peers.get_mut(&user.into()) {
             handle.guild_ids_mut().insert(guild.into());
@@ -251,6 +272,15 @@ impl Gateway {
     }
 
     /// Removes a guild member instance from an existing connection
+    ///
+    /// ## Arguments
+    ///
+    /// * `user` - The user to remove from the connection
+    /// * `guild` - The guild to remove the user from
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (write)
     pub fn remove_member(&self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
         if let Some(mut handle) = self.peers.get_mut(&user.into()) {
             handle.guild_ids_mut().remove(&guild.into());
@@ -258,22 +288,58 @@ impl Gateway {
     }
 
     /// Send an event to a specific user. If they are not connected, the event is dropped.
+    ///
+    /// ## Arguments
+    ///
+    /// * `user` - The user to send the event to
+    /// * `event` - The event to send
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (write)
     pub fn send_to(&self, user: impl Into<Snowflake>, event: GatewayEvent) {
         let user_id: Snowflake = user.into();
         if let Some(handle) = self.peers.get(&user_id) {
             if let Err(_disconnected) = handle.send(Arc::new(event)) {
+                // Drop handle to prevent deadlock
+                std::mem::drop(handle);
                 tracing::warn!("Error sending event to user: {}", user_id);
                 self.peers.remove(&user_id);
             }
         }
     }
 
-    // Query if a given user is connected
+    /// Query if a given user is connected
+    ///
+    /// ## Arguments
+    ///
+    /// * `user` - The user to check for
+    ///
+    /// ## Returns
+    ///
+    /// `true` if the user is connected, `false` otherwise
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (read)
     pub fn is_connected(&self, user: impl Into<Snowflake>) -> bool {
         self.peers.contains_key(&user.into())
     }
 
     /// Determines if a given user shares any guilds with another user
+    ///
+    /// ## Arguments
+    ///
+    /// * `a` - The first user to check
+    /// * `b` - The second user to check
+    ///
+    /// ## Returns
+    ///
+    /// `true` if the users share any guilds, `false` otherwise
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (read)
     pub fn shares_guilds_with(&self, a: Snowflake, b: Snowflake) -> bool {
         if let Some(a_handle) = self.peers.get(&a) {
             if let Some(b_handle) = self.peers.get(&b) {
