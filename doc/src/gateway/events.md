@@ -88,6 +88,16 @@ Sent when a channel is deleted.
 
 A [Channel](../objects/channel.md) object representing the channel that was deleted.
 
+## HELLO
+
+### Summary
+
+Sent as the first event by the server after connecting, including the **heartbeat interval** the client should use for this session.
+
+### Data
+
+The entire `data` field consists of a single integer, specifying the heartbeat interval in **milliseconds**.
+
 ## READY
 
 ### Summary

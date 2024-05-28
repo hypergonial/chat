@@ -20,7 +20,8 @@ use tokio::sync::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-const HEARTBEAT_INTERVAL: u64 = 40;
+/// Default heartbeat interval in milliseconds
+const HEARTBEAT_INTERVAL: u64 = 45000;
 
 use crate::models::{
     appstate::app,
@@ -617,7 +618,7 @@ async fn handle_connection(socket: WebSocket) {
 
     let send_events = tokio::spawn(send_events(user_id, receiver, ws_sink.clone()));
     let receive_events = tokio::spawn(receive_events(user_id, ws_stream, ws_sink, broadcaster));
-    let handle_heartbeat = tokio::spawn(handle_heartbeating(user_id, Duration::from_secs(HEARTBEAT_INTERVAL)));
+    let handle_heartbeat = tokio::spawn(handle_heartbeating(user_id, Duration::from_millis(HEARTBEAT_INTERVAL)));
 
     tokio::select! {
         _ = send_events => {},
