@@ -12,31 +12,127 @@ use futures_util::{
     SinkExt, StreamExt,
 };
 use secrecy::ExposeSecret;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{
+    broadcast,
     mpsc::{self, error::SendError},
     Mutex,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
+const HEARTBEAT_INTERVAL: u64 = 40;
+
 use crate::models::{
     appstate::app,
     auth::Token,
-    gateway_event::{EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, PresenceUpdatePayload, ReadyPayload},
+    gateway_event::{
+        EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, HelloPayload, PresenceUpdatePayload, ReadyPayload,
+    },
+    guild::Guild,
     snowflake::Snowflake,
     user::{Presence, User},
 };
 
-/// Mapping of <user_id, handle>
-pub type PeerMap = DashMap<Snowflake, ConnectionHandle>;
+/// Possible responses issued by the server to a client
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+enum GatewayResponse {
+    // If sent through a connection handle, the payload should be sent to the client
+    Event(Arc<GatewayEvent>),
+    // If sent through a connection handle, the connection should be closed
+    Close(GatewayCloseCode, String),
+}
+
+/// Possible requests issued by the client to the server
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum GatewayRequest {
+    // If sent through a connection handle, the payload should be broadcasted
+    Message(GatewayMessage),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum GatewayCloseCode {
+    /// Successful operation / regular socket shutdown
+    Normal = 1000,
+    /// Client is leaving (browser tab closing)
+    GoingAway = 1001,
+    /// Endpoint received a malformed frame
+    ProtocolError = 1002,
+    /// Endpoint received an unsupported frame (e.g. binary-only endpoint received text frame)
+    Unsupported = 1003,
+    /// Expected close status, received none
+    NoStatus = 1005,
+    /// No close code frame has been receieved
+    Abnormal = 1006,
+    /// Endpoint received inconsistent message (e.g. malformed UTF-8)
+    InvalidPayload = 1007,
+    ///Generic code used for situations other than 1003 and 1009
+    PolicyViolation = 1008,
+    /// Endpoint won't process large frame
+    TooLarge = 1009,
+    /// Client wanted an extension which server did not negotiate
+    ExtensionRequired = 1010,
+    /// Internal server error while operating
+    ServerError = 1011,
+    /// Server/service is restarting
+    ServiceRestart = 1012,
+    /// Temporary server condition forced blocking client's request
+    TryAgainLater = 1013,
+    /// Server acting as gateway received an invalid response
+    BadGateway = 1014,
+    /// Transport Layer Security handshake failure
+    TLSHandshakeFail = 1015,
+}
+
+impl From<GatewayCloseCode> for u16 {
+    fn from(value: GatewayCloseCode) -> Self {
+        value as u16
+    }
+}
+
+impl From<u16> for GatewayCloseCode {
+    fn from(value: u16) -> Self {
+        match value {
+            1000 => GatewayCloseCode::Normal,
+            1001 => GatewayCloseCode::GoingAway,
+            1002 => GatewayCloseCode::ProtocolError,
+            1003 => GatewayCloseCode::Unsupported,
+            1005 => GatewayCloseCode::NoStatus,
+            1006 => GatewayCloseCode::Abnormal,
+            1007 => GatewayCloseCode::InvalidPayload,
+            1008 => GatewayCloseCode::PolicyViolation,
+            1009 => GatewayCloseCode::TooLarge,
+            1010 => GatewayCloseCode::ExtensionRequired,
+            1011 => GatewayCloseCode::ServerError,
+            1012 => GatewayCloseCode::ServiceRestart,
+            1013 => GatewayCloseCode::TryAgainLater,
+            1014 => GatewayCloseCode::BadGateway,
+            1015 => GatewayCloseCode::TLSHandshakeFail,
+            _ => GatewayCloseCode::Abnormal,
+        }
+    }
+}
+
+impl Serialize for GatewayCloseCode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        (*self as u16).serialize(serializer)
+    }
+}
 
 /// A struct containing connection details for a user
 ///
 /// ## Fields
 ///
 /// * `sender` - The sender for sending messages to the client
+/// * `receiver` - The receiver for receiving messages from the client
 /// * `guild_ids` - The guilds the user is a member of, this is used to filter events
-pub struct ConnectionHandle {
-    sender: mpsc::UnboundedSender<GatewayEvent>,
+struct ConnectionHandle {
+    sender: mpsc::UnboundedSender<GatewayResponse>,
+    broadcaster: Arc<broadcast::Sender<GatewayMessage>>,
     guild_ids: HashSet<Snowflake>,
 }
 
@@ -47,17 +143,35 @@ impl ConnectionHandle {
     ///
     /// * `sender` - The sender for sending messages to the client
     /// * `guilds` - The guilds the user is a member of
-    pub fn new(sender: mpsc::UnboundedSender<GatewayEvent>, guilds: HashSet<Snowflake>) -> Self {
+    pub fn new(
+        sender: mpsc::UnboundedSender<GatewayResponse>,
+        receiver: Arc<broadcast::Sender<GatewayMessage>>,
+        guilds: HashSet<Snowflake>,
+    ) -> Self {
         ConnectionHandle {
             sender,
+            broadcaster: receiver,
             guild_ids: guilds,
         }
     }
 
     /// Send a message to the client
     #[allow(clippy::result_large_err)]
-    pub fn send(&self, message: GatewayEvent) -> Result<(), SendError<GatewayEvent>> {
-        self.sender.send(message)
+    pub fn send(&self, message: Arc<GatewayEvent>) -> Result<(), SendError<GatewayResponse>> {
+        let resp = GatewayResponse::Event(message);
+        self.sender.send(resp)
+    }
+
+    /// Close the connection with the given code and reason
+    /// This will also remove the handle from the gateway state
+    pub fn close(&self, code: GatewayCloseCode, reason: String) -> Result<(), SendError<GatewayResponse>> {
+        let resp = GatewayResponse::Close(code, reason);
+        self.sender.send(resp)
+    }
+
+    /// Get a receiver for incoming gateway messages from the user
+    pub fn get_receiver(&self) -> broadcast::Receiver<GatewayMessage> {
+        self.broadcaster.subscribe()
     }
 
     /// Get the guilds the user is a member of
@@ -74,14 +188,13 @@ impl ConnectionHandle {
 /// A singleton representing the gateway state
 pub struct Gateway {
     /// A map of currently connected users
-    peers: PeerMap,
+    /// The key is the user's ID
+    peers: DashMap<Snowflake, ConnectionHandle>,
 }
 
 impl Gateway {
     pub fn new() -> Self {
-        Gateway {
-            peers: PeerMap::default(),
-        }
+        Gateway { peers: DashMap::new() }
     }
 
     /// Dispatch a new event originating from the given user to all other users
@@ -94,6 +207,9 @@ impl Gateway {
 
         // TODO: Figure out how to use the `HashMap::retain` method here without killing borrowck
         let mut to_drop: Vec<Snowflake> = Vec::new();
+
+        // Avoid cloning the event for each user
+        let event: Arc<GatewayEvent> = Arc::new(event);
 
         for peer in self.peers.iter() {
             let (uid, handle) = peer.pair();
@@ -109,6 +225,7 @@ impl Gateway {
                     continue;
                 }
             }
+
             if let Err(_disconnected) = handle.send(event.clone()) {
                 tracing::warn!("Error dispatching event to user: {}", uid);
                 to_drop.push(*uid);
@@ -138,7 +255,7 @@ impl Gateway {
     pub fn send_to(&self, user: impl Into<Snowflake>, event: GatewayEvent) {
         let user_id: Snowflake = user.into();
         if let Some(handle) = self.peers.get(&user_id) {
-            if let Err(_disconnected) = handle.send(event) {
+            if let Err(_disconnected) = handle.send(Arc::new(event)) {
                 tracing::warn!("Error sending event to user: {}", user_id);
                 self.peers.remove(&user_id);
             }
@@ -180,7 +297,7 @@ async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(handle_connection)
 }
 
-/// Wait for and validate the IDENTIFY payload
+/// Send HELLO, then wait for and validate the IDENTIFY payload
 ///
 /// ## Arguments
 ///
@@ -194,11 +311,20 @@ async fn handle_handshake(
     ws_sink: &mut SplitSink<WebSocket, Message>,
     ws_stream: &mut SplitStream<WebSocket>,
 ) -> Result<User, ()> {
+    // Send HELLO with the heartbeat interval
+    ws_sink
+        .send(Message::Text(
+            serde_json::to_string(&GatewayEvent::Hello(HelloPayload::new(HEARTBEAT_INTERVAL)))
+                .expect("Failed to serialize HELLO payload"),
+        ))
+        .await
+        .ok();
+
     // IDENTIFY should be the first message sent
     let Some(Ok(maybe_ident)) = ws_stream.next().await else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
-                code: 1005,
+                code: GatewayCloseCode::PolicyViolation.into(),
                 reason: "IDENTIFY expected".into(),
             })))
             .await
@@ -206,10 +332,10 @@ async fn handle_handshake(
         return Err(());
     };
 
-    let Ok(text) = maybe_ident.to_text() else {
+    let Message::Text(text) = maybe_ident else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
-                code: 1003,
+                code: GatewayCloseCode::InvalidPayload.into(),
                 reason: "Invalid IDENTITY payload".into(),
             })))
             .await
@@ -217,10 +343,10 @@ async fn handle_handshake(
         return Err(());
     };
 
-    let Ok(GatewayMessage::Identify(payload)) = serde_json::from_str(text) else {
+    let Ok(GatewayMessage::Identify(payload)) = serde_json::from_str(&text) else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
-                code: 1003,
+                code: GatewayCloseCode::InvalidPayload.into(),
                 reason: "Invalid IDENTITY payload".into(),
             })))
             .await
@@ -231,7 +357,7 @@ async fn handle_handshake(
     let Ok(token) = Token::validate(payload.token.expose_secret()).await else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
-                code: 1008,
+                code: GatewayCloseCode::PolicyViolation.into(),
                 reason: "Invalid token".into(),
             })))
             .await
@@ -243,7 +369,7 @@ async fn handle_handshake(
     let Some(user) = User::fetch(user_id).await else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
-                code: 1008,
+                code: GatewayCloseCode::PolicyViolation.into(),
                 reason: "User not found".into(),
             })))
             .await
@@ -252,6 +378,193 @@ async fn handle_handshake(
     };
 
     Ok(user)
+}
+
+/// Handle the heartbeat mechanism for a given user
+///
+/// This function will only return if the user failed to send a valid heartbeat within the timeframe
+///
+/// ## Arguments
+///
+/// * `heartbeat_interval` - The interval at which heartbeats should be received from the user
+/// * `user_id` - The ID of the user to receive heartbeats from
+async fn handle_heartbeating(user_id: Snowflake, heartbeat_interval: Duration) {
+    let Some(handle) = app().gateway.peers.get(&user_id) else {
+        return;
+    };
+
+    loop {
+        let mut recv = handle.get_receiver();
+        let sleep_task = tokio::spawn(tokio::time::sleep(heartbeat_interval + Duration::from_secs(5)));
+        // Wait for a single heartbeat message
+        let heartbeat_task = tokio::spawn(async move {
+            loop {
+                let msg = recv.recv().await.map_err(|_| GatewayCloseCode::InvalidPayload)?;
+                if let GatewayMessage::Heartbeat = msg {
+                    return Ok(()); // Heartbeat received, we're good
+                }
+            }
+        });
+
+        // Close if either the time runs out or an invalid payload is received
+        let should_close: Result<(), GatewayCloseCode> = tokio::select! {
+            _ = sleep_task => Err(GatewayCloseCode::PolicyViolation),
+            ret = heartbeat_task => ret.unwrap_or(Err(GatewayCloseCode::ServerError)),
+        };
+
+        if let Err(close_code) = should_close {
+            let reason = match close_code {
+                GatewayCloseCode::InvalidPayload => "Invalid payload".into(),
+                GatewayCloseCode::PolicyViolation => "No HEARTBEAT received within timeframe".into(),
+                _ => "Unknown error".into(),
+            };
+
+            handle.close(close_code, reason).ok();
+            break;
+        }
+
+        handle.send(Arc::new(GatewayEvent::HeartbeatAck)).ok();
+    }
+}
+
+/// Send the READY event, all GUILD_CREATE events, and dispatch a PRESENCE_UPDATE event for this user
+///
+/// ## Arguments
+///
+/// * `user` - The user to send the READY event to
+/// * `ws_sink` - The sink for sending messages to the user
+async fn send_ready(user: User, ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>) {
+    let guilds = Guild::fetch_all_for_user(user.id())
+        .await
+        .expect("Failed to fetch guilds during socket connection handling");
+
+    // Send READY
+    ws_sink
+        .lock()
+        .await
+        .send(Message::Text(
+            serde_json::to_string(&GatewayEvent::Ready(ReadyPayload::new(user.clone(), guilds.clone()))).unwrap(),
+        ))
+        .await
+        .ok();
+
+    // Send GUILD_CREATE events for all guilds the user is in
+    for guild in guilds {
+        let payload = GuildCreatePayload::from_guild(guild)
+            .await
+            .expect("Failed to fetch guild payload data");
+        ws_sink
+            .lock()
+            .await
+            .send(Message::Text(
+                serde_json::to_string(&GatewayEvent::GuildCreate(payload)).unwrap(),
+            ))
+            .await
+            .ok();
+    }
+
+    // Send the presence update for the user if they were not invisible when last logging off
+    match user.last_presence() {
+        Presence::Offline => {}
+        _ => {
+            app()
+                .gateway
+                .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
+                    user_id: user.id(),
+                    presence: *user.last_presence(),
+                }));
+        }
+    }
+}
+
+/// Forward events received through the ConnectionHandle receiver to the user
+///
+/// ## Arguments
+///
+/// * `user_id` - The ID of the user to send events to
+/// * `receiver` - The receiver for incoming gateway responses to send
+/// * `ws_sink` - The sink for sending messages to the user
+async fn send_events(
+    user_id: Snowflake,
+    mut receiver: UnboundedReceiverStream<GatewayResponse>,
+    ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>,
+) {
+    while let Some(payload) = receiver.next().await {
+        match payload {
+            GatewayResponse::Close(code, reason) => {
+                ws_sink
+                    .lock()
+                    .await
+                    .send(Message::Close(Some(CloseFrame {
+                        code: code.into(),
+                        reason: reason.into(),
+                    })))
+                    .await
+                    .ok();
+                break;
+            }
+            GatewayResponse::Event(event) => {
+                let message = Message::Text(serde_json::to_string(&event).unwrap());
+                if let Err(e) = ws_sink.lock().await.send(message).await {
+                    tracing::warn!("Error sending event to user {}: {}", user_id, e);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// Parse & forward events received through the socket to the ConnectionHandle sender
+///
+/// ## Arguments
+///
+/// * `user_id` - The ID of the user to receive events for
+/// * `ws_stream` - The stream for receiving messages from the user
+/// * `ws_sink` - The sink for sending messages to the user
+async fn receive_events(
+    user_id: Snowflake,
+    mut ws_stream: SplitStream<WebSocket>,
+    ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>,
+    broadcaster: Arc<broadcast::Sender<GatewayMessage>>,
+) {
+    while let Some(msg) = ws_stream.next().await {
+        // Close if the user sends a close frame
+        if let Ok(Message::Close(f)) = msg {
+            tracing::debug!("Received close frame from user {}: {:?}", user_id, f);
+            break;
+        }
+        // Otherwise attempt to parse the message and send it
+        let Ok(Message::Text(text)) = msg else {
+            ws_sink
+                .lock()
+                .await
+                .send(Message::Close(Some(CloseFrame {
+                    code: GatewayCloseCode::Unsupported.into(),
+                    reason: "Unsupported message encoding".into(),
+                })))
+                .await
+                .ok();
+            break;
+        };
+
+        let Ok(req) = serde_json::from_str::<GatewayRequest>(&text) else {
+            ws_sink
+                .lock()
+                .await
+                .send(Message::Close(Some(CloseFrame {
+                    code: GatewayCloseCode::InvalidPayload.into(),
+                    reason: "Invalid message payload".into(),
+                })))
+                .await
+                .ok();
+            break;
+        };
+
+        // TODO: Pattern match on other request variants if/when they are implemented
+        let GatewayRequest::Message(msg) = req;
+
+        broadcaster.send(msg).ok();
+    }
 }
 
 /// Handle a new websocket connection
@@ -270,9 +583,12 @@ async fn handle_connection(socket: WebSocket) {
 
     tracing::debug!("Connected: {} ({})", user.username(), user.id());
 
-    let (sender, receiver) = mpsc::unbounded_channel::<GatewayEvent>();
+    let (sender, receiver) = mpsc::unbounded_channel::<GatewayResponse>();
+    let (broadcaster, _) = broadcast::channel::<GatewayMessage>(100);
+    let broadcaster = Arc::new(broadcaster);
+
     // turn receiver into a stream for easier handling
-    let mut receiver = UnboundedReceiverStream::new(receiver);
+    let receiver = UnboundedReceiverStream::new(receiver);
 
     let user_id_i64: i64 = user.id().into();
 
@@ -285,103 +601,38 @@ async fn handle_connection(socket: WebSocket) {
         .collect::<HashSet<Snowflake>>();
 
     // Add user to peermap
-    app()
-        .gateway
-        .peers
-        .insert(user.id(), ConnectionHandle::new(sender, guild_ids.clone()));
-
-    let guilds = user
-        .fetch_guilds()
-        .await
-        .expect("Failed to fetch guilds during socket connection handling");
+    app().gateway.peers.insert(
+        user.id(),
+        ConnectionHandle::new(sender, broadcaster.clone(), guild_ids.clone()),
+    );
 
     let user = user.include_presence().await;
-
-    ws_sink
-        .send(Message::Text(
-            serde_json::to_string(&GatewayEvent::Ready(ReadyPayload::new(user.clone(), guilds.clone()))).unwrap(),
-        ))
-        .await
-        .ok();
-
-    // Send GUILD_CREATE events for all guilds the user is in
-    for guild in guilds {
-        let payload = GuildCreatePayload::from_guild(guild)
-            .await
-            .expect("Failed to fetch guild payload data");
-        ws_sink
-            .send(Message::Text(
-                serde_json::to_string(&GatewayEvent::GuildCreate(payload)).unwrap(),
-            ))
-            .await
-            .ok();
-    }
-
-    // Send the presence update for the user if they are not invisible
-    match user.last_presence() {
-        Presence::Offline => {}
-        _ => {
-            app()
-                .gateway
-                .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
-                    user_id: user.id(),
-                    presence: *user.last_presence(),
-                }));
-        }
-    }
-
-    // The sink needs to be shared between two tasks
-    let ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>> = Arc::new(Mutex::new(ws_sink));
-    let ws_sink_clone = ws_sink.clone();
-
-    // Same for user_id, so we only want to copy the ID
     let user_id = user.id();
 
-    // Send dispatched events to the user
-    let send_events = tokio::spawn(async move {
-        while let Some(payload) = receiver.next().await {
-            let message = Message::Text(serde_json::to_string(&payload).unwrap());
-            if let Err(e) = ws_sink.lock().await.send(message).await {
-                tracing::warn!("Error sending event to user {}: {}", user_id, e);
-                break;
-            }
-        }
-    });
+    // We want to use the same sink in multiple tasks, so we wrap it in an Arc<Mutex>
+    let ws_sink = Arc::new(Mutex::new(ws_sink));
 
-    // Send a ping every 60 seconds to keep the connection alive
-    // TODO: Rework to HEARTBEAT system
-    let keep_alive = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            if let Err(e) = ws_sink_clone.lock().await.send(Message::Ping(vec![1, 2, 3])).await {
-                tracing::debug!("Failed to keep alive socket connection to {}: {}", user_id, e);
-                break;
-            }
-        }
-    });
+    // Send READY and guild creates to user
+    let send_ready = tokio::spawn(send_ready(user.clone(), ws_sink.clone()));
 
-    // Listen for a close socket event
-    let listen_for_close = tokio::spawn(async move {
-        while let Some(msg) = ws_stream.next().await {
-            if let Ok(Message::Close(_)) = msg {
-                break;
-            }
-        }
-    });
+    let send_events = tokio::spawn(send_events(user_id, receiver, ws_sink.clone()));
+    let receive_events = tokio::spawn(receive_events(user_id, ws_stream, ws_sink, broadcaster));
+    let handle_heartbeat = tokio::spawn(handle_heartbeating(user_id, Duration::from_secs(HEARTBEAT_INTERVAL)));
 
-    // Wait for any of the tasks to finish
     tokio::select! {
         _ = send_events => {},
-        _ = listen_for_close => {},
-        _ = keep_alive => {},
+        _ = receive_events => {},
+        _ = handle_heartbeat => {},
     }
+
+    send_ready.abort();
 
     // Disconnection logic
     app().gateway.peers.remove(&user.id());
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 
     // Refetch presence in case it changed
-    let presence = User::fetch_presence(user.id()).await.expect("Failed to fetch presence");
+    let presence = User::fetch_presence(&user).await.expect("Failed to fetch presence");
 
     // Send presence update to OFFLINE
     match presence {

@@ -17,6 +17,10 @@ use super::{
 #[non_exhaustive]
 #[serde(tag = "event", content = "data", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum GatewayEvent {
+    /// The initial message sent on connection.
+    Hello(HelloPayload),
+    /// A heartbeat acknowledgement.
+    HeartbeatAck,
     /// A chat message.
     MessageCreate(Message),
     /// A peer has joined the chat.
@@ -43,6 +47,8 @@ pub enum GatewayEvent {
 impl EventLike for GatewayEvent {
     fn extract_guild_id(&self) -> Option<Snowflake> {
         match self {
+            Self::Hello(_) => None,
+            Self::HeartbeatAck => None,
             Self::MessageCreate(message) => message.extract_guild_id(),
             Self::MemberCreate(member) => member.extract_guild_id(),
             Self::MemberRemove(payload) => payload.extract_guild_id(),
@@ -58,6 +64,8 @@ impl EventLike for GatewayEvent {
 
     fn extract_user_id(&self) -> Option<Snowflake> {
         match self {
+            Self::Hello(_) => None,
+            Self::HeartbeatAck => None,
             Self::MessageCreate(message) => message.extract_user_id(),
             Self::MemberCreate(member) => member.extract_user_id(),
             Self::MemberRemove(payload) => payload.extract_user_id(),
@@ -123,6 +131,17 @@ impl EventLike for User {
     }
     fn extract_user_id(&self) -> Option<Snowflake> {
         Some(self.id())
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HelloPayload {
+    heartbeat_interval: u64,
+}
+
+impl HelloPayload {
+    pub fn new(heartbeat_interval: u64) -> Self {
+        Self { heartbeat_interval }
     }
 }
 
@@ -233,6 +252,8 @@ impl EventLike for ReadyPayload {
 pub enum GatewayMessage {
     /// Identify with the server. This should be the first event sent by the client.
     Identify(IdentifyPayload),
+    /// A heartbeat message to indicate that the client is still active.
+    Heartbeat,
 }
 
 #[derive(Deserialize, Debug, Clone)]
