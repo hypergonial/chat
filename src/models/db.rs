@@ -1,6 +1,6 @@
 use sqlx::{migrate, postgres::PgPool};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Database {
     pool: Option<PgPool>,
 }

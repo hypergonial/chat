@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
 use std::time::SystemTime;
 
-use super::appstate::app;
+use super::appstate::SharedState;
 
 // Custom epoch of 2023-01-01T00:00:00Z in miliseconds
 pub const EPOCH: i64 = 1672531200000;
@@ -27,8 +27,8 @@ impl Snowflake {
     }
 
     /// Generate a new snowflake using the current time.
-    pub fn gen_new() -> Self {
-        let mut gen = get_generator(app().config.machine_id(), app().config.process_id());
+    pub fn gen_new(app: SharedState) -> Self {
+        let mut gen = get_generator(app.config.machine_id(), app.config.process_id());
         gen.generate().into()
     }
 
@@ -50,12 +50,6 @@ impl Snowflake {
     /// Returns the process ID that generated this snowflake.
     pub fn process_id(&self) -> i64 {
         (self.value & 0x1F000) >> 12
-    }
-}
-
-impl Default for Snowflake {
-    fn default() -> Self {
-        Self::gen_new()
     }
 }
 

@@ -3,6 +3,7 @@ use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    appstate::SharedState,
     channel::{Channel, ChannelLike},
     guild::Guild,
     member::{Member, UserLike},
@@ -206,10 +207,17 @@ impl GuildCreatePayload {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn from_guild(guild: Guild) -> Result<Self, sqlx::Error> {
+    pub async fn from_guild(app: SharedState, guild: Guild) -> Result<Self, sqlx::Error> {
         // Presences need to be included in the payload
-        let members = future::join_all(guild.fetch_members().await?.into_iter().map(|m| m.include_presence())).await;
-        let channels = guild.fetch_channels().await?;
+        let members = future::join_all(
+            guild
+                .fetch_members(app.clone())
+                .await?
+                .into_iter()
+                .map(|m| m.include_presence(app.clone())),
+        )
+        .await;
+        let channels = guild.fetch_channels(app).await?;
         Ok(Self::new(guild, members, channels))
     }
 }

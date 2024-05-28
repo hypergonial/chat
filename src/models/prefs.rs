@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::app, snowflake::Snowflake};
+use super::{appstate::SharedState, snowflake::Snowflake};
 
 bitflags! {
     /// Boolean flags for user preferences
@@ -138,7 +138,7 @@ impl Prefs {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn fetch(user: impl Into<Snowflake>) -> Result<Self, sqlx::Error> {
+    pub async fn fetch(app: SharedState, user: impl Into<Snowflake>) -> Result<Self, sqlx::Error> {
         let user_id: Snowflake = user.into();
         let user_id_i64: i64 = user_id.into();
 
@@ -148,7 +148,7 @@ impl Prefs {
             WHERE user_id = $1",
             user_id_i64
         )
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await?;
 
         if result.is_none() {
@@ -176,7 +176,7 @@ impl Prefs {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn commit(&self) -> Result<(), sqlx::Error> {
+    pub async fn commit(&self, app: SharedState) -> Result<(), sqlx::Error> {
         let user_id: i64 = self.user_id.into();
         let flags: i64 = self.flags.bits().try_into().expect("Cannot fit flag into i64");
 
@@ -192,14 +192,14 @@ impl Prefs {
             self.text_size as i32,
             self.locale,
         )
-        .execute(app().db.pool())
+        .execute(app.db.pool())
         .await?;
 
         Ok(())
     }
 }
 
-impl Default for Prefs {
+/* impl Default for Prefs {
     fn default() -> Self {
         Prefs {
             user_id: Snowflake::default(),
@@ -211,3 +211,4 @@ impl Default for Prefs {
         }
     }
 }
+ */

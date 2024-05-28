@@ -1,12 +1,12 @@
 use axum::{
-    extract::Path,
+    extract::{Path, State},
     http::StatusCode,
     routing::{delete, get, post},
     Json, Router,
 };
 
 use crate::models::{
-    appstate::app,
+    appstate::SharedState,
     auth::Token,
     channel::{Channel, ChannelLike},
     errors::RESTError,
@@ -17,12 +17,9 @@ use crate::models::{
     snowflake::Snowflake,
     user::User,
 };
-use crate::{
-    dispatch,
-    models::{channel::TextChannel, gateway_event::GuildCreatePayload},
-};
+use crate::models::{channel::TextChannel, gateway_event::GuildCreatePayload};
 
-pub fn get_router() -> Router {
+pub fn get_router() -> Router<SharedState> {
     Router::new()
         .route("/guilds", post(create_guild))
         .route("/guilds/:guild_id", get(fetch_guild))
@@ -52,26 +49,31 @@ pub fn get_router() -> Router {
 /// ## Endpoint
 ///
 /// POST `/guilds`
-async fn create_guild(token: Token, Json(payload): Json<CreateGuild>) -> Result<(StatusCode, Json<Guild>), RESTError> {
-    let guild = Guild::from_payload(payload, token.data().user_id()).await;
-    guild.commit().await?;
-    guild.create_member(token.data().user_id()).await?;
+async fn create_guild(
+    token: Token,
+    State(app): State<SharedState>,
+    Json(payload): Json<CreateGuild>,
+) -> Result<(StatusCode, Json<Guild>), RESTError> {
+    let guild = Guild::from_payload(app.clone(), payload, token.data().user_id()).await;
+    guild.commit(app.clone()).await?;
+    guild.create_member(app.clone(), token.data().user_id()).await?;
 
-    let general = TextChannel::new(Snowflake::gen_new(), &guild, "general".to_string());
-    general.commit().await?;
+    let general = TextChannel::new(Snowflake::gen_new(app.clone()), &guild, "general".to_string());
+    general.commit(app.clone()).await?;
 
-    let member = Member::fetch(token.data().user_id(), &guild)
-        .await
-        .ok_or(RESTError::InternalServerError(
-            "A member should have been created".into(),
-        ))?;
+    let member =
+        Member::fetch(app.clone(), token.data().user_id(), &guild)
+            .await
+            .ok_or(RESTError::InternalServerError(
+                "A member should have been created".into(),
+            ))?;
 
-    app().gateway.add_member(token.data().user_id(), &guild);
+    app.gateway.add_member(token.data().user_id(), &guild);
 
-    dispatch!(GatewayEvent::GuildCreate(GuildCreatePayload::new(
+    app.gateway.dispatch(GatewayEvent::GuildCreate(GuildCreatePayload::new(
         guild.clone(),
         vec![member.clone()],
-        vec![general.clone().into()]
+        vec![general.clone().into()],
     )));
 
     Ok((StatusCode::CREATED, Json(guild)))
@@ -98,14 +100,15 @@ async fn create_guild(token: Token, Json(payload): Json<CreateGuild>) -> Result<
 /// POST `/guilds/{guild_id}/channels`
 async fn create_channel(
     Path(guild_id): Path<Snowflake>,
+    State(app): State<SharedState>,
     token: Token,
     Json(payload): Json<CreateChannel>,
 ) -> Result<(StatusCode, Json<Channel>), RESTError> {
-    let user = User::fetch(token.data().user_id())
+    let user = User::fetch(app.clone(), token.data().user_id())
         .await
         .ok_or(RESTError::NotFound("User not found".into()))?;
 
-    let guild = Guild::fetch(guild_id)
+    let guild = Guild::fetch(app.clone(), guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild not found".into()))?;
 
@@ -113,11 +116,11 @@ async fn create_channel(
         return Err(RESTError::Forbidden("You are not the owner of this guild.".into()));
     }
 
-    let channel = Channel::from_payload(payload, guild_id).await;
+    let channel = Channel::from_payload(app.clone(), payload, guild_id).await;
 
-    channel.commit().await?;
+    channel.commit(app.clone()).await?;
 
-    dispatch!(GatewayEvent::ChannelCreate(channel.clone()));
+    app.gateway.dispatch(GatewayEvent::ChannelCreate(channel.clone()));
 
     Ok((StatusCode::CREATED, Json(channel)))
 }
@@ -136,12 +139,16 @@ async fn create_channel(
 /// ## Endpoint
 ///
 /// GET `/guilds/{guild_id}`
-async fn fetch_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<Json<Guild>, RESTError> {
-    Member::fetch(token.data().user_id(), guild_id)
+async fn fetch_guild(
+    Path(guild_id): Path<Snowflake>,
+    State(app): State<SharedState>,
+    token: Token,
+) -> Result<Json<Guild>, RESTError> {
+    Member::fetch(app.clone(), token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
-    let guild = Guild::fetch(guild_id).await.ok_or(RESTError::InternalServerError(
+    let guild = Guild::fetch(app, guild_id).await.ok_or(RESTError::InternalServerError(
         "Failed to fetch guild from database".into(),
     ))?;
 
@@ -158,8 +165,12 @@ async fn fetch_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<Js
 /// ## Endpoint
 ///
 /// DELETE `/guilds/{guild_id}`
-async fn delete_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<StatusCode, RESTError> {
-    let mut guild = Guild::fetch(guild_id)
+async fn delete_guild(
+    Path(guild_id): Path<Snowflake>,
+    State(app): State<SharedState>,
+    token: Token,
+) -> Result<StatusCode, RESTError> {
+    let mut guild = Guild::fetch(app.clone(), guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
 
@@ -167,9 +178,9 @@ async fn delete_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<S
         return Err(RESTError::Forbidden("Not permitted to delete guild.".into()));
     }
 
-    guild.delete().await?;
+    guild.delete(app.clone()).await?;
 
-    dispatch!(GatewayEvent::GuildRemove(guild));
+    app.gateway.dispatch(GatewayEvent::GuildRemove(guild));
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -191,14 +202,15 @@ async fn delete_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<S
 async fn fetch_member(
     Path(guild_id): Path<Snowflake>,
     Path(member_id): Path<Snowflake>,
+    State(app): State<SharedState>,
     token: Token,
 ) -> Result<Json<Member>, RESTError> {
     // Check if the user is in the channel's guild
-    Member::fetch(token.data().user_id(), guild_id)
+    Member::fetch(app.clone(), token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
-    let member = Member::fetch(member_id, guild_id)
+    let member = Member::fetch(app, member_id, guild_id)
         .await
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
@@ -219,8 +231,12 @@ async fn fetch_member(
 /// ## Endpoint
 ///
 /// GET `/guilds/{guild_id}/members/@self`
-async fn fetch_member_self(Path(guild_id): Path<Snowflake>, token: Token) -> Result<Json<Member>, RESTError> {
-    let member = Member::fetch(token.data().user_id(), guild_id)
+async fn fetch_member_self(
+    Path(guild_id): Path<Snowflake>,
+    State(app): State<SharedState>,
+    token: Token,
+) -> Result<Json<Member>, RESTError> {
+    let member = Member::fetch(app, token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
@@ -246,29 +262,33 @@ async fn fetch_member_self(Path(guild_id): Path<Snowflake>, token: Token) -> Res
 /// ## Endpoint
 ///
 /// POST `/guilds/{guild_id}/members`
-async fn create_member(Path(guild_id): Path<Snowflake>, token: Token) -> Result<(StatusCode, Json<Member>), RESTError> {
-    let guild = Guild::fetch(guild_id)
+async fn create_member(
+    Path(guild_id): Path<Snowflake>,
+    State(app): State<SharedState>,
+    token: Token,
+) -> Result<(StatusCode, Json<Member>), RESTError> {
+    let guild = Guild::fetch(app.clone(), guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
-    guild.create_member(token.data().user_id()).await?;
+    guild.create_member(app.clone(), token.data().user_id()).await?;
 
-    let member = Member::fetch(token.data().user_id(), guild_id)
+    let member = Member::fetch(app.clone(), token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::InternalServerError(
             "A member should have been created.".into(),
         ))?;
 
     // Create payload seperately as it needs read access to gateway
-    let gc_payload = GatewayEvent::GuildCreate(GuildCreatePayload::from_guild(guild).await?);
+    let gc_payload = GatewayEvent::GuildCreate(GuildCreatePayload::from_guild(app.clone(), guild).await?);
 
     // Send GUILD_CREATE to the user who joined
-    app().gateway.send_to(&member, gc_payload);
+    app.gateway.send_to(&member, gc_payload);
 
     // Add the member to the gateway's cache
-    app().gateway.add_member(&member, guild_id);
+    app.gateway.add_member(&member, guild_id);
 
     // Dispatch the member create event to all guild members
-    dispatch!(GatewayEvent::MemberCreate(member.clone()));
+    app.gateway.dispatch(GatewayEvent::MemberCreate(member.clone()));
 
     Ok((StatusCode::CREATED, Json(member)))
 }
@@ -292,11 +312,15 @@ async fn create_member(Path(guild_id): Path<Snowflake>, token: Token) -> Result<
 /// ## Endpoint
 ///
 /// DELETE `/guilds/{guild_id}/members/@self`
-async fn leave_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<StatusCode, RESTError> {
-    let guild = Guild::fetch(guild_id)
+async fn leave_guild(
+    Path(guild_id): Path<Snowflake>,
+    State(app): State<SharedState>,
+    token: Token,
+) -> Result<StatusCode, RESTError> {
+    let guild = Guild::fetch(app.clone(), guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
-    let member = Member::fetch(token.data().user_id(), guild_id)
+    let member = Member::fetch(app.clone(), token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
@@ -304,19 +328,18 @@ async fn leave_guild(Path(guild_id): Path<Snowflake>, token: Token) -> Result<St
         return Err(RESTError::Forbidden("Owner cannot leave owned guild.".into()));
     }
 
-    guild.remove_member(token.data().user_id()).await?;
+    guild.remove_member(app.clone(), token.data().user_id()).await?;
 
     // Remove the member from the gateway's cache
-    app().gateway.remove_member(token.data().user_id(), guild_id);
+    app.gateway.remove_member(token.data().user_id(), guild_id);
     // Dispatch the member remove event
-    dispatch!(GatewayEvent::MemberRemove(DeletePayload::new(
+    app.gateway.dispatch(GatewayEvent::MemberRemove(DeletePayload::new(
         member.user().id(),
-        Some(member.guild_id())
+        Some(member.guild_id()),
     )));
 
     // Send GUILD_REMOVE to the user who left
-    app()
-        .gateway
+    app.gateway
         .send_to(member.user().id(), GatewayEvent::GuildRemove(guild));
 
     Ok(StatusCode::NO_CONTENT)

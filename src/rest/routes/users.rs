@@ -1,4 +1,5 @@
 use axum::{
+    extract::State,
     http::StatusCode,
     routing::{get, patch, post},
     Json, Router,
@@ -6,8 +7,9 @@ use axum::{
 use secrecy::ExposeSecret;
 use serde_json::json;
 
+use crate::models::errors::RESTError;
 use crate::models::{
-    appstate::app,
+    appstate::SharedState,
     auth::{Credentials, StoredCredentials, Token},
     gateway_event::{GatewayEvent, PresenceUpdatePayload},
     guild::Guild,
@@ -15,10 +17,9 @@ use crate::models::{
     user::{Presence, User},
 };
 use crate::rest::auth::{generate_hash, validate_credentials};
-use crate::{dispatch, models::errors::RESTError};
 use serde_json::Value;
 
-pub fn get_router() -> Router {
+pub fn get_router() -> Router<SharedState> {
     Router::new()
         .route("/users", post(create_user))
         .route("/users/auth", post(auth_user))
@@ -41,12 +42,12 @@ pub fn get_router() -> Router {
 /// ## Endpoint
 ///
 /// POST `/users`
-async fn create_user(Json(payload): Json<CreateUser>) -> Result<Json<User>, RESTError> {
+async fn create_user(State(app): State<SharedState>, Json(payload): Json<CreateUser>) -> Result<Json<User>, RESTError> {
     let password = payload.password.clone();
 
-    let user = User::from_payload(payload).await?;
+    let user = User::from_payload(app.clone(), payload).await?;
 
-    if User::fetch_by_username(user.username()).await.is_some() {
+    if User::fetch_by_username(app.clone(), user.username()).await.is_some() {
         return Err(RESTError::BadRequest(format!(
             "User with username {} already exists",
             user.username()
@@ -56,8 +57,8 @@ async fn create_user(Json(payload): Json<CreateUser>) -> Result<Json<User>, REST
     let credentials = StoredCredentials::new(user.id(), generate_hash(&password)?);
 
     // User needs to be committed before credentials to avoid foreign key constraint
-    user.commit().await?;
-    credentials.commit().await?;
+    user.commit(app.clone()).await?;
+    credentials.commit(app).await?;
 
     Ok(Json(user))
 }
@@ -75,9 +76,12 @@ async fn create_user(Json(payload): Json<CreateUser>) -> Result<Json<User>, REST
 /// ## Endpoint
 ///
 /// POST `/users/auth`
-async fn auth_user(Json(credentials): Json<Credentials>) -> Result<Json<Value>, RESTError> {
-    let user_id = validate_credentials(credentials).await?;
-    let token = Token::new_for(user_id)?;
+async fn auth_user(
+    State(app): State<SharedState>,
+    Json(credentials): Json<Credentials>,
+) -> Result<Json<Value>, RESTError> {
+    let user_id = validate_credentials(app.clone(), credentials).await?;
+    let token = Token::new_for(app.config.app_secret(), user_id)?;
 
     Ok(Json(json!({
         "user_id": user_id,
@@ -98,8 +102,8 @@ async fn auth_user(Json(credentials): Json<Credentials>) -> Result<Json<Value>, 
 /// ## Endpoint
 ///
 /// GET `/users/@self`
-async fn fetch_self(token: Token) -> Result<Json<User>, RESTError> {
-    let user = User::fetch(token.data().user_id())
+async fn fetch_self(State(app): State<SharedState>, token: Token) -> Result<Json<User>, RESTError> {
+    let user = User::fetch(app, token.data().user_id())
         .await
         .ok_or(RESTError::NotFound("User not found".into()))?;
 
@@ -119,8 +123,8 @@ async fn fetch_self(token: Token) -> Result<Json<User>, RESTError> {
 /// ## Endpoint
 ///
 /// GET `/users/@self/guilds`
-async fn fetch_self_guilds(token: Token) -> Result<Json<Vec<Guild>>, RESTError> {
-    let guilds = Guild::fetch_all_for_user(token.data().user_id()).await?;
+async fn fetch_self_guilds(State(app): State<SharedState>, token: Token) -> Result<Json<Vec<Guild>>, RESTError> {
+    let guilds = Guild::fetch_all_for_user(app, token.data().user_id()).await?;
 
     Ok(Json(guilds))
 }
@@ -143,7 +147,11 @@ async fn fetch_self_guilds(token: Token) -> Result<Json<Vec<Guild>>, RESTError> 
 /// ## Endpoint
 ///
 /// PATCH `/users/@self/presence`
-pub async fn update_presence(token: Token, Json(new_presence): Json<Presence>) -> Result<Json<Presence>, RESTError> {
+pub async fn update_presence(
+    State(app): State<SharedState>,
+    token: Token,
+    Json(new_presence): Json<Presence>,
+) -> Result<Json<Presence>, RESTError> {
     let user_id_i64: i64 = token.data().user_id().into();
 
     sqlx::query!(
@@ -151,14 +159,15 @@ pub async fn update_presence(token: Token, Json(new_presence): Json<Presence>) -
         new_presence as i16,
         user_id_i64
     )
-    .execute(app().db.pool())
+    .execute(app.db.pool())
     .await?;
 
-    if app().gateway.is_connected(token.data().user_id()) {
-        dispatch!(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
-            presence: new_presence,
-            user_id: token.data().user_id(),
-        }));
+    if app.gateway.is_connected(token.data().user_id()) {
+        app.gateway
+            .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
+                presence: new_presence,
+                user_id: token.data().user_id(),
+            }));
     }
 
     Ok(Json(new_presence))
@@ -173,9 +182,9 @@ pub async fn update_presence(token: Token, Json(new_presence): Json<Presence>) -
 /// ## Endpoint
 ///
 /// GET `/users/{username}`
-pub async fn query_username(username: String) -> Result<StatusCode, RESTError> {
+pub async fn query_username(State(app): State<SharedState>, username: String) -> Result<StatusCode, RESTError> {
     sqlx::query!("SELECT id FROM users WHERE username = $1", username)
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await?
         .ok_or(RESTError::NotFound("User not found".into()))?;
 

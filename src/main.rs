@@ -1,13 +1,14 @@
 #![allow(async_fn_in_trait)]
 
 pub mod gateway;
-pub mod macros;
 pub mod models;
 pub mod rest;
 
+use std::sync::Arc;
+
 use axum::Router;
 use color_eyre::eyre::Result;
-use models::appstate::app;
+use models::appstate::SharedState;
 use tokio::signal::ctrl_c;
 use tower_http::trace::TraceLayer;
 
@@ -17,12 +18,10 @@ use tracing::level_filters::LevelFilter;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
 
-use crate::models::appstate::{ApplicationState, APP};
+use crate::models::appstate::ApplicationState;
 
 #[cfg(unix)]
-async fn handle_signals() {
-    use std::process::exit;
-
+async fn handle_signals(state: SharedState) {
     let mut sigterm = signal(SignalKind::terminate()).expect("Failed to create SIGTERM signal listener");
 
     tokio::select! {
@@ -33,13 +32,13 @@ async fn handle_signals() {
             tracing::info!("Received keyboard interrupt, terminating...");
         }
     };
-    APP.get().unwrap_or_else(|| exit(1)).close().await;
+    state.close().await;
 }
 
 #[cfg(not(unix))]
-async fn handle_signals() {
+async fn handle_signals(state: SharedState) {
     ctrl_c().await.expect("Failed to create CTRL+C signal listener");
-    app().close().await;
+    state.close().await;
 }
 
 #[tokio::main]
@@ -70,22 +69,22 @@ async fn main() -> Result<()> {
     // Initialize the application state
     let mut state = ApplicationState::new();
     state.init().await?;
-    APP.set(state)
-        .unwrap_or_else(|_| panic!("Failed to set application state"));
+    let state = Arc::new(state);
 
     let router = Router::new()
         .nest("/gateway/v1", gateway_routes)
         .nest("/api/v1", rest_routes)
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http())
+        .with_state(state.clone());
 
-    let listener = tokio::net::TcpListener::bind(app().config.listen_addr())
+    let listener = tokio::net::TcpListener::bind(state.config.listen_addr())
         .await
         .expect("Failed to bind to address");
 
-    tracing::info!("Listening on {}", app().config.listen_addr());
+    tracing::info!("Listening on {}", state.config.listen_addr());
 
     axum::serve(listener, router)
-        .with_graceful_shutdown(handle_signals())
+        .with_graceful_shutdown(handle_signals(state))
         .await
         .expect("Failed creating server");
 

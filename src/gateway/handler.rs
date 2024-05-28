@@ -1,7 +1,10 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use axum::{
-    extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
+    extract::{
+        ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
+        State,
+    },
     response::IntoResponse,
     routing::get,
     Router,
@@ -24,7 +27,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 const HEARTBEAT_INTERVAL: u64 = 45000;
 
 use crate::models::{
-    appstate::app,
+    appstate::SharedState,
     auth::Token,
     gateway_event::{
         EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, HelloPayload, PresenceUpdatePayload, ReadyPayload,
@@ -131,6 +134,7 @@ impl Serialize for GatewayCloseCode {
 /// * `sender` - The sender for sending messages to the client
 /// * `receiver` - The receiver for receiving messages from the client
 /// * `guild_ids` - The guilds the user is a member of, this is used to filter events
+#[derive(Debug, Clone)]
 struct ConnectionHandle {
     sender: mpsc::UnboundedSender<GatewayResponse>,
     broadcaster: Arc<broadcast::Sender<GatewayMessage>>,
@@ -187,6 +191,7 @@ impl ConnectionHandle {
 }
 
 /// A singleton representing the gateway state
+#[derive(Debug, Clone)]
 pub struct Gateway {
     /// A map of currently connected users
     /// The key is the user's ID
@@ -290,12 +295,12 @@ impl Default for Gateway {
 /// ## Returns
 ///
 /// A filter that can be used to handle the gateway
-pub fn get_router() -> Router {
+pub fn get_router() -> Router<SharedState> {
     Router::new().route("/", get(websocket_handler))
 }
 
-async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_connection)
+async fn websocket_handler(State(app): State<SharedState>, ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(|socket| async move { handle_connection(app, socket).await })
 }
 
 /// Send HELLO, then wait for and validate the IDENTIFY payload
@@ -309,6 +314,7 @@ async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
 ///
 /// The resolved user if the handshake was successful
 async fn handle_handshake(
+    app: SharedState,
     ws_sink: &mut SplitSink<WebSocket, Message>,
     ws_stream: &mut SplitStream<WebSocket>,
 ) -> Result<User, ()> {
@@ -355,7 +361,7 @@ async fn handle_handshake(
         return Err(());
     };
 
-    let Ok(token) = Token::validate(payload.token.expose_secret()).await else {
+    let Ok(token) = Token::validate(app.clone(), payload.token.expose_secret()).await else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
                 code: GatewayCloseCode::PolicyViolation.into(),
@@ -367,7 +373,7 @@ async fn handle_handshake(
     };
 
     let user_id = token.data().user_id();
-    let Some(user) = User::fetch(user_id).await else {
+    let Some(user) = User::fetch(app, user_id).await else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
                 code: GatewayCloseCode::PolicyViolation.into(),
@@ -387,10 +393,11 @@ async fn handle_handshake(
 ///
 /// ## Arguments
 ///
+/// * `app` - The shared application state
 /// * `heartbeat_interval` - The interval at which heartbeats should be received from the user
 /// * `user_id` - The ID of the user to receive heartbeats from
-async fn handle_heartbeating(user_id: Snowflake, heartbeat_interval: Duration) {
-    let Some(handle) = app().gateway.peers.get(&user_id) else {
+async fn handle_heartbeating(app: SharedState, user_id: Snowflake, heartbeat_interval: Duration) {
+    let Some(handle) = app.gateway.peers.get(&user_id) else {
         return;
     };
 
@@ -432,10 +439,11 @@ async fn handle_heartbeating(user_id: Snowflake, heartbeat_interval: Duration) {
 ///
 /// ## Arguments
 ///
+/// * `app` - The shared application state
 /// * `user` - The user to send the READY event to
 /// * `ws_sink` - The sink for sending messages to the user
-async fn send_ready(user: User, ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>) {
-    let guilds = Guild::fetch_all_for_user(user.id())
+async fn send_ready(app: SharedState, user: User, ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>) {
+    let guilds = Guild::fetch_all_for_user(app.clone(), user.id())
         .await
         .expect("Failed to fetch guilds during socket connection handling");
 
@@ -451,7 +459,7 @@ async fn send_ready(user: User, ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>
 
     // Send GUILD_CREATE events for all guilds the user is in
     for guild in guilds {
-        let payload = GuildCreatePayload::from_guild(guild)
+        let payload = GuildCreatePayload::from_guild(app.clone(), guild)
             .await
             .expect("Failed to fetch guild payload data");
         ws_sink
@@ -468,8 +476,7 @@ async fn send_ready(user: User, ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>
     match user.last_presence() {
         Presence::Offline => {}
         _ => {
-            app()
-                .gateway
+            app.gateway
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
                     user_id: user.id(),
                     presence: *user.last_presence(),
@@ -572,12 +579,12 @@ async fn receive_events(
 ///
 /// ## Arguments
 ///
-/// * `gateway` - The gateway state
+/// * `app` - The shared application state
 /// * `socket` - The websocket connection to handle
-async fn handle_connection(socket: WebSocket) {
+async fn handle_connection(app: SharedState, socket: WebSocket) {
     let (mut ws_sink, mut ws_stream) = socket.split();
     // Handle handshake and get user
-    let Ok(user) = handle_handshake(&mut ws_sink, &mut ws_stream).await else {
+    let Ok(user) = handle_handshake(app.clone(), &mut ws_sink, &mut ws_stream).await else {
         ws_sink.reunite(ws_stream).unwrap().close().await.ok();
         return;
     };
@@ -594,7 +601,7 @@ async fn handle_connection(socket: WebSocket) {
     let user_id_i64: i64 = user.id().into();
 
     let guild_ids = sqlx::query!("SELECT guild_id FROM members WHERE user_id = $1", user_id_i64)
-        .fetch_all(app().db.pool())
+        .fetch_all(app.db.pool())
         .await
         .expect("Failed to fetch guilds during socket connection handling")
         .into_iter()
@@ -602,23 +609,27 @@ async fn handle_connection(socket: WebSocket) {
         .collect::<HashSet<Snowflake>>();
 
     // Add user to peermap
-    app().gateway.peers.insert(
+    app.gateway.peers.insert(
         user.id(),
         ConnectionHandle::new(sender, broadcaster.clone(), guild_ids.clone()),
     );
 
-    let user = user.include_presence().await;
+    let user = user.include_presence(app.clone()).await;
     let user_id = user.id();
 
     // We want to use the same sink in multiple tasks, so we wrap it in an Arc<Mutex>
     let ws_sink = Arc::new(Mutex::new(ws_sink));
 
     // Send READY and guild creates to user
-    let send_ready = tokio::spawn(send_ready(user.clone(), ws_sink.clone()));
+    let send_ready = tokio::spawn(send_ready(app.clone(), user.clone(), ws_sink.clone()));
 
     let send_events = tokio::spawn(send_events(user_id, receiver, ws_sink.clone()));
     let receive_events = tokio::spawn(receive_events(user_id, ws_stream, ws_sink, broadcaster));
-    let handle_heartbeat = tokio::spawn(handle_heartbeating(user_id, Duration::from_millis(HEARTBEAT_INTERVAL)));
+    let handle_heartbeat = tokio::spawn(handle_heartbeating(
+        app.clone(),
+        user_id,
+        Duration::from_millis(HEARTBEAT_INTERVAL),
+    ));
 
     tokio::select! {
         _ = send_events => {},
@@ -629,18 +640,19 @@ async fn handle_connection(socket: WebSocket) {
     send_ready.abort();
 
     // Disconnection logic
-    app().gateway.peers.remove(&user.id());
+    app.gateway.peers.remove(&user.id());
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 
     // Refetch presence in case it changed
-    let presence = User::fetch_presence(&user).await.expect("Failed to fetch presence");
+    let presence = User::fetch_presence(app.clone(), &user)
+        .await
+        .expect("Failed to fetch presence");
 
     // Send presence update to OFFLINE
     match presence {
         Presence::Offline => {}
         _ => {
-            app()
-                .gateway
+            app.gateway
                 .dispatch(GatewayEvent::PresenceUpdate(PresenceUpdatePayload {
                     user_id: user.id(),
                     presence: Presence::Offline,

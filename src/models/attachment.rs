@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
 use super::{
-    appstate::app,
+    appstate::SharedState,
     errors::{AppError, BuilderError, RESTError},
     message::ExtendedMessageRecord,
 };
@@ -160,15 +160,11 @@ impl FullAttachment {
     }
 
     /// Commit the attachment to the database. Uploads the contents to S3 implicitly.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    pub async fn commit(&self) -> Result<(), AppError> {
+    pub async fn commit(&self, app: SharedState) -> Result<(), AppError> {
         let message_id: i64 = self.message_id.into();
         let channel_id: i64 = self.channel_id.into();
 
-        self.upload().await?;
+        self.upload(app.clone()).await?;
 
         sqlx::query!(
             "INSERT INTO attachments (id, filename, message_id, channel_id, content_type)
@@ -181,7 +177,7 @@ impl FullAttachment {
             channel_id,
             self.content_type,
         )
-        .execute(app().db.pool())
+        .execute(app.db.pool())
         .await?;
 
         Ok(())
@@ -192,10 +188,10 @@ impl FullAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn upload(&self) -> Result<(), AppError> {
-        let bucket = app().buckets.attachments();
+    pub async fn upload(&self, app: SharedState) -> Result<(), AppError> {
+        let bucket = app.buckets.attachments();
         bucket
-            .put_object(&app().s3, self.s3_key(), self.content.clone(), self.mime())
+            .put_object(&app.s3, self.s3_key(), self.content.clone(), self.mime())
             .await
     }
 
@@ -204,9 +200,9 @@ impl FullAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn download(&mut self) -> Result<(), AppError> {
-        let bucket = app().buckets.attachments();
-        self.content = bucket.get_object(&app().s3, self.s3_key()).await?;
+    pub async fn download(&mut self, app: SharedState) -> Result<(), AppError> {
+        let bucket = app.buckets.attachments();
+        self.content = bucket.get_object(&app.s3, self.s3_key()).await?;
         Ok(())
     }
 
@@ -216,9 +212,9 @@ impl FullAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn delete(&self) -> Result<(), AppError> {
-        let bucket = app().buckets.attachments();
-        bucket.delete_object(&app().s3, self.s3_key()).await
+    pub async fn delete(&self, app: SharedState) -> Result<(), AppError> {
+        let bucket = app.buckets.attachments();
+        bucket.delete_object(&app.s3, self.s3_key()).await
     }
 }
 
@@ -293,7 +289,7 @@ impl PartialAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn download(self) -> Result<FullAttachment, AppError> {
+    pub async fn download(self, app: SharedState) -> Result<FullAttachment, AppError> {
         let mut attachment = FullAttachment::new(
             self.id,
             self.filename,
@@ -302,7 +298,7 @@ impl PartialAttachment {
             self.channel_id,
             self.message_id,
         );
-        attachment.download().await?;
+        attachment.download(app).await?;
         Ok(attachment)
     }
 
@@ -313,14 +309,10 @@ impl PartialAttachment {
     /// * `id` - The ID of the attachment to fetch
     /// * `message_id` - The ID of the message this attachment belongs to
     ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the SQL query fails.
-    pub async fn fetch(id: u8, message: impl Into<Snowflake>) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn fetch(app: SharedState, id: u8, message: impl Into<Snowflake>) -> Result<Option<Self>, sqlx::Error> {
         let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
@@ -331,7 +323,7 @@ impl PartialAttachment {
             id as i32,
             message_id
         )
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await?
         .map(|record| record.into()))
     }
@@ -342,14 +334,10 @@ impl PartialAttachment {
     ///
     /// * `message_id` - The ID of the message to fetch attachments for
     ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the SQL query fails.
-    pub async fn fetch_all(message: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn fetch_all(app: SharedState, message: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
         let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
@@ -359,7 +347,7 @@ impl PartialAttachment {
             WHERE message_id = $1",
             message_id
         )
-        .fetch_all(app().db.pool())
+        .fetch_all(app.db.pool())
         .await?
         .into_iter()
         .map(|record| record.into())

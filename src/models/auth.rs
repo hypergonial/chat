@@ -11,7 +11,7 @@ use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    appstate::app,
+    appstate::SharedState,
     errors::{AuthError, RESTError},
     snowflake::Snowflake,
 };
@@ -79,13 +79,13 @@ impl Token {
     /// # Errors
     ///
     /// [`jsonwebtoken::errors::Error`] - If the token could not be generated.
-    fn new(data: &TokenData) -> Result<Self, jsonwebtoken::errors::Error> {
+    fn new(secret: &Secret<String>, data: &TokenData) -> Result<Self, jsonwebtoken::errors::Error> {
         Ok(Token {
             data: data.clone(),
             token: Secret::new(encode(
                 &Header::default(),
                 &data,
-                &EncodingKey::from_secret(app().config.app_secret().expose_secret().as_ref()),
+                &EncodingKey::from_secret(secret.expose_secret().as_ref()),
             )?),
         })
     }
@@ -100,8 +100,8 @@ impl Token {
     /// # Errors
     ///
     /// [`jsonwebtoken::errors::Error`] - If the token could not be generated.
-    pub fn new_for(user_id: Snowflake) -> Result<Self, jsonwebtoken::errors::Error> {
-        Self::new(&TokenData::new(user_id, Utc::now().timestamp() as usize))
+    pub fn new_for(secret: &Secret<String>, user_id: Snowflake) -> Result<Self, jsonwebtoken::errors::Error> {
+        Self::new(secret, &TokenData::new(user_id, Utc::now().timestamp() as usize))
     }
 
     /// Decode an existing token and return it. This will not validate the token.
@@ -114,10 +114,10 @@ impl Token {
     /// # Errors
     ///
     /// [`jsonwebtoken::errors::Error`] - If the token could not be decoded.
-    fn decode(token: &str) -> Result<Self, jsonwebtoken::errors::Error> {
+    fn decode(secret: &Secret<String>, token: &str) -> Result<Self, jsonwebtoken::errors::Error> {
         let decoded = decode::<TokenData>(
             token,
-            &DecodingKey::from_secret(app().config.app_secret().expose_secret().as_ref()),
+            &DecodingKey::from_secret(secret.expose_secret().as_ref()),
             &Validation::default(),
         )?;
         Ok(Token {
@@ -138,9 +138,9 @@ impl Token {
     /// [`jsonwebtoken::errors::Error`] - If the token could not be decoded.
     /// [`AuthError::InvalidToken`] - If the token is invalid.
     /// [`RESTError::NotFound`] - If the user entry for the token could not be found.
-    pub async fn validate(token: &str) -> Result<Self, RESTError> {
-        let token = Self::decode(token)?;
-        let stored_creds = StoredCredentials::fetch(token.data().user_id())
+    pub async fn validate(app: SharedState, token: &str) -> Result<Self, RESTError> {
+        let token = Self::decode(app.config.app_secret(), token)?;
+        let stored_creds = StoredCredentials::fetch(app, token.data().user_id())
             .await
             .ok_or(RESTError::NotFound("User entry for token not found".into()))?;
         // Check that the token's iat is after the last changed time of the stored credentials
@@ -173,20 +173,17 @@ impl Debug for Token {
 
 /// Token extractor for axum.
 #[async_trait::async_trait]
-impl<S> FromRequestParts<S> for Token
-where
-    S: Send + Sync,
-{
+impl FromRequestParts<SharedState> for Token {
     type Rejection = RESTError;
 
     /// Extract a token from request Authorization header
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &SharedState) -> Result<Self, Self::Rejection> {
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
             .map_err(|_| AuthError::MissingCredentials)?;
         // Decode the user data
-        Token::validate(bearer.token()).await
+        Token::validate(state.clone(), bearer.token()).await
     }
 }
 
@@ -253,7 +250,7 @@ impl StoredCredentials {
     /// # Returns
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
-    pub async fn fetch(user: impl Into<Snowflake>) -> Option<StoredCredentials> {
+    pub async fn fetch(app: SharedState, user: impl Into<Snowflake>) -> Option<StoredCredentials> {
         let user_id: i64 = user.into().into();
 
         let result = sqlx::query!(
@@ -262,7 +259,7 @@ impl StoredCredentials {
             WHERE user_id = $1",
             user_id
         )
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await
         .ok()??;
 
@@ -282,14 +279,14 @@ impl StoredCredentials {
     /// # Returns
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
-    pub async fn fetch_by_username(username: String) -> Option<StoredCredentials> {
+    pub async fn fetch_by_username(app: SharedState, username: String) -> Option<StoredCredentials> {
         let result = sqlx::query!(
             "SELECT users.id, secrets.password, secrets.last_changed
             FROM users JOIN secrets ON users.id = secrets.user_id
             WHERE users.username = $1",
             username
         )
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await
         .ok()??;
 
@@ -305,7 +302,7 @@ impl StoredCredentials {
     /// # Errors
     ///
     /// * [`sqlx::Error`] - If the query fails. This could be due to the user not existing in the DB.
-    pub async fn commit(&self) -> Result<(), sqlx::Error> {
+    pub async fn commit(&self, app: SharedState) -> Result<(), sqlx::Error> {
         let user_id: i64 = self.user_id.into();
 
         sqlx::query!(
@@ -315,7 +312,7 @@ impl StoredCredentials {
             self.hash.expose_secret(),
             self.last_changed.timestamp()
         )
-        .execute(app().db.pool())
+        .execute(app.db.pool())
         .await?;
 
         Ok(())

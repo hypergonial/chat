@@ -1,10 +1,11 @@
-use std::{net::SocketAddr, sync::OnceLock};
+use std::{net::SocketAddr, sync::Arc};
 
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::{
     config::{Credentials as S3Creds, Region},
     Client, Config as S3Config,
 };
+
 use derive_builder::Builder;
 use dotenvy::dotenv;
 use secrecy::{ExposeSecret, Secret};
@@ -17,13 +18,10 @@ use super::{
 };
 use crate::gateway::handler::Gateway;
 
-pub static APP: OnceLock<ApplicationState> = OnceLock::new();
-
-pub fn app() -> &'static ApplicationState {
-    APP.get().expect("ApplicationState was not initialized")
-}
+pub type SharedState = Arc<ApplicationState>;
 
 /// Contains all the application state and manages application state changes.
+#[derive(Clone)]
 pub struct ApplicationState {
     pub db: Database,
     pub gateway: Gateway,
@@ -84,7 +82,7 @@ impl Default for ApplicationState {
 }
 
 /// Application configuration
-#[derive(Debug, Builder)]
+#[derive(Debug, Clone, Builder)]
 #[builder(setter(into), build_fn(error = "BuilderError"))]
 pub struct Config {
     database_url: Secret<String>,
@@ -185,6 +183,7 @@ impl Config {
 }
 
 /// All S3 buckets used by the application.
+#[derive(Debug, Clone)]
 pub struct Buckets {
     attachments: Bucket,
 }
@@ -211,10 +210,14 @@ impl Buckets {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn remove_all_for_channel(&self, channel: impl Into<Snowflake>) -> Result<(), AppError> {
-        let bucket = app().buckets.attachments();
+    pub async fn remove_all_for_channel(
+        &self,
+        s3_client: &Client,
+        channel: impl Into<Snowflake>,
+    ) -> Result<(), AppError> {
+        let bucket = self.attachments();
         let channel_id: Snowflake = channel.into();
-        let attachments = bucket.list_objects(&app().s3, channel_id.to_string(), None).await?;
+        let attachments = bucket.list_objects(s3_client, channel_id.to_string(), None).await?;
 
         if attachments.is_empty() {
             return Ok(());
@@ -222,7 +225,7 @@ impl Buckets {
 
         bucket
             .delete_objects(
-                &app().s3,
+                s3_client,
                 attachments
                     .into_iter()
                     .map(|o| o.key.unwrap_or(channel_id.to_string()))
@@ -240,18 +243,18 @@ impl Buckets {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn remove_all_for_guild(&self, guild: impl Into<Snowflake>) -> Result<(), AppError> {
+    pub async fn remove_all_for_guild(&self, app: SharedState, guild: impl Into<Snowflake>) -> Result<(), AppError> {
         let guild_id: i64 = guild.into().into();
 
         let channel_ids: Vec<i64> = sqlx::query!("SELECT id FROM channels WHERE guild_id = $1", guild_id)
-            .fetch_all(app().db.pool())
+            .fetch_all(app.db.pool())
             .await?
             .into_iter()
             .map(|r| r.id)
             .collect();
 
         for channel_id in channel_ids {
-            self.remove_all_for_channel(channel_id).await?;
+            self.remove_all_for_channel(&app.s3, channel_id).await?;
         }
 
         Ok(())

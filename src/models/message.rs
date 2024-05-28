@@ -5,7 +5,7 @@ use serde::Serialize;
 use slice_group_by::GroupBy;
 
 use super::{
-    appstate::app,
+    appstate::SharedState,
     attachment::{Attachment, AttachmentLike, FullAttachment},
     errors::{AppError, BuilderError, RESTError},
     member::UserLike,
@@ -130,11 +130,12 @@ impl Message {
     ///
     /// * `app().db` (read)
     pub async fn from_formdata(
+        app: SharedState,
         author: UserLike,
         channel: impl Into<Snowflake>,
         mut form: Multipart,
     ) -> Result<Self, RESTError> {
-        let id = Snowflake::gen_new();
+        let id = Snowflake::gen_new(app);
         let channel_id: Snowflake = channel.into();
         let mut attachments: Vec<Attachment> = Vec::new();
         let mut builder = Message::builder();
@@ -202,7 +203,7 @@ impl Message {
     /// ## Locks
     ///
     /// * `app().db` (read)
-    pub async fn fetch(message: impl Into<Snowflake>) -> Option<Self> {
+    pub async fn fetch(app: SharedState, message: impl Into<Snowflake>) -> Option<Self> {
         let id_i64: i64 = message.into().into();
 
         // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord`
@@ -216,7 +217,7 @@ impl Message {
             WHERE messages.id = $1",
             id_i64
         )
-        .fetch_all(app().db.pool())
+        .fetch_all(app.db.pool())
         .await
         .ok()?;
 
@@ -235,7 +236,7 @@ impl Message {
     ///
     /// * [`AppError::S3`] - If the S3 request to upload one of the attachments fails.
     /// * [`AppError::Database`] - If the database request fails.
-    pub async fn commit(&self) -> Result<(), AppError> {
+    pub async fn commit(&self, app: SharedState) -> Result<(), AppError> {
         let id_i64: i64 = self.id.into();
         let author_id_i64: Option<i64> = self.author.as_ref().map(|u| u.id().into());
         let channel_id_i64: i64 = self.channel_id.into();
@@ -249,12 +250,12 @@ impl Message {
             channel_id_i64,
             self.content
         )
-        .execute(app().db.pool())
+        .execute(app.db.pool())
         .await?;
 
         for attachment in &self.attachments {
             if let Attachment::Full(f) = attachment {
-                f.commit().await?;
+                f.commit(app.clone()).await?;
             }
         }
         Ok(())

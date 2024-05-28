@@ -1,5 +1,5 @@
 use axum::{
-    extract::{DefaultBodyLimit, Multipart, Path, Query},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::StatusCode,
     routing::{delete, get, post},
     Json, Router,
@@ -7,8 +7,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tower_http::limit::RequestBodyLimitLayer;
 
-use crate::dispatch;
 use crate::models::{
+    appstate::SharedState,
     auth::Token,
     channel::{Channel, ChannelLike},
     errors::RESTError,
@@ -30,7 +30,7 @@ struct FetchMessagesQuery {
     Quota::per_second(nonzero!(5u32)).allow_burst(nonzero!(5u32)),
 )); */
 
-pub fn get_router() -> Router {
+pub fn get_router() -> Router<SharedState> {
     Router::new()
         .route("/channels/:channel_id", get(fetch_channel))
         .route("/channels/:channel_id", delete(delete_channel))
@@ -54,13 +54,19 @@ pub fn get_router() -> Router {
 /// ## Endpoint
 ///
 /// GET `/channels/{channel_id}`
-async fn fetch_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Result<Json<Channel>, RESTError> {
-    let channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
-        "Channel does not exist or is not available.".to_string(),
-    ))?;
+async fn fetch_channel(
+    Path(channel_id): Path<Snowflake>,
+    State(app): State<SharedState>,
+    token: Token,
+) -> Result<Json<Channel>, RESTError> {
+    let channel = Channel::fetch(app.clone(), channel_id)
+        .await
+        .ok_or(RESTError::NotFound(
+            "Channel does not exist or is not available.".to_string(),
+        ))?;
 
     // Check if the user is in the channel's guild
-    Member::fetch(token.data().user_id(), channel.guild_id())
+    Member::fetch(app, token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".to_string()))?;
 
@@ -85,13 +91,19 @@ async fn fetch_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Resul
 /// ## Endpoint
 ///
 /// DELETE `/channels/{channel_id}`
-async fn delete_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Result<StatusCode, RESTError> {
-    let mut channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
-        "Channel does not exist or is not available.".into(),
-    ))?;
+async fn delete_channel(
+    Path(channel_id): Path<Snowflake>,
+    State(app): State<SharedState>,
+    token: Token,
+) -> Result<StatusCode, RESTError> {
+    let mut channel = Channel::fetch(app.clone(), channel_id)
+        .await
+        .ok_or(RESTError::NotFound(
+            "Channel does not exist or is not available.".into(),
+        ))?;
 
     // Check guild owner_id
-    let guild = Guild::fetch(channel.guild_id())
+    let guild = Guild::fetch(app.clone(), channel.guild_id())
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
 
@@ -99,9 +111,9 @@ async fn delete_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Resu
         return Err(RESTError::NotFound("Not permitted to delete channel.".into()));
     }
 
-    channel.delete().await?;
+    channel.delete(app.clone()).await?;
 
-    dispatch!(GatewayEvent::ChannelRemove(channel.clone()));
+    app.gateway.dispatch(GatewayEvent::ChannelRemove(channel.clone()));
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -126,25 +138,28 @@ async fn delete_channel(Path(channel_id): Path<Snowflake>, token: Token) -> Resu
 /// POST `/channels/{channel_id}/messages`
 async fn create_message(
     Path(channel_id): Path<Snowflake>,
+    State(app): State<SharedState>,
     token: Token,
     payload: Multipart,
 ) -> Result<(StatusCode, Json<Message>), RESTError> {
-    let channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
-        "Channel does not exist or is not available.".into(),
-    ))?;
+    let channel = Channel::fetch(app.clone(), channel_id)
+        .await
+        .ok_or(RESTError::NotFound(
+            "Channel does not exist or is not available.".into(),
+        ))?;
 
-    let member = Member::fetch(token.data().user_id(), channel.guild_id())
+    let member = Member::fetch(app.clone(), token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to access resource.".into()))?;
 
-    let message = Message::from_formdata(UserLike::Member(member), channel_id, payload).await?;
+    let message = Message::from_formdata(app.clone(), UserLike::Member(member), channel_id, payload).await?;
 
-    message.commit().await?;
+    message.commit(app.clone()).await?;
 
     let message = message.strip_attachment_contents();
     let reply = Json(message.clone());
 
-    dispatch!(GatewayEvent::MessageCreate(message));
+    app.gateway.dispatch(GatewayEvent::MessageCreate(message));
     Ok((StatusCode::CREATED, reply))
 }
 
@@ -165,24 +180,26 @@ async fn create_message(
 /// GET `/channels/{channel_id}/messages`
 async fn fetch_messages(
     Path(channel_id): Path<Snowflake>,
+    State(app): State<SharedState>,
     token: Token,
     Query(query): Query<FetchMessagesQuery>,
 ) -> Result<(StatusCode, Json<Vec<Message>>), RESTError> {
-    let channel = Channel::fetch(channel_id).await.ok_or(RESTError::NotFound(
-        "Channel does not exist or is not available.".into(),
-    ))?;
+    let channel = Channel::fetch(app.clone(), channel_id)
+        .await
+        .ok_or(RESTError::NotFound(
+            "Channel does not exist or is not available.".into(),
+        ))?;
 
     // Check if the user is in the channel's guild
-    Member::fetch(token.data().user_id(), channel.guild_id())
+    Member::fetch(app.clone(), token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
-    let Channel::GuildText(txtchannel) = channel; /* else {
-                                                      return Err(BadRequest::new("Cannot fetch messages from non-textable channel.").into());
-                                                  }; */
+    // TODO: Match other channel types here
+    let Channel::GuildText(txtchannel) = channel;
 
     let messages = txtchannel
-        .fetch_messages(query.limit, query.before, query.after)
+        .fetch_messages(app, query.limit, query.before, query.after)
         .await?;
 
     Ok((StatusCode::OK, Json(messages)))

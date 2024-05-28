@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use super::appstate::app;
+use super::appstate::SharedState;
 
 use super::{snowflake::Snowflake, user::User};
 
@@ -88,9 +88,9 @@ impl Member {
     /// ## Locks
     ///
     /// * `app().db` (read)
-    pub async fn from_record(record: MemberRecord) -> Self {
+    pub async fn from_record(app: SharedState, record: MemberRecord) -> Self {
         Self::new(
-            User::fetch(record.user_id).await.unwrap(),
+            User::fetch(app, record.user_id).await.unwrap(),
             record.guild_id,
             record.nickname,
             record.joined_at,
@@ -123,17 +123,13 @@ impl Member {
     }
 
     /// Include the user's presence field in the member payload.
-    pub async fn include_presence(self) -> Self {
-        let user = self.user.include_presence().await;
+    pub async fn include_presence(self, app: SharedState) -> Self {
+        let user = self.user.include_presence(app).await;
         Self { user, ..self }
     }
 
     /// Fetch a member from the database by id and guild id.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    pub async fn fetch(user: impl Into<Snowflake>, guild: impl Into<Snowflake>) -> Option<Self> {
+    pub async fn fetch(app: SharedState, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) -> Option<Self> {
         let id_64: i64 = user.into().into();
         let guild_id_64: i64 = guild.into().into();
 
@@ -146,7 +142,7 @@ impl Member {
             id_64,
             guild_id_64
         )
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await
         .ok()??;
 
@@ -162,7 +158,7 @@ impl Member {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn commit(&self) -> Result<(), sqlx::Error> {
+    pub async fn commit(&self, app: SharedState) -> Result<(), sqlx::Error> {
         let id_64: i64 = self.user.id().into();
         let guild_id_64: i64 = self.guild_id.into();
         sqlx::query!(
@@ -175,7 +171,7 @@ impl Member {
             self.nickname,
             self.joined_at
         )
-        .execute(app().db.pool())
+        .execute(app.db.pool())
         .await?;
 
         let mut hasher = DefaultHasher::new();
@@ -183,7 +179,7 @@ impl Member {
         let _current_hash = hasher.finish();
 
         if _current_hash != self._user_hash {
-            self.user.commit().await?;
+            self.user.commit(app).await?;
         }
 
         Ok(())

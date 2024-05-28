@@ -2,7 +2,7 @@ use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use secrecy::{ExposeSecret, Secret};
 
-use crate::models::snowflake::Snowflake;
+use crate::models::{appstate::SharedState, snowflake::Snowflake};
 use crate::models::{
     auth::{Credentials, StoredCredentials},
     errors::AuthError,
@@ -20,7 +20,7 @@ use crate::models::{
 ///
 /// * [`Ok(Snowflake)`] - The user id of the user that owns the credentials.
 /// * [`Err(AuthError)`] - If the credentials are invalid or the user was not found.
-pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake, AuthError> {
+pub async fn validate_credentials(app: SharedState, credentials: Credentials) -> Result<Snowflake, AuthError> {
     let mut user_id: Option<Snowflake> = None;
     // We set up a dummy hash here so verify_password_hash is always run.
     // This is to prevent timing attacks.
@@ -31,7 +31,9 @@ pub async fn validate_credentials(credentials: Credentials) -> Result<Snowflake,
             .to_string(),
     );
 
-    if let Some(stored_credentials) = StoredCredentials::fetch_by_username(credentials.username().to_string()).await {
+    if let Some(stored_credentials) =
+        StoredCredentials::fetch_by_username(app, credentials.username().to_string()).await
+    {
         user_id = Some(stored_credentials.user_id());
         expected_hash = stored_credentials.hash().clone();
     }

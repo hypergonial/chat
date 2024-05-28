@@ -9,6 +9,7 @@ use mime::Mime;
 use super::errors::AppError;
 
 /// An abstraction for S3 buckets.
+#[derive(Clone, Debug)]
 pub struct Bucket {
     name: String,
 }

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::guild::GuildRecord;
 
-use super::{appstate::app, errors::BuilderError, guild::Guild, requests::CreateUser, snowflake::Snowflake};
+use super::{appstate::SharedState, errors::BuilderError, guild::Guild, requests::CreateUser, snowflake::Snowflake};
 
 fn username_regex() -> &'static Regex {
     static USERNAME_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -85,10 +85,10 @@ impl User {
     }
 
     /// Creates a new user object from a create user payload.
-    pub async fn from_payload(payload: CreateUser) -> Result<Self, BuilderError> {
+    pub async fn from_payload(app: SharedState, payload: CreateUser) -> Result<Self, BuilderError> {
         Self::validate_username(&payload.username)?;
         Ok(User {
-            id: Snowflake::gen_new(),
+            id: Snowflake::gen_new(app),
             username: payload.username.clone(),
             display_name: None,
             last_presence: Presence::default(),
@@ -124,8 +124,8 @@ impl User {
     }
 
     /// Retrieve the user's presence.
-    pub async fn presence(&self) -> &Presence {
-        if app().gateway.is_connected(self.id()) {
+    pub async fn presence(&self, app: SharedState) -> &Presence {
+        if app.gateway.is_connected(self.id()) {
             &self.last_presence
         } else {
             &Presence::Offline
@@ -144,8 +144,8 @@ impl User {
     }
 
     /// Transform this object to also include the user's presence.
-    pub async fn include_presence(self) -> Self {
-        let presence = self.presence().await;
+    pub async fn include_presence(self, app: SharedState) -> Self {
+        let presence = self.presence(app).await;
         Self {
             displayed_presence: Some(*presence),
             ..self
@@ -185,7 +185,7 @@ impl User {
     /// ## Locks
     ///
     /// * `app().db` (read)
-    pub async fn fetch(id: impl Into<Snowflake>) -> Option<Self> {
+    pub async fn fetch(app: SharedState, id: impl Into<Snowflake>) -> Option<Self> {
         let id_i64: i64 = id.into().into();
         let row = sqlx::query_as!(
             UserRecord,
@@ -194,7 +194,7 @@ impl User {
             WHERE id = $1",
             id_i64
         )
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await
         .ok()??;
 
@@ -206,7 +206,7 @@ impl User {
     /// ## Locks
     ///
     /// * `app().db` (read)
-    pub async fn fetch_presence(user: impl Into<Snowflake>) -> Option<Presence> {
+    pub async fn fetch_presence(app: SharedState, user: impl Into<Snowflake>) -> Option<Presence> {
         let id_i64: i64 = user.into().into();
         let row = sqlx::query!(
             "SELECT last_presence
@@ -214,7 +214,7 @@ impl User {
             WHERE id = $1",
             id_i64
         )
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await
         .ok()??;
 
@@ -226,14 +226,14 @@ impl User {
     /// ## Locks
     ///
     /// * `app().db` (read)
-    pub async fn fetch_by_username(username: &str) -> Option<Self> {
+    pub async fn fetch_by_username(app: SharedState, username: &str) -> Option<Self> {
         let row = sqlx::query!(
             "SELECT id, username, display_name, last_presence
             FROM users
             WHERE username = $1",
             username
         )
-        .fetch_optional(app().db.pool())
+        .fetch_optional(app.db.pool())
         .await
         .ok()??;
 
@@ -255,7 +255,7 @@ impl User {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn fetch_guilds(&self) -> Result<Vec<Guild>, sqlx::Error> {
+    pub async fn fetch_guilds(&self, app: SharedState) -> Result<Vec<Guild>, sqlx::Error> {
         let id_i64: i64 = self.id.into();
 
         let records = sqlx::query_as!(
@@ -266,7 +266,7 @@ impl User {
             WHERE members.user_id = $1",
             id_i64
         )
-        .fetch_all(app().db.pool())
+        .fetch_all(app.db.pool())
         .await?;
 
         Ok(records.into_iter().map(Guild::from_record).collect())
@@ -281,7 +281,7 @@ impl User {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn commit(&self) -> Result<(), sqlx::Error> {
+    pub async fn commit(&self, app: SharedState) -> Result<(), sqlx::Error> {
         let id_i64: i64 = self.id.into();
         sqlx::query!(
             "INSERT INTO users (id, username, display_name, last_presence)
@@ -293,7 +293,7 @@ impl User {
             self.display_name,
             self.last_presence as i16
         )
-        .execute(app().db.pool())
+        .execute(app.db.pool())
         .await?;
         Ok(())
     }
