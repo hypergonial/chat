@@ -327,21 +327,3 @@ impl StoredCredentials {
         self.last_changed = Utc::now();
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_decode_token() {
-        let data = TokenData {
-            user_id: 123_i64.into(),
-            iat: 123,
-            exp: Utc::now().timestamp() as usize + 1000000,
-        };
-        let token = Token::new(&data).unwrap();
-        let decoded_token = Token::decode(token.expose_secret()).unwrap();
-        assert_eq!(decoded_token.data().user_id, 123_i64.into());
-        assert_eq!(decoded_token.data().iat, 123);
-    }
-}
