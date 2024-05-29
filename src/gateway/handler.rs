@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{borrow::Cow, collections::HashSet, sync::Arc, time::Duration};
 
 use axum::{
     extract::{
@@ -26,12 +26,10 @@ use tokio::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-/// Default heartbeat interval in milliseconds
-const HEARTBEAT_INTERVAL: u64 = 45000;
-
 use crate::models::{
     appstate::SharedState,
     auth::Token,
+    errors::GatewayError,
     gateway_event::{
         EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, HelloPayload, PresenceUpdatePayload, ReadyPayload,
     },
@@ -39,6 +37,9 @@ use crate::models::{
     snowflake::Snowflake,
     user::{Presence, User},
 };
+
+/// Default heartbeat interval in milliseconds
+const HEARTBEAT_INTERVAL: u64 = 45000;
 
 /// Possible responses issued by the server to a client
 #[derive(Debug, Clone, Serialize)]
@@ -405,6 +406,50 @@ async fn websocket_handler(State(app): State<SharedState>, ws: WebSocketUpgrade)
     ws.on_upgrade(|socket| async move { handle_connection(app, socket).await })
 }
 
+/// Send a serializable object to the client
+///
+/// ## Panics
+///
+/// This function will panic if the serializable object cannot be serialized
+///
+/// ## Arguments
+///
+/// * `ws_sink` - The sink for sending messages to the client
+/// * `ser` - The serializable object to send
+///
+/// ## Returns
+///
+/// `Ok(())` if the message was sent successfully, an error otherwise
+async fn send_serializable(
+    ws_sink: &mut SplitSink<WebSocket, Message>,
+    ser: impl Serialize,
+) -> Result<(), axum::Error> {
+    let message = serde_json::to_string(&ser).expect("Failed to serialize WS message");
+    ws_sink.send(Message::Text(message)).await
+}
+
+/// Send a close frame to the client
+///
+/// ## Arguments
+///
+/// * `ws_sink` - The sink for sending messages to the client
+///
+/// ## Returns
+///
+/// `Ok(())` if the message was sent successfully, an error otherwise
+async fn send_close_frame(
+    ws_sink: &mut SplitSink<WebSocket, Message>,
+    code: GatewayCloseCode,
+    reason: impl Into<Cow<'static, str>>,
+) -> Result<(), axum::Error> {
+    ws_sink
+        .send(Message::Close(Some(CloseFrame {
+            code: code.into(),
+            reason: reason.into(),
+        })))
+        .await
+}
+
 /// Send HELLO, then wait for and validate the IDENTIFY payload
 ///
 /// ## Arguments
@@ -419,7 +464,7 @@ async fn handle_handshake(
     app: SharedState,
     ws_sink: &mut SplitSink<WebSocket, Message>,
     ws_stream: &mut SplitStream<WebSocket>,
-) -> Result<User, ()> {
+) -> Result<User, GatewayError> {
     // Send HELLO with the heartbeat interval
     ws_sink
         .send(Message::Text(
@@ -433,59 +478,29 @@ async fn handle_handshake(
 
     // IDENTIFY should be the first message sent
     let Ok(Some(Ok(ident))) = maybe_ident else {
-        ws_sink
-            .send(Message::Close(Some(CloseFrame {
-                code: GatewayCloseCode::PolicyViolation.into(),
-                reason: "IDENTIFY expected".into(),
-            })))
-            .await
-            .ok();
-        return Err(());
+        send_close_frame(ws_sink, GatewayCloseCode::PolicyViolation, "IDENTIFY expected").await?;
+        return Err(GatewayError::HandshakeFailure("IDENTIFY expected".into()));
     };
 
     let Message::Text(text) = ident else {
-        ws_sink
-            .send(Message::Close(Some(CloseFrame {
-                code: GatewayCloseCode::InvalidPayload.into(),
-                reason: "Invalid IDENTITY payload".into(),
-            })))
-            .await
-            .ok();
-        return Err(());
+        send_close_frame(ws_sink, GatewayCloseCode::InvalidPayload, "Invalid IDENTIFY payload").await?;
+        return Err(GatewayError::MalformedFrame("Invalid IDENTIFY payload".into()));
     };
 
     let Ok(GatewayMessage::Identify(payload)) = serde_json::from_str(&text) else {
-        ws_sink
-            .send(Message::Close(Some(CloseFrame {
-                code: GatewayCloseCode::InvalidPayload.into(),
-                reason: "Invalid IDENTITY payload".into(),
-            })))
-            .await
-            .ok();
-        return Err(());
+        send_close_frame(ws_sink, GatewayCloseCode::InvalidPayload, "Invalid IDENTIFY payload").await?;
+        return Err(GatewayError::MalformedFrame("Invalid IDENTIFY payload".into()));
     };
 
     let Ok(token) = Token::validate(app.clone(), payload.token.expose_secret()).await else {
-        ws_sink
-            .send(Message::Close(Some(CloseFrame {
-                code: GatewayCloseCode::PolicyViolation.into(),
-                reason: "Invalid token".into(),
-            })))
-            .await
-            .ok();
-        return Err(());
+        send_close_frame(ws_sink, GatewayCloseCode::PolicyViolation, "Invalid token").await?;
+        return Err(GatewayError::AuthError("Invalid token".into()));
     };
 
     let user_id = token.data().user_id();
     let Some(user) = User::fetch(app, user_id).await else {
-        ws_sink
-            .send(Message::Close(Some(CloseFrame {
-                code: GatewayCloseCode::PolicyViolation.into(),
-                reason: "User not found".into(),
-            })))
-            .await
-            .ok();
-        return Err(());
+        send_close_frame(ws_sink, GatewayCloseCode::ServerError, "No user belongs to token").await?;
+        return Err(GatewayError::InternalServerError("No user belongs to token".into()));
     };
 
     Ok(user)
@@ -544,34 +559,29 @@ async fn handle_heartbeating(app: SharedState, user_id: Snowflake, heartbeat_int
 /// * `app` - The shared application state
 /// * `user` - The user to send the READY event to
 /// * `ws_sink` - The sink for sending messages to the user
-async fn send_ready(app: SharedState, user: User, ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>) {
+async fn send_ready(
+    app: SharedState,
+    user: User,
+    ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>,
+) -> Result<(), axum::Error> {
     let guilds = Guild::fetch_all_for_user(app.clone(), user.id())
         .await
         .expect("Failed to fetch guilds during socket connection handling");
 
     // Send READY
-    ws_sink
-        .lock()
-        .await
-        .send(Message::Text(
-            serde_json::to_string(&GatewayEvent::Ready(ReadyPayload::new(user.clone(), guilds.clone()))).unwrap(),
-        ))
-        .await
-        .ok();
+    send_serializable(
+        &mut *ws_sink.lock().await,
+        GatewayEvent::Ready(ReadyPayload::new(user.clone(), guilds.clone())),
+    )
+    .await?;
 
     // Send GUILD_CREATE events for all guilds the user is in
     for guild in guilds {
         let payload = GuildCreatePayload::from_guild(app.clone(), guild)
             .await
             .expect("Failed to fetch guild payload data");
-        ws_sink
-            .lock()
-            .await
-            .send(Message::Text(
-                serde_json::to_string(&GatewayEvent::GuildCreate(payload)).unwrap(),
-            ))
-            .await
-            .ok();
+
+        send_serializable(&mut *ws_sink.lock().await, GatewayEvent::GuildCreate(payload)).await?;
     }
 
     // Send the presence update for the user if they were not invisible when last logging off
@@ -585,6 +595,7 @@ async fn send_ready(app: SharedState, user: User, ws_sink: Arc<Mutex<SplitSink<W
                 }));
         }
     }
+    Ok(())
 }
 
 /// Forward events received through the ConnectionHandle receiver to the user
@@ -602,20 +613,11 @@ async fn send_events(
     while let Some(payload) = receiver.next().await {
         match payload {
             GatewayResponse::Close(code, reason) => {
-                ws_sink
-                    .lock()
-                    .await
-                    .send(Message::Close(Some(CloseFrame {
-                        code: code.into(),
-                        reason: reason.into(),
-                    })))
-                    .await
-                    .ok();
+                send_close_frame(&mut *ws_sink.lock().await, code, reason).await.ok();
                 break;
             }
             GatewayResponse::Event(event) => {
-                let message = Message::Text(serde_json::to_string(&event).unwrap());
-                if let Err(e) = ws_sink.lock().await.send(message).await {
+                if let Err(e) = send_serializable(&mut *ws_sink.lock().await, event).await {
                     tracing::warn!("Error sending event to user {}: {}", user_id, e);
                     break;
                 }
@@ -645,15 +647,13 @@ async fn receive_events(
         }
         // Otherwise attempt to parse the message and send it
         let Ok(Message::Text(text)) = msg else {
-            ws_sink
-                .lock()
-                .await
-                .send(Message::Close(Some(CloseFrame {
-                    code: GatewayCloseCode::Unsupported.into(),
-                    reason: "Unsupported message encoding".into(),
-                })))
-                .await
-                .ok();
+            send_close_frame(
+                &mut *ws_sink.lock().await,
+                GatewayCloseCode::Unsupported,
+                "Unsupported message encoding",
+            )
+            .await
+            .ok();
             break;
         };
 
@@ -663,15 +663,13 @@ async fn receive_events(
                 broadcaster.send(msg).ok();
             }
             Err(e) => {
-                ws_sink
-                    .lock()
-                    .await
-                    .send(Message::Close(Some(CloseFrame {
-                        code: GatewayCloseCode::InvalidPayload.into(),
-                        reason: format!("Invalid request payload: {}", e).into(),
-                    })))
-                    .await
-                    .ok();
+                send_close_frame(
+                    &mut *ws_sink.lock().await,
+                    GatewayCloseCode::InvalidPayload,
+                    format!("Invalid request payload: {}", e),
+                )
+                .await
+                .ok();
                 break;
             }
         }

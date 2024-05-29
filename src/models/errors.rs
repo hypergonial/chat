@@ -73,6 +73,8 @@ pub enum AppError {
     ParseInt(#[from] ParseIntError),
     #[error("Authentication failure: {0}")]
     Auth(#[from] AuthError),
+    #[error("Internal Server Error: {0}")]
+    Axum(#[from] axum::Error),
     /*     #[error(transparent)]
     Other(#[from] anyhow::Error), */
 }
@@ -88,6 +90,7 @@ impl IntoResponse for AppError {
             Self::Regex(_) => StatusCode::BAD_REQUEST,
             Self::Builder(e) => return e.into_response(),
             Self::ParseInt(_) => StatusCode::BAD_REQUEST,
+            Self::Axum(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Auth(e) => return e.into_response(),
             // Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
@@ -109,6 +112,30 @@ where
 {
     fn from(e: SdkError<E, R>) -> Self {
         Self::S3(DisplayErrorContext(e).to_string())
+    }
+}
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum GatewayError {
+    #[error(transparent)]
+    App(AppError),
+    #[error("Internal server error: {0}")]
+    InternalServerError(String),
+    #[error("Policy Violation: {0}")]
+    PolicyViolation(String),
+    #[error("Malformed frame: {0}")]
+    MalformedFrame(String),
+    #[error("Auth error: {0}")]
+    AuthError(String),
+    #[error("Handshake failure: {0}")]
+    HandshakeFailure(String),
+}
+
+// Anything that can be converted into an AppError can be converted into a RESTError
+impl<T: Into<AppError>> From<T> for GatewayError {
+    fn from(e: T) -> Self {
+        Self::App(e.into())
     }
 }
 
