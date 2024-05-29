@@ -6,7 +6,7 @@ use slice_group_by::GroupBy;
 
 use super::{
     appstate::SharedState,
-    attachment::{Attachment, AttachmentLike, FullAttachment},
+    attachment::{Attachment, AttachmentLike, FullAttachment, PartialAttachment},
     channel::Channel,
     errors::{AppError, BuilderError, RESTError},
     member::UserLike,
@@ -101,13 +101,11 @@ impl Message {
                     )
                 });
 
-                let mut attachments = Vec::new();
-
-                for record in group {
-                    if let Ok(attachment) = record.try_into() {
-                        attachments.push(Attachment::Partial(attachment));
-                    }
-                }
+                let attachments = group
+                    .iter()
+                    .flat_map(|r| r.try_into())
+                    .map(Attachment::Partial)
+                    .collect();
 
                 Self {
                     id: group[0].id.into(),
@@ -207,9 +205,7 @@ impl Message {
     pub async fn fetch(app: SharedState, message: impl Into<Snowflake<Message>>) -> Option<Self> {
         let id_i64: i64 = message.into().into();
 
-        // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord`
-        // contains `Option<T>` for all users fields and sqlx does not recognize this.
-        let records = sqlx::query_as_unchecked!(
+        let records = sqlx::query_as!(
             ExtendedMessageRecord,
             "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
             FROM messages
