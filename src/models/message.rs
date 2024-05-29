@@ -6,7 +6,7 @@ use slice_group_by::GroupBy;
 
 use super::{
     appstate::SharedState,
-    attachment::{Attachment, AttachmentLike, FullAttachment, PartialAttachment},
+    attachment::{Attachment, AttachmentLike, FullAttachment},
     channel::Channel,
     errors::{AppError, BuilderError, RESTError},
     member::UserLike,
