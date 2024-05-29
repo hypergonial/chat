@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::SharedState, snowflake::Snowflake};
+use super::{appstate::SharedState, snowflake::Snowflake, user::User};
 
 bitflags! {
     /// Boolean flags for user preferences
@@ -76,7 +76,7 @@ pub struct PrefsUpdate {
 #[derive(Debug, Clone, Serialize)]
 pub struct Prefs {
     #[serde(skip)]
-    user_id: Snowflake,
+    user_id: Snowflake<User>,
     /// The user's preferences flags.
     pub flags: PrefFlags,
     /// The timeout for grouping messages in seconds.
@@ -90,7 +90,7 @@ pub struct Prefs {
 }
 
 impl Prefs {
-    pub fn new(user_id: Snowflake) -> Self {
+    pub fn new(user_id: Snowflake<User>) -> Self {
         Prefs {
             user_id,
             flags: PrefFlags::default(),
@@ -102,7 +102,7 @@ impl Prefs {
     }
 
     /// The user id of the user that owns the preferences.
-    pub fn user_id(&self) -> Snowflake {
+    pub fn user_id(&self) -> Snowflake<User> {
         self.user_id
     }
 
@@ -138,8 +138,8 @@ impl Prefs {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn fetch(app: SharedState, user: impl Into<Snowflake>) -> Result<Self, sqlx::Error> {
-        let user_id: Snowflake = user.into();
+    pub async fn fetch(app: SharedState, user: impl Into<Snowflake<User>>) -> Result<Self, sqlx::Error> {
+        let user_id: Snowflake<User> = user.into();
         let user_id_i64: i64 = user_id.into();
 
         let result = sqlx::query!(

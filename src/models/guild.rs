@@ -10,6 +10,7 @@ use super::{
     member::Member,
     requests::CreateGuild,
     snowflake::Snowflake,
+    user::User,
 };
 
 /// Represents a guild record stored in the database.
@@ -22,9 +23,9 @@ pub struct GuildRecord {
 /// Represents a guild.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Guild {
-    id: Snowflake,
+    id: Snowflake<Guild>,
     name: String,
-    owner_id: Snowflake,
+    owner_id: Snowflake<User>,
 }
 
 impl Guild {
@@ -35,7 +36,7 @@ impl Guild {
     /// * `id` - The guild's ID.
     /// * `name` - The guild's name.
     /// * `owner` - The guild's owner.
-    pub fn new(id: Snowflake, name: String, owner: impl Into<Snowflake>) -> Self {
+    pub fn new(id: Snowflake<Guild>, name: String, owner: impl Into<Snowflake<User>>) -> Self {
         Self {
             id,
             name,
@@ -44,7 +45,7 @@ impl Guild {
     }
 
     /// The guild's ID.
-    pub fn id(&self) -> Snowflake {
+    pub fn id(&self) -> Snowflake<Guild> {
         self.id
     }
 
@@ -54,7 +55,7 @@ impl Guild {
     }
 
     /// The guild's owner's ID.
-    pub fn owner_id(&self) -> Snowflake {
+    pub fn owner_id(&self) -> Snowflake<User> {
         self.owner_id
     }
 
@@ -73,7 +74,7 @@ impl Guild {
     ///
     /// * `payload` - The payload to construct the guild from.
     /// * `owner` - The ID of the guild's owner.
-    pub async fn from_payload(app: SharedState, payload: CreateGuild, owner: impl Into<Snowflake>) -> Self {
+    pub async fn from_payload(app: SharedState, payload: CreateGuild, owner: impl Into<Snowflake<User>>) -> Self {
         Self::new(Snowflake::gen_new(app), payload.name, owner.into())
     }
 
@@ -82,7 +83,7 @@ impl Guild {
     /// ## Arguments
     ///
     /// * `guild` - The ID of the guild to fetch.
-    pub async fn fetch(app: SharedState, guild: impl Into<Snowflake>) -> Option<Self> {
+    pub async fn fetch(app: SharedState, guild: impl Into<Snowflake<Guild>>) -> Option<Self> {
         let id_64: i64 = guild.into().into();
         let record = sqlx::query_as!(
             GuildRecord,
@@ -101,7 +102,10 @@ impl Guild {
     /// ## Arguments
     ///
     /// * `user` - The ID of the user to fetch guilds for.
-    pub async fn fetch_all_for_user(app: SharedState, user: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn fetch_all_for_user(
+        app: SharedState,
+        user: impl Into<Snowflake<User>>,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         let user_id_64: i64 = user.into().into();
         let records = sqlx::query!(
             "SELECT guilds.id, guilds.name, guilds.owner_id 
@@ -191,7 +195,7 @@ impl Guild {
     /// * [`sqlx::Error`] - If the database query fails.
     ///
     /// Note: This is faster than creating a member and then committing it.
-    pub async fn create_member(&self, app: SharedState, user: impl Into<Snowflake>) -> Result<(), sqlx::Error> {
+    pub async fn create_member(&self, app: SharedState, user: impl Into<Snowflake<User>>) -> Result<(), sqlx::Error> {
         let user_id_64: i64 = user.into().into();
         let guild_id_64: i64 = self.id.into();
         sqlx::query!(
@@ -218,7 +222,7 @@ impl Guild {
     /// * [`RESTError::Forbidden`] - If the member is the owner of the guild.
     ///
     /// Note: If the member is the owner of the guild, this will fail.
-    pub async fn remove_member(&self, app: SharedState, user: impl Into<Snowflake>) -> Result<(), RESTError> {
+    pub async fn remove_member(&self, app: SharedState, user: impl Into<Snowflake<User>>) -> Result<(), RESTError> {
         let user_id = user.into();
         if self.owner_id == user_id {
             return Err(RESTError::Forbidden("Cannot remove owner from guild".into()));
@@ -284,19 +288,19 @@ impl Guild {
     }
 }
 
-impl From<Guild> for Snowflake {
+impl From<Guild> for Snowflake<Guild> {
     fn from(guild: Guild) -> Self {
         guild.id()
     }
 }
 
-impl From<&Guild> for Snowflake {
+impl From<&Guild> for Snowflake<Guild> {
     fn from(guild: &Guild) -> Self {
         guild.id()
     }
 }
 
-impl From<&mut Guild> for Snowflake {
+impl From<&mut Guild> for Snowflake<Guild> {
     fn from(guild: &mut Guild) -> Self {
         guild.id()
     }

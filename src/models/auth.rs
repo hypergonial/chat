@@ -14,12 +14,13 @@ use super::{
     appstate::SharedState,
     errors::{AuthError, RESTError},
     snowflake::Snowflake,
+    user::User,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TokenData {
     /// The user id of the token owner
-    user_id: Snowflake,
+    user_id: Snowflake<User>,
     /// The expiration time of the token in seconds
     /// Note: This field is validated by the jsonwebtoken crate
     exp: usize,
@@ -35,7 +36,7 @@ impl TokenData {
     ///
     /// * `user_id` - The user id to store in the token
     /// * `iat` - The issuer time of the token
-    fn new(user_id: Snowflake, iat: usize) -> Self {
+    fn new(user_id: Snowflake<User>, iat: usize) -> Self {
         TokenData {
             user_id,
             iat,
@@ -44,7 +45,7 @@ impl TokenData {
     }
 
     /// Returns the user id of the token owner
-    pub fn user_id(&self) -> Snowflake {
+    pub fn user_id(&self) -> Snowflake<User> {
         self.user_id
     }
 
@@ -100,7 +101,7 @@ impl Token {
     /// # Errors
     ///
     /// [`jsonwebtoken::errors::Error`] - If the token could not be generated.
-    pub fn new_for(secret: &Secret<String>, user_id: Snowflake) -> Result<Self, jsonwebtoken::errors::Error> {
+    pub fn new_for(secret: &Secret<String>, user_id: Snowflake<User>) -> Result<Self, jsonwebtoken::errors::Error> {
         Self::new(secret, &TokenData::new(user_id, Utc::now().timestamp() as usize))
     }
 
@@ -216,14 +217,14 @@ impl Credentials {
 
 /// Credentials, as stored in the DB
 pub struct StoredCredentials {
-    user_id: Snowflake,
+    user_id: Snowflake<User>,
     hash: Secret<String>,
     last_changed: DateTime<Utc>,
 }
 
 impl StoredCredentials {
     /// Create a new set of stored credentials.
-    pub fn new(user: impl Into<Snowflake>, hash: String) -> Self {
+    pub fn new(user: impl Into<Snowflake<User>>, hash: String) -> Self {
         StoredCredentials {
             user_id: user.into(),
             hash: Secret::new(hash),
@@ -232,7 +233,7 @@ impl StoredCredentials {
     }
 
     /// The user id of the user that owns the credentials.
-    pub fn user_id(&self) -> Snowflake {
+    pub fn user_id(&self) -> Snowflake<User> {
         self.user_id
     }
 
@@ -250,7 +251,7 @@ impl StoredCredentials {
     /// # Returns
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
-    pub async fn fetch(app: SharedState, user: impl Into<Snowflake>) -> Option<StoredCredentials> {
+    pub async fn fetch(app: SharedState, user: impl Into<Snowflake<User>>) -> Option<StoredCredentials> {
         let user_id: i64 = user.into().into();
 
         let result = sqlx::query!(

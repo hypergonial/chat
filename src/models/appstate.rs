@@ -10,12 +10,13 @@ use derive_builder::Builder;
 use dotenvy::dotenv;
 use secrecy::{ExposeSecret, Secret};
 
-use super::db::Database;
 use super::{
     bucket::Bucket,
     errors::{AppError, BuilderError},
+    guild::Guild,
     snowflake::Snowflake,
 };
+use super::{channel::Channel, db::Database};
 use crate::gateway::handler::Gateway;
 
 pub type SharedState = Arc<ApplicationState>;
@@ -213,10 +214,10 @@ impl Buckets {
     pub async fn remove_all_for_channel(
         &self,
         s3_client: &Client,
-        channel: impl Into<Snowflake>,
+        channel: impl Into<Snowflake<Channel>>,
     ) -> Result<(), AppError> {
         let bucket = self.attachments();
-        let channel_id: Snowflake = channel.into();
+        let channel_id: Snowflake<Channel> = channel.into();
         let attachments = bucket.list_objects(s3_client, channel_id.to_string(), None).await?;
 
         if attachments.is_empty() {
@@ -243,7 +244,11 @@ impl Buckets {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn remove_all_for_guild(&self, app: SharedState, guild: impl Into<Snowflake>) -> Result<(), AppError> {
+    pub async fn remove_all_for_guild(
+        &self,
+        app: SharedState,
+        guild: impl Into<Snowflake<Guild>>,
+    ) -> Result<(), AppError> {
         let guild_id: i64 = guild.into().into();
 
         let channel_ids: Vec<i64> = sqlx::query!("SELECT id FROM channels WHERE guild_id = $1", guild_id)

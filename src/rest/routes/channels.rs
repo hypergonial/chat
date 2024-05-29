@@ -22,8 +22,8 @@ use crate::models::{
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FetchMessagesQuery {
     limit: Option<u32>,
-    before: Option<Snowflake>,
-    after: Option<Snowflake>,
+    before: Option<Snowflake<Message>>,
+    after: Option<Snowflake<Message>>,
 }
 
 /* let message_create_lim: SharedIDLimiter = Arc::new(RateLimiter::keyed(
@@ -55,7 +55,7 @@ pub fn get_router() -> Router<SharedState> {
 ///
 /// GET `/channels/{channel_id}`
 async fn fetch_channel(
-    Path(channel_id): Path<Snowflake>,
+    Path(channel_id): Path<Snowflake<Channel>>,
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<Json<Channel>, RESTError> {
@@ -92,7 +92,7 @@ async fn fetch_channel(
 ///
 /// DELETE `/channels/{channel_id}`
 async fn delete_channel(
-    Path(channel_id): Path<Snowflake>,
+    Path(channel_id): Path<Snowflake<Channel>>,
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<StatusCode, RESTError> {
@@ -137,7 +137,7 @@ async fn delete_channel(
 ///
 /// POST `/channels/{channel_id}/messages`
 async fn create_message(
-    Path(channel_id): Path<Snowflake>,
+    Path(channel_id): Path<Snowflake<Channel>>,
     State(app): State<SharedState>,
     token: Token,
     payload: Multipart,
@@ -179,7 +179,7 @@ async fn create_message(
 ///
 /// GET `/channels/{channel_id}/messages`
 async fn fetch_messages(
-    Path(channel_id): Path<Snowflake>,
+    Path(channel_id): Path<Snowflake<Channel>>,
     State(app): State<SharedState>,
     token: Token,
     Query(query): Query<FetchMessagesQuery>,

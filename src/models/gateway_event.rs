@@ -12,6 +12,11 @@ use super::{
     user::{Presence, User},
 };
 
+pub trait EventLike {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>>;
+    fn extract_user_id(&self) -> Option<Snowflake<User>>;
+}
+
 /// A JSON payload that can be received over the websocket by clients.
 /// All events are serialized in a way such that they are wrapped in a "data" field.
 #[derive(Serialize, Debug, Clone)]
@@ -27,7 +32,7 @@ pub enum GatewayEvent {
     /// A peer has joined the chat.
     MemberCreate(Member),
     /// A peer has left the chat.
-    MemberRemove(DeletePayload),
+    MemberRemove(DeletePayload<User>),
     /// A guild was created.
     GuildCreate(GuildCreatePayload),
     /// A guild was deleted.
@@ -46,7 +51,7 @@ pub enum GatewayEvent {
 
 // pain x_x
 impl EventLike for GatewayEvent {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         match self {
             Self::Hello(_) => None,
             Self::HeartbeatAck => None,
@@ -63,7 +68,7 @@ impl EventLike for GatewayEvent {
         }
     }
 
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         match self {
             Self::Hello(_) => None,
             Self::HeartbeatAck => None,
@@ -81,56 +86,51 @@ impl EventLike for GatewayEvent {
     }
 }
 
-pub trait EventLike {
-    fn extract_guild_id(&self) -> Option<Snowflake>;
-    fn extract_user_id(&self) -> Option<Snowflake>;
-}
-
 impl EventLike for Message {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         if let Some(UserLike::Member(member)) = &self.author() {
             Some(member.guild_id())
         } else {
             None
         }
     }
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         self.author().as_ref().map(|userlike| userlike.id())
     }
 }
 
 impl EventLike for Member {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         Some(self.guild_id())
     }
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         Some(self.user().id())
     }
 }
 
 impl EventLike for Channel {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         Some(self.guild_id())
     }
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         None
     }
 }
 
 impl EventLike for Guild {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         Some(self.id())
     }
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         None
     }
 }
 
 impl EventLike for User {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         None
     }
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         Some(self.id())
     }
 }
@@ -149,23 +149,23 @@ impl HelloPayload {
 /// A wrapper object around an ID with an optional guild_id to aid gateway event filtering.
 /// The guild_id field is not serialized and sent through the API.
 #[derive(Debug, Clone, Serialize)]
-pub struct DeletePayload {
-    id: Snowflake,
+pub struct DeletePayload<T> {
+    id: Snowflake<T>,
     #[serde(skip)]
-    guild_id: Option<Snowflake>,
+    guild_id: Option<Snowflake<Guild>>,
 }
 
-impl DeletePayload {
-    pub fn new(id: Snowflake, guild_id: Option<Snowflake>) -> Self {
+impl<T> DeletePayload<T> {
+    pub fn new(id: Snowflake<T>, guild_id: Option<Snowflake<Guild>>) -> Self {
         Self { id, guild_id }
     }
 }
 
-impl EventLike for DeletePayload {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+impl EventLike for DeletePayload<User> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         self.guild_id
     }
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         None
     }
 }
@@ -174,7 +174,7 @@ impl EventLike for DeletePayload {
 /// In other words, when the user changes their status (e.g. 'Online' to 'Offline') this is the payload received.
 #[derive(Serialize, Clone, Debug)]
 pub struct PresenceUpdatePayload {
-    pub user_id: Snowflake,
+    pub user_id: Snowflake<User>,
     pub presence: Presence,
 }
 
@@ -223,10 +223,10 @@ impl GuildCreatePayload {
 }
 
 impl EventLike for GuildCreatePayload {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         Some(self.guild.id())
     }
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         None
     }
 }
@@ -245,10 +245,10 @@ impl ReadyPayload {
 }
 
 impl EventLike for ReadyPayload {
-    fn extract_guild_id(&self) -> Option<Snowflake> {
+    fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         None
     }
-    fn extract_user_id(&self) -> Option<Snowflake> {
+    fn extract_user_id(&self) -> Option<Snowflake<User>> {
         Some(self.user.id())
     }
 }

@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use super::appstate::SharedState;
+use super::{appstate::SharedState, guild::Guild};
 
 use super::{snowflake::Snowflake, user::User};
 
@@ -32,7 +32,7 @@ pub struct Member {
     /// The user this guild member represents
     user: User,
     /// The id of the guild this member is in
-    guild_id: Snowflake,
+    guild_id: Snowflake<Guild>,
     /// Nickname of the user in this guild, if set
     nickname: Option<String>,
     /// UNIX timestmap of when the user joined the guild
@@ -44,7 +44,7 @@ pub struct Member {
 
 impl Member {
     /// Create a new member with the given user, guild id, nickname, and joined at timestamp.
-    pub fn new(user: User, guild: impl Into<Snowflake>, nickname: Option<String>, joined_at: i64) -> Self {
+    pub fn new(user: User, guild: impl Into<Snowflake<Guild>>, nickname: Option<String>, joined_at: i64) -> Self {
         let mut hasher = DefaultHasher::new();
         user.hash(&mut hasher);
         let _user_hash = hasher.finish();
@@ -63,7 +63,7 @@ impl Member {
     }
 
     /// The id of the guild this member is in
-    pub fn guild_id(&self) -> Snowflake {
+    pub fn guild_id(&self) -> Snowflake<Guild> {
         self.guild_id
     }
 
@@ -118,7 +118,7 @@ impl Member {
 
     /// Convert a user into a member with the given guild id.
     /// The join date of the member will be set to the current time.
-    pub async fn from_user(user: User, guild: impl Into<Snowflake>) -> Self {
+    pub async fn from_user(user: User, guild: impl Into<Snowflake<Guild>>) -> Self {
         Self::new(user, guild.into(), None, Utc::now().timestamp())
     }
 
@@ -129,7 +129,11 @@ impl Member {
     }
 
     /// Fetch a member from the database by id and guild id.
-    pub async fn fetch(app: SharedState, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) -> Option<Self> {
+    pub async fn fetch(
+        app: SharedState,
+        user: impl Into<Snowflake<User>>,
+        guild: impl Into<Snowflake<Guild>>,
+    ) -> Option<Self> {
         let id_64: i64 = user.into().into();
         let guild_id_64: i64 = guild.into().into();
 
@@ -195,7 +199,7 @@ pub enum UserLike {
 }
 
 impl UserLike {
-    pub fn id(&self) -> Snowflake {
+    pub fn id(&self) -> Snowflake<User> {
         match self {
             UserLike::Member(member) => member.user.id(),
             UserLike::User(user) => user.id(),
@@ -203,25 +207,25 @@ impl UserLike {
     }
 }
 
-impl From<UserLike> for Snowflake {
+impl From<UserLike> for Snowflake<User> {
     fn from(user_like: UserLike) -> Self {
         user_like.id()
     }
 }
 
-impl From<Member> for Snowflake {
+impl From<Member> for Snowflake<User> {
     fn from(member: Member) -> Self {
         member.user.id()
     }
 }
 
-impl From<&UserLike> for Snowflake {
+impl From<&UserLike> for Snowflake<User> {
     fn from(user_like: &UserLike) -> Self {
         user_like.id()
     }
 }
 
-impl From<&Member> for Snowflake {
+impl From<&Member> for Snowflake<User> {
     fn from(member: &Member) -> Self {
         member.user.id()
     }

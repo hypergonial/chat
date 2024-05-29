@@ -1,4 +1,4 @@
-use std::{fmt::Display, num::ParseIntError, str::FromStr};
+use std::{fmt::Display, hash::Hash, marker::PhantomData, num::ParseIntError, str::FromStr};
 
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -14,16 +14,20 @@ pub const EPOCH: i64 = 1672531200000;
 ///
 /// Snowflakes are 64-bit integers that are guaranteed to be unique.
 /// The first 41 bits are a timestamp, the next 10 are a worker ID, and the last 12 are a process ID.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::Type)]
-pub struct Snowflake {
+#[derive(Debug)]
+pub struct Snowflake<T> {
     // Note: We are using i64 instead of u64 because postgres does not support unsigned integers.
     value: i64,
+    _marker: PhantomData<T>,
 }
 
-impl Snowflake {
+impl<T> Snowflake<T> {
     /// Create a new snowflake from a 64-bit integer.
     pub fn new(value: i64) -> Self {
-        Snowflake { value }
+        Snowflake {
+            value,
+            _marker: PhantomData,
+        }
     }
 
     /// Generate a new snowflake using the current time.
@@ -53,25 +57,47 @@ impl Snowflake {
     }
 }
 
-impl From<i64> for Snowflake {
+impl<T> From<i64> for Snowflake<T> {
     fn from(value: i64) -> Self {
         Snowflake::new(value)
     }
 }
 
-impl From<Snowflake> for i64 {
-    fn from(snowflake: Snowflake) -> Self {
+impl<T> From<Snowflake<T>> for i64 {
+    fn from(snowflake: Snowflake<T>) -> Self {
         snowflake.value
     }
 }
 
-impl Display for Snowflake {
+impl<T> Clone for Snowflake<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for Snowflake<T> {}
+
+impl<T> PartialEq for Snowflake<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl<T> Eq for Snowflake<T> {}
+
+impl<T> Hash for Snowflake<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+    }
+}
+
+impl<T> Display for Snowflake<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.value.fmt(f)
     }
 }
 
-impl FromStr for Snowflake {
+impl<T> FromStr for Snowflake<T> {
     type Err = ParseIntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -80,14 +106,14 @@ impl FromStr for Snowflake {
 }
 
 // implement serialization as a i64
-impl Serialize for Snowflake {
+impl<T> Serialize for Snowflake<T> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.value.to_string().serialize(serializer)
     }
 }
 
 // implement deserialization from a i64
-impl<'de> Deserialize<'de> for Snowflake {
+impl<'de, T> Deserialize<'de> for Snowflake<T> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = String::deserialize(deserializer)?
             .parse()

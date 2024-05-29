@@ -56,11 +56,11 @@ pub struct UserRecord {
     pub last_presence: i16,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, Builder)]
+#[derive(Serialize, Deserialize, Debug, Hash, Clone, Builder)]
 #[builder(setter(into), build_fn(error = "BuilderError"))]
 pub struct User {
     /// The snowflake belonging to this user.
-    id: Snowflake,
+    id: Snowflake<User>,
     /// A user's username. This is unique to the user.
     username: String,
     /// A user's displayname.
@@ -97,7 +97,7 @@ impl User {
     }
 
     /// The snowflake belonging to this user.
-    pub fn id(&self) -> Snowflake {
+    pub fn id(&self) -> Snowflake<User> {
         self.id
     }
 
@@ -185,7 +185,7 @@ impl User {
     /// ## Locks
     ///
     /// * `app().db` (read)
-    pub async fn fetch(app: SharedState, id: impl Into<Snowflake>) -> Option<Self> {
+    pub async fn fetch(app: SharedState, id: impl Into<Snowflake<User>>) -> Option<Self> {
         let id_i64: i64 = id.into().into();
         let row = sqlx::query_as!(
             UserRecord,
@@ -206,7 +206,7 @@ impl User {
     /// ## Locks
     ///
     /// * `app().db` (read)
-    pub async fn fetch_presence(app: SharedState, user: impl Into<Snowflake>) -> Option<Presence> {
+    pub async fn fetch_presence(app: SharedState, user: impl Into<Snowflake<User>>) -> Option<Presence> {
         let id_i64: i64 = user.into().into();
         let row = sqlx::query!(
             "SELECT last_presence
@@ -299,13 +299,13 @@ impl User {
     }
 }
 
-impl From<User> for Snowflake {
+impl From<User> for Snowflake<User> {
     fn from(user: User) -> Self {
         user.id()
     }
 }
 
-impl From<&User> for Snowflake {
+impl From<&User> for Snowflake<User> {
     fn from(user: &User) -> Self {
         user.id()
     }

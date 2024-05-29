@@ -99,7 +99,7 @@ async fn create_guild(
 ///
 /// POST `/guilds/{guild_id}/channels`
 async fn create_channel(
-    Path(guild_id): Path<Snowflake>,
+    Path(guild_id): Path<Snowflake<Guild>>,
     State(app): State<SharedState>,
     token: Token,
     Json(payload): Json<CreateChannel>,
@@ -140,7 +140,7 @@ async fn create_channel(
 ///
 /// GET `/guilds/{guild_id}`
 async fn fetch_guild(
-    Path(guild_id): Path<Snowflake>,
+    Path(guild_id): Path<Snowflake<Guild>>,
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<Json<Guild>, RESTError> {
@@ -166,7 +166,7 @@ async fn fetch_guild(
 ///
 /// DELETE `/guilds/{guild_id}`
 async fn delete_guild(
-    Path(guild_id): Path<Snowflake>,
+    Path(guild_id): Path<Snowflake<Guild>>,
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<StatusCode, RESTError> {
@@ -200,8 +200,8 @@ async fn delete_guild(
 ///
 /// GET `/guilds/{guild_id}/members/{member_id}`
 async fn fetch_member(
-    Path(guild_id): Path<Snowflake>,
-    Path(member_id): Path<Snowflake>,
+    Path(guild_id): Path<Snowflake<Guild>>,
+    Path(member_id): Path<Snowflake<User>>,
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<Json<Member>, RESTError> {
@@ -232,7 +232,7 @@ async fn fetch_member(
 ///
 /// GET `/guilds/{guild_id}/members/@self`
 async fn fetch_member_self(
-    Path(guild_id): Path<Snowflake>,
+    Path(guild_id): Path<Snowflake<Guild>>,
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<Json<Member>, RESTError> {
@@ -263,7 +263,7 @@ async fn fetch_member_self(
 ///
 /// POST `/guilds/{guild_id}/members`
 async fn create_member(
-    Path(guild_id): Path<Snowflake>,
+    Path(guild_id): Path<Snowflake<Guild>>,
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<(StatusCode, Json<Member>), RESTError> {
@@ -313,7 +313,7 @@ async fn create_member(
 ///
 /// DELETE `/guilds/{guild_id}/members/@self`
 async fn leave_guild(
-    Path(guild_id): Path<Snowflake>,
+    Path(guild_id): Path<Snowflake<Guild>>,
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<StatusCode, RESTError> {

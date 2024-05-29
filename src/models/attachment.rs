@@ -2,8 +2,9 @@ use std::sync::OnceLock;
 
 use super::{
     appstate::SharedState,
+    channel::Channel,
     errors::{AppError, BuilderError, RESTError},
-    message::ExtendedMessageRecord,
+    message::{ExtendedMessageRecord, Message},
 };
 use axum::extract::multipart::Field;
 use bytes::Bytes;
@@ -29,9 +30,9 @@ pub trait AttachmentLike {
     /// The name of the attachment file, including the file extension.
     fn filename(&self) -> &String;
     /// The ID of the message this attachment belongs to.
-    fn message_id(&self) -> Snowflake;
+    fn message_id(&self) -> Snowflake<Message>;
     /// The ID of the channel the message was sent to.
-    fn channel_id(&self) -> Snowflake;
+    fn channel_id(&self) -> Snowflake<Channel>;
     /// The MIME-type of the file.
     fn mime(&self) -> Mime;
     /// The path to the attachment in S3.
@@ -71,10 +72,10 @@ pub struct FullAttachment {
     content_type: String,
     /// The ID of the message this attachment belongs to.
     #[serde(skip)]
-    message_id: Snowflake,
+    message_id: Snowflake<Message>,
     /// The ID of the channel the message was sent to.
     #[serde(skip)]
-    channel_id: Snowflake,
+    channel_id: Snowflake<Channel>,
 }
 
 impl FullAttachment {
@@ -84,8 +85,8 @@ impl FullAttachment {
         filename: String,
         content: impl Into<Bytes>,
         content_type: String,
-        channel: impl Into<Snowflake>,
-        message: impl Into<Snowflake>,
+        channel: impl Into<Snowflake<Channel>>,
+        message: impl Into<Snowflake<Message>>,
     ) -> Self {
         Self {
             id,
@@ -120,8 +121,8 @@ impl FullAttachment {
     /// * [`RESTError::App`] - If the field contents could not be read.
     pub async fn try_from_field(
         field: Field<'_>,
-        channel: impl Into<Snowflake>,
-        message: impl Into<Snowflake>,
+        channel: impl Into<Snowflake<Channel>>,
+        message: impl Into<Snowflake<Message>>,
     ) -> Result<Self, RESTError> {
         let mut builder = FullAttachment::builder();
 
@@ -227,11 +228,11 @@ impl AttachmentLike for FullAttachment {
         &self.filename
     }
 
-    fn channel_id(&self) -> Snowflake {
+    fn channel_id(&self) -> Snowflake<Channel> {
         self.channel_id
     }
 
-    fn message_id(&self) -> Snowflake {
+    fn message_id(&self) -> Snowflake<Message> {
         self.message_id
     }
 
@@ -260,10 +261,10 @@ pub struct PartialAttachment {
     content_type: String,
     /// The ID of the message this attachment belongs to.
     #[serde(skip)]
-    message_id: Snowflake,
+    message_id: Snowflake<Message>,
     /// The ID of the channel the message was sent to.
     #[serde(skip)]
-    channel_id: Snowflake,
+    channel_id: Snowflake<Channel>,
 }
 
 impl PartialAttachment {
@@ -272,8 +273,8 @@ impl PartialAttachment {
         id: u8,
         filename: String,
         content_type: String,
-        channel: impl Into<Snowflake>,
-        message: impl Into<Snowflake>,
+        channel: impl Into<Snowflake<Channel>>,
+        message: impl Into<Snowflake<Message>>,
     ) -> Self {
         Self {
             id,
@@ -312,7 +313,11 @@ impl PartialAttachment {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the SQL query fails.
-    pub async fn fetch(app: SharedState, id: u8, message: impl Into<Snowflake>) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn fetch(
+        app: SharedState,
+        id: u8,
+        message: impl Into<Snowflake<Message>>,
+    ) -> Result<Option<Self>, sqlx::Error> {
         let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
@@ -337,7 +342,7 @@ impl PartialAttachment {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the SQL query fails.
-    pub async fn fetch_all(app: SharedState, message: impl Into<Snowflake>) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn fetch_all(app: SharedState, message: impl Into<Snowflake<Message>>) -> Result<Vec<Self>, sqlx::Error> {
         let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
@@ -410,11 +415,11 @@ impl AttachmentLike for PartialAttachment {
         &self.filename
     }
 
-    fn channel_id(&self) -> Snowflake {
+    fn channel_id(&self) -> Snowflake<Channel> {
         self.channel_id
     }
 
-    fn message_id(&self) -> Snowflake {
+    fn message_id(&self) -> Snowflake<Message> {
         self.message_id
     }
 

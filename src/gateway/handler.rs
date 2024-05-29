@@ -142,7 +142,7 @@ impl Serialize for GatewayCloseCode {
 struct ConnectionHandle {
     sender: mpsc::UnboundedSender<GatewayResponse>,
     broadcaster: Arc<broadcast::Sender<GatewayMessage>>,
-    guild_ids: HashSet<Snowflake>,
+    guild_ids: HashSet<Snowflake<Guild>>,
 }
 
 impl ConnectionHandle {
@@ -155,7 +155,7 @@ impl ConnectionHandle {
     pub fn new(
         sender: mpsc::UnboundedSender<GatewayResponse>,
         receiver: Arc<broadcast::Sender<GatewayMessage>>,
-        guilds: HashSet<Snowflake>,
+        guilds: HashSet<Snowflake<Guild>>,
     ) -> Self {
         ConnectionHandle {
             sender,
@@ -192,12 +192,12 @@ impl ConnectionHandle {
     }
 
     /// Get the guilds the user is a member of
-    pub fn guild_ids(&self) -> &HashSet<Snowflake> {
+    pub fn guild_ids(&self) -> &HashSet<Snowflake<Guild>> {
         &self.guild_ids
     }
 
     /// Get a mutable handle to the guilds the user is a member of
-    pub fn guild_ids_mut(&mut self) -> &mut HashSet<Snowflake> {
+    pub fn guild_ids_mut(&mut self) -> &mut HashSet<Snowflake<Guild>> {
         &mut self.guild_ids
     }
 }
@@ -205,9 +205,8 @@ impl ConnectionHandle {
 /// A singleton representing the gateway state
 #[derive(Debug, Clone)]
 pub struct Gateway {
-    /// A map of currently connected users
-    /// The key is the user's ID
-    peers: DashMap<Snowflake, ConnectionHandle>,
+    /// A map of currently connected users and their connection handles
+    peers: DashMap<Snowflake<User>, ConnectionHandle>,
 }
 
 impl Gateway {
@@ -225,7 +224,7 @@ impl Gateway {
     /// ## Locks
     ///
     /// * `peers` (write)
-    fn add_handle(&self, user_id: Snowflake, handle: ConnectionHandle) {
+    fn add_handle(&self, user_id: Snowflake<User>, handle: ConnectionHandle) {
         self.peers.insert(user_id, handle);
     }
 
@@ -238,7 +237,7 @@ impl Gateway {
     /// ## Locks
     ///
     /// * `peers` (write)
-    fn remove_handle(&self, user_id: Snowflake) {
+    fn remove_handle(&self, user_id: Snowflake<User>) {
         self.peers.remove(&user_id);
     }
 
@@ -255,7 +254,7 @@ impl Gateway {
         tracing::debug!("Dispatching event: {:?}", event);
 
         // TODO: Figure out how to use the `HashMap::retain` method here without killing borrowck
-        let mut to_drop: Vec<Snowflake> = Vec::new();
+        let mut to_drop: Vec<Snowflake<User>> = Vec::new();
 
         // Avoid cloning the event for each user
         let event: Arc<GatewayEvent> = Arc::new(event);
@@ -286,7 +285,7 @@ impl Gateway {
         }
     }
 
-    pub fn drop_session(&self, user_id: Snowflake, code: GatewayCloseCode, reason: String) {
+    pub fn drop_session(&self, user_id: Snowflake<User>, code: GatewayCloseCode, reason: String) {
         if let Some(handle) = self.peers.get(&user_id) {
             handle.close(code, reason).ok();
         }
@@ -302,7 +301,7 @@ impl Gateway {
     /// ## Locks
     ///
     /// * `peers` (write)
-    pub fn add_member(&self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
+    pub fn add_member(&self, user: impl Into<Snowflake<User>>, guild: impl Into<Snowflake<Guild>>) {
         if let Some(mut handle) = self.peers.get_mut(&user.into()) {
             handle.guild_ids_mut().insert(guild.into());
         }
@@ -318,7 +317,7 @@ impl Gateway {
     /// ## Locks
     ///
     /// * `peers` (write)
-    pub fn remove_member(&self, user: impl Into<Snowflake>, guild: impl Into<Snowflake>) {
+    pub fn remove_member(&self, user: impl Into<Snowflake<User>>, guild: impl Into<Snowflake<Guild>>) {
         if let Some(mut handle) = self.peers.get_mut(&user.into()) {
             handle.guild_ids_mut().remove(&guild.into());
         }
@@ -334,8 +333,8 @@ impl Gateway {
     /// ## Locks
     ///
     /// * `peers` (write)
-    pub fn send_to(&self, user: impl Into<Snowflake>, event: GatewayEvent) {
-        let user_id: Snowflake = user.into();
+    pub fn send_to(&self, user: impl Into<Snowflake<User>>, event: GatewayEvent) {
+        let user_id: Snowflake<User> = user.into();
         if let Some(handle) = self.peers.get(&user_id) {
             if let Err(_disconnected) = handle.send(Arc::new(event)) {
                 // Drop handle to prevent deadlock
@@ -359,7 +358,7 @@ impl Gateway {
     /// ## Locks
     ///
     /// * `peers` (read)
-    pub fn is_connected(&self, user: impl Into<Snowflake>) -> bool {
+    pub fn is_connected(&self, user: impl Into<Snowflake<User>>) -> bool {
         self.peers.contains_key(&user.into())
     }
 
@@ -377,7 +376,7 @@ impl Gateway {
     /// ## Locks
     ///
     /// * `peers` (read)
-    pub fn shares_guilds_with(&self, a: Snowflake, b: Snowflake) -> bool {
+    pub fn shares_guilds_with(&self, a: Snowflake<User>, b: Snowflake<User>) -> bool {
         if let Some(a_handle) = self.peers.get(&a) {
             if let Some(b_handle) = self.peers.get(&b) {
                 return a_handle.guild_ids().intersection(b_handle.guild_ids()).next().is_some();
@@ -515,7 +514,7 @@ async fn handle_handshake(
 /// * `app` - The shared application state
 /// * `heartbeat_interval` - The interval at which heartbeats should be received from the user
 /// * `user_id` - The ID of the user to receive heartbeats from
-async fn handle_heartbeating(app: SharedState, user_id: Snowflake, heartbeat_interval: Duration) {
+async fn handle_heartbeating(app: SharedState, user_id: Snowflake<User>, heartbeat_interval: Duration) {
     loop {
         let Some(mut recv) = app.gateway.peers.get(&user_id).map(|h| h.get_receiver()) else {
             return;
@@ -606,7 +605,7 @@ async fn send_ready(
 /// * `receiver` - The receiver for incoming gateway responses to send
 /// * `ws_sink` - The sink for sending messages to the user
 async fn send_events(
-    user_id: Snowflake,
+    user_id: Snowflake<User>,
     mut receiver: UnboundedReceiverStream<GatewayResponse>,
     ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>,
 ) {
@@ -634,7 +633,7 @@ async fn send_events(
 /// * `ws_stream` - The stream for receiving messages from the user
 /// * `ws_sink` - The sink for sending messages to the user
 async fn receive_events(
-    user_id: Snowflake,
+    user_id: Snowflake<User>,
     mut ws_stream: SplitStream<WebSocket>,
     ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>,
     broadcaster: Arc<broadcast::Sender<GatewayMessage>>,
@@ -707,7 +706,7 @@ async fn handle_connection(app: SharedState, socket: WebSocket) {
         .expect("Failed to fetch guilds during socket connection handling")
         .into_iter()
         .map(|row| row.guild_id.into())
-        .collect::<HashSet<Snowflake>>();
+        .collect::<HashSet<Snowflake<Guild>>>();
 
     // Add user to peermap
     app.gateway.add_handle(

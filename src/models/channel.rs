@@ -2,15 +2,17 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
 
-use super::{appstate::SharedState, errors::AppError, message::ExtendedMessageRecord, requests::CreateChannel};
+use super::{
+    appstate::SharedState, errors::AppError, guild::Guild, message::ExtendedMessageRecord, requests::CreateChannel,
+};
 use super::{message::Message, snowflake::Snowflake};
 
 #[enum_dispatch(Channel)]
 pub trait ChannelLike {
     /// The Snowflake ID of a channel.
-    fn id(&self) -> Snowflake;
+    fn id(&self) -> Snowflake<Channel>;
     /// The Snowflake ID of the guild this channel belongs to.
-    fn guild_id(&self) -> Snowflake;
+    fn guild_id(&self) -> Snowflake<Guild>;
     /// The name of the channel.
     fn name(&self) -> &str;
     /// The name of the channel.
@@ -49,7 +51,7 @@ impl Channel {
         }
     }
 
-    pub async fn fetch(app: SharedState, id: Snowflake) -> Option<Self> {
+    pub async fn fetch(app: SharedState, id: Snowflake<Channel>) -> Option<Self> {
         let id_64: i64 = id.into();
 
         let record = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE id = $1", id_64)
@@ -60,7 +62,7 @@ impl Channel {
         Some(Self::from_record(record))
     }
 
-    pub async fn from_payload(app: SharedState, payload: CreateChannel, guild_id: Snowflake) -> Self {
+    pub async fn from_payload(app: SharedState, payload: CreateChannel, guild_id: Snowflake<Guild>) -> Self {
         match payload {
             CreateChannel::GuildText { name } => {
                 Self::GuildText(TextChannel::new(Snowflake::gen_new(app), guild_id, name))
@@ -71,13 +73,13 @@ impl Channel {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TextChannel {
-    id: Snowflake,
-    guild_id: Snowflake,
+    id: Snowflake<Channel>,
+    guild_id: Snowflake<Guild>,
     name: String,
 }
 
 impl TextChannel {
-    pub fn new(id: Snowflake, guild: impl Into<Snowflake>, name: String) -> Self {
+    pub fn new(id: Snowflake<Channel>, guild: impl Into<Snowflake<Guild>>, name: String) -> Self {
         Self {
             id,
             guild_id: guild.into(),
@@ -103,8 +105,8 @@ impl TextChannel {
         &self,
         app: SharedState,
         limit: Option<u32>,
-        before: Option<Snowflake>,
-        after: Option<Snowflake>,
+        before: Option<Snowflake<Message>>,
+        after: Option<Snowflake<Message>>,
     ) -> Result<Vec<Message>, sqlx::Error> {
         let limit = limit.unwrap_or(50).min(100);
 
@@ -149,11 +151,11 @@ impl TextChannel {
 }
 
 impl ChannelLike for TextChannel {
-    fn id(&self) -> Snowflake {
+    fn id(&self) -> Snowflake<Channel> {
         self.id
     }
 
-    fn guild_id(&self) -> Snowflake {
+    fn guild_id(&self) -> Snowflake<Guild> {
         self.guild_id
     }
 
@@ -210,37 +212,37 @@ impl ChannelLike for TextChannel {
     }
 }
 
-impl From<Channel> for Snowflake {
+impl From<Channel> for Snowflake<Channel> {
     fn from(channel: Channel) -> Self {
         channel.id()
     }
 }
 
-impl From<TextChannel> for Snowflake {
+impl From<TextChannel> for Snowflake<Channel> {
     fn from(channel: TextChannel) -> Self {
         channel.id()
     }
 }
 
-impl From<&Channel> for Snowflake {
+impl From<&Channel> for Snowflake<Channel> {
     fn from(channel: &Channel) -> Self {
         channel.id()
     }
 }
 
-impl From<&TextChannel> for Snowflake {
+impl From<&TextChannel> for Snowflake<Channel> {
     fn from(channel: &TextChannel) -> Self {
         channel.id()
     }
 }
 
-impl From<&mut Channel> for Snowflake {
+impl From<&mut Channel> for Snowflake<Channel> {
     fn from(channel: &mut Channel) -> Self {
         channel.id()
     }
 }
 
-impl From<&mut TextChannel> for Snowflake {
+impl From<&mut TextChannel> for Snowflake<Channel> {
     fn from(channel: &mut TextChannel) -> Self {
         channel.id()
     }

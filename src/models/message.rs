@@ -7,6 +7,7 @@ use slice_group_by::GroupBy;
 use super::{
     appstate::SharedState,
     attachment::{Attachment, AttachmentLike, FullAttachment},
+    channel::Channel,
     errors::{AppError, BuilderError, RESTError},
     member::UserLike,
     requests::CreateMessage,
@@ -41,10 +42,10 @@ pub struct ExtendedMessageRecord {
 #[builder(setter(into), build_fn(validate = "Self::validate", error = "BuilderError"))]
 pub struct Message {
     /// The id of the message.
-    id: Snowflake,
+    id: Snowflake<Message>,
 
     /// The id of the channel this message was sent in.
-    channel_id: Snowflake,
+    channel_id: Snowflake<Channel>,
 
     /// The author of the message. This may be none if the author has been deleted since.
     #[builder(setter(strip_option))]
@@ -132,11 +133,11 @@ impl Message {
     pub async fn from_formdata(
         app: SharedState,
         author: UserLike,
-        channel: impl Into<Snowflake>,
+        channel: impl Into<Snowflake<Channel>>,
         mut form: Multipart,
     ) -> Result<Self, RESTError> {
         let id = Snowflake::gen_new(app);
-        let channel_id: Snowflake = channel.into();
+        let channel_id: Snowflake<Channel> = channel.into();
         let mut attachments: Vec<Attachment> = Vec::new();
         let mut builder = Message::builder();
 
@@ -181,7 +182,7 @@ impl Message {
     }
 
     /// The unique ID of this message.
-    pub fn id(&self) -> Snowflake {
+    pub fn id(&self) -> Snowflake<Message> {
         self.id
     }
 
@@ -203,7 +204,7 @@ impl Message {
     /// ## Locks
     ///
     /// * `app().db` (read)
-    pub async fn fetch(app: SharedState, message: impl Into<Snowflake>) -> Option<Self> {
+    pub async fn fetch(app: SharedState, message: impl Into<Snowflake<Message>>) -> Option<Self> {
         let id_i64: i64 = message.into().into();
 
         // SAFETY: Must use `query_as_unchecked` because `ExtendedMessageRecord`
@@ -262,13 +263,13 @@ impl Message {
     }
 }
 
-impl From<Message> for Snowflake {
+impl From<Message> for Snowflake<Message> {
     fn from(message: Message) -> Self {
         message.id()
     }
 }
 
-impl From<&Message> for Snowflake {
+impl From<&Message> for Snowflake<Message> {
     fn from(message: &Message) -> Self {
         message.id()
     }
