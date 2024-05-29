@@ -9,7 +9,13 @@ x-minio-common: &minio-common
     MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?err}
   healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    test:
+      [
+        "CMD",
+        "curl",
+        "-f",
+        "http://localhost:9000/minio/health/live"
+      ]
     interval: 30s
     timeout: 20s
     retries: 3
@@ -27,9 +33,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?err}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      
+
     volumes:
-     - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - private
 
@@ -40,7 +46,7 @@ services:
     volumes:
       - minio_data1-1:/minio_data1
       - minio_data1-2:/minio_data2
-  
+
   minio2:
     <<: *minio-common
     hostname: minio2
@@ -90,14 +96,13 @@ services:
               /usr/bin/mc mb s3-local/$$bucket --region "vault";
               /usr/bin/mc anonymous set download s3-local/$$bucket;
           fi;
-      done;
-      '
+      done; '
 
   backend:
     build:
-        dockerfile: Dockerfile
-        args:
-          - BUILD_TYPE=${BUILD_TYPE:-release}
+      dockerfile: Dockerfile
+      args:
+        - BUILD_TYPE=${BUILD_TYPE:-release}
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?err}@db:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-chat}
       SQLX_OFFLINE: true # DB is not running when building the image

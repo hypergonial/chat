@@ -56,7 +56,7 @@ enum GatewayRequest {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum GatewayCloseCode {
+pub enum GatewayCloseCode {
     /// Successful operation / regular socket shutdown
     Normal = 1000,
     /// Client is leaving (browser tab closing)
@@ -211,6 +211,33 @@ impl Gateway {
         Gateway { peers: DashMap::new() }
     }
 
+    /// Add a new connection handle to the gateway state
+    ///
+    /// ## Arguments
+    ///
+    /// * `user_id` - The ID of the user to add
+    /// * `handle` - The connection handle to add
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (write)
+    fn add_handle(&self, user_id: Snowflake, handle: ConnectionHandle) {
+        self.peers.insert(user_id, handle);
+    }
+
+    /// Remove a connection handle from the gateway state
+    ///
+    /// ## Arguments
+    ///
+    /// * `user_id` - The ID of the user to remove
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (write)
+    fn remove_handle(&self, user_id: Snowflake) {
+        self.peers.remove(&user_id);
+    }
+
     /// Dispatch a new event originating from the given user to all other users
     ///
     /// ## Arguments
@@ -251,7 +278,13 @@ impl Gateway {
         }
 
         for uid in to_drop {
-            self.peers.remove(&uid);
+            self.remove_handle(uid);
+        }
+    }
+
+    pub fn drop_session(&self, user_id: Snowflake, code: GatewayCloseCode, reason: String) {
+        if let Some(handle) = self.peers.get(&user_id) {
+            handle.close(code, reason).ok();
         }
     }
 
@@ -304,7 +337,7 @@ impl Gateway {
                 // Drop handle to prevent deadlock
                 std::mem::drop(handle);
                 tracing::warn!("Error sending event to user: {}", user_id);
-                self.peers.remove(&user_id);
+                self.remove_handle(user_id);
             }
         }
     }
@@ -453,6 +486,14 @@ async fn handle_handshake(
     Ok(user)
 }
 
+// FIXME
+// the heartbeating system holds a reference to the handle
+// therefore nobody can get a mutable reference to any handle until the heartbeating system can get cancelled
+// which can only get cancelled at an await point
+// aka the next heartbeat cycle
+// so the connection deadass stalls until the next heartbeat cycle
+// at which point the heartbeat loop is finally cancelled by tokio, the lock is dropped, the handle is removed, and your connection is finally dropped
+
 /// Handle the heartbeat mechanism for a given user
 ///
 /// This function will only return if the user failed to send a valid heartbeat within the timeframe
@@ -463,12 +504,10 @@ async fn handle_handshake(
 /// * `heartbeat_interval` - The interval at which heartbeats should be received from the user
 /// * `user_id` - The ID of the user to receive heartbeats from
 async fn handle_heartbeating(app: SharedState, user_id: Snowflake, heartbeat_interval: Duration) {
-    let Some(handle) = app.gateway.peers.get(&user_id) else {
-        return;
-    };
-
     loop {
-        let mut recv = handle.get_receiver();
+        let Some(mut recv) = app.gateway.peers.get(&user_id).map(|h| h.get_receiver()) else {
+            return;
+        };
         let sleep_task = tokio::spawn(tokio::time::sleep(heartbeat_interval + Duration::from_secs(5)));
         // Wait for a single heartbeat message
         let heartbeat_task = tokio::spawn(async move {
@@ -493,11 +532,11 @@ async fn handle_heartbeating(app: SharedState, user_id: Snowflake, heartbeat_int
                 _ => "Unknown error".into(),
             };
 
-            handle.close(close_code, reason).ok();
+            app.gateway.drop_session(user_id, close_code, reason);
             break;
         }
 
-        handle.send(Arc::new(GatewayEvent::HeartbeatAck)).ok();
+        app.gateway.send_to(user_id, GatewayEvent::HeartbeatAck);
     }
 }
 
@@ -676,7 +715,7 @@ async fn handle_connection(app: SharedState, socket: WebSocket) {
         .collect::<HashSet<Snowflake>>();
 
     // Add user to peermap
-    app.gateway.peers.insert(
+    app.gateway.add_handle(
         user.id(),
         ConnectionHandle::new(sender, broadcaster.clone(), guild_ids.clone()),
     );
@@ -707,7 +746,7 @@ async fn handle_connection(app: SharedState, socket: WebSocket) {
     send_ready.abort();
 
     // Disconnection logic
-    app.gateway.peers.remove(&user.id());
+    app.gateway.remove_handle(user.id());
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 
     // Refetch presence in case it changed
