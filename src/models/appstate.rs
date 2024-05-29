@@ -81,6 +81,7 @@ impl ApplicationState {
 
     /// Closes the application and cleans up resources.
     pub async fn close(&self) {
+        self.gateway.close();
         self.db.close().await;
     }
 }

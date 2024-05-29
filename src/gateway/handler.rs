@@ -69,7 +69,7 @@ enum GatewayRequest {
 pub enum GatewayCloseCode {
     /// Successful operation / regular socket shutdown
     Normal = 1000,
-    /// Client is leaving (browser tab closing)
+    /// Client/Server is leaving (browser tab closing, server shutting down, etc.)
     GoingAway = 1001,
     /// Endpoint received a malformed frame
     ProtocolError = 1002,
@@ -298,10 +298,30 @@ impl Gateway {
         }
     }
 
+    /// Drop a user session with the given code and reason
+    ///
+    /// ## Arguments
+    ///
+    /// * `user_id` - The ID of the user to drop
+    /// * `code` - The close code to send
+    /// * `reason` - The reason for closing the connection
+    ///
+    /// ## Locks
+    ///
+    /// * `peers` (write)
     pub fn drop_session(&self, user_id: Snowflake<User>, code: GatewayCloseCode, reason: String) {
         if let Some(handle) = self.peers.get(&user_id) {
             handle.close(code, reason).ok();
         }
+    }
+
+    pub fn close(&self) {
+        for handle in &self.peers {
+            handle
+                .close(GatewayCloseCode::GoingAway, "Server shutting down".into())
+                .ok();
+        }
+        self.peers.clear();
     }
 
     /// Registers a new guild member instance to an existing connection
@@ -624,21 +644,22 @@ async fn send_events(
     user_id: Snowflake<User>,
     mut receiver: UnboundedReceiverStream<GatewayResponse>,
     ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>,
-) {
+) -> Result<GatewayCloseCode, axum::Error> {
     while let Some(payload) = receiver.next().await {
         match payload {
             GatewayResponse::Close(code, reason) => {
                 send_close_frame(&mut *ws_sink.lock().await, code, reason).await.ok();
-                break;
+                return Ok(code);
             }
             GatewayResponse::Event(event) => {
                 if let Err(e) = send_serializable(&mut *ws_sink.lock().await, event).await {
                     tracing::warn!("Error sending event to user {}: {}", user_id, e);
-                    break;
+                    return Err(e);
                 }
             }
         }
     }
+    Ok(GatewayCloseCode::Normal)
 }
 
 /// Parse & forward events received through the socket to the `ConnectionHandle` sender
@@ -752,13 +773,18 @@ async fn handle_connection(app: SharedState, socket: WebSocket) {
         Duration::from_millis(HEARTBEAT_INTERVAL),
     ));
 
-    tokio::select! {
-        _ = send_events => {},
-        _ = receive_events => {},
-        _ = handle_heartbeat => {},
-    }
+    let is_server_shutting_down: bool = tokio::select! {
+        res = send_events => { matches!(res, Ok(Ok(GatewayCloseCode::GoingAway))) },
+        _ = receive_events => { false },
+        _ = handle_heartbeat => { false },
+    };
 
     send_ready.abort();
+
+    // If we're shutting down, don't spam out presence updates
+    if is_server_shutting_down {
+        return;
+    }
 
     // Disconnection logic
     app.gateway.remove_handle(user.id());
