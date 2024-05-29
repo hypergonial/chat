@@ -13,8 +13,7 @@ use crate::models::{
     channel::{Channel, ChannelLike},
     errors::RESTError,
     gateway_event::GatewayEvent,
-    guild::Guild,
-    member::{Member, UserLike},
+    member::UserLike,
     message::Message,
     snowflake::Snowflake,
 };
@@ -59,14 +58,19 @@ async fn fetch_channel(
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<Json<Channel>, RESTError> {
-    let channel = Channel::fetch(app.clone(), channel_id)
+    let channel = app
+        .db
+        .channels()
+        .fetch_channel(channel_id)
         .await
         .ok_or(RESTError::NotFound(
             "Channel does not exist or is not available.".to_string(),
         ))?;
 
     // Check if the user is in the channel's guild
-    Member::fetch(app, token.data().user_id(), channel.guild_id())
+    app.db
+        .guilds()
+        .fetch_member(token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".to_string()))?;
 
@@ -96,14 +100,20 @@ async fn delete_channel(
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<StatusCode, RESTError> {
-    let mut channel = Channel::fetch(app.clone(), channel_id)
+    let channel = app
+        .db
+        .channels()
+        .fetch_channel(channel_id)
         .await
         .ok_or(RESTError::NotFound(
             "Channel does not exist or is not available.".into(),
         ))?;
 
     // Check guild owner_id
-    let guild = Guild::fetch(app.clone(), channel.guild_id())
+    let guild = app
+        .db
+        .guilds()
+        .fetch_guild(channel.guild_id())
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
 
@@ -111,9 +121,9 @@ async fn delete_channel(
         return Err(RESTError::NotFound("Not permitted to delete channel.".into()));
     }
 
-    channel.delete(app.clone()).await?;
+    app.db.channels().delete_channel(&channel).await?;
 
-    app.gateway.dispatch(GatewayEvent::ChannelRemove(channel.clone()));
+    app.gateway.dispatch(GatewayEvent::ChannelRemove(channel));
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -142,19 +152,25 @@ async fn create_message(
     token: Token,
     payload: Multipart,
 ) -> Result<(StatusCode, Json<Message>), RESTError> {
-    let channel = Channel::fetch(app.clone(), channel_id)
+    let channel = app
+        .db
+        .channels()
+        .fetch_channel(channel_id)
         .await
         .ok_or(RESTError::NotFound(
             "Channel does not exist or is not available.".into(),
         ))?;
 
-    let member = Member::fetch(app.clone(), token.data().user_id(), channel.guild_id())
+    let member = app
+        .db
+        .guilds()
+        .fetch_member(token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to access resource.".into()))?;
 
-    let message = Message::from_formdata(app.clone(), UserLike::Member(member), channel_id, payload).await?;
+    let message = Message::from_formdata(&app.config, UserLike::Member(member), channel_id, payload).await?;
 
-    message.commit(app.clone()).await?;
+    app.db.messages().update_message(&message).await?;
 
     let message = message.strip_attachment_contents();
     let reply = Json(message.clone());
@@ -184,22 +200,26 @@ async fn fetch_messages(
     token: Token,
     Query(query): Query<FetchMessagesQuery>,
 ) -> Result<(StatusCode, Json<Vec<Message>>), RESTError> {
-    let channel = Channel::fetch(app.clone(), channel_id)
+    let channel = app
+        .db
+        .channels()
+        .fetch_channel(channel_id)
         .await
         .ok_or(RESTError::NotFound(
             "Channel does not exist or is not available.".into(),
         ))?;
 
     // Check if the user is in the channel's guild
-    Member::fetch(app.clone(), token.data().user_id(), channel.guild_id())
+    app.db
+        .guilds()
+        .fetch_member(token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
-    // TODO: Match other channel types here
-    let Channel::GuildText(txtchannel) = channel;
-
-    let messages = txtchannel
-        .fetch_messages(app, query.limit, query.before, query.after)
+    let messages = app
+        .db
+        .channels()
+        .fetch_messages_from(channel_id, query.limit, query.before, query.after)
         .await?;
 
     Ok((StatusCode::OK, Json(messages)))

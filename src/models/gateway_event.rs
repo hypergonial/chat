@@ -1,9 +1,8 @@
-use futures::future;
 use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    appstate::SharedState,
+    appstate::ApplicationState,
     channel::{Channel, ChannelLike},
     guild::Guild,
     member::{Member, UserLike},
@@ -53,8 +52,6 @@ pub enum GatewayEvent {
 impl EventLike for GatewayEvent {
     fn extract_guild_id(&self) -> Option<Snowflake<Guild>> {
         match self {
-            Self::Hello(_) => None,
-            Self::HeartbeatAck => None,
             Self::MessageCreate(message) => message.extract_guild_id(),
             Self::MemberCreate(member) => member.extract_guild_id(),
             Self::MemberRemove(payload) => payload.extract_guild_id(),
@@ -62,16 +59,16 @@ impl EventLike for GatewayEvent {
             Self::GuildRemove(payload) => payload.extract_guild_id(),
             Self::ChannelCreate(channel) => channel.extract_guild_id(),
             Self::ChannelRemove(payload) => payload.extract_guild_id(),
-            Self::PresenceUpdate(_) => None,
-            Self::Ready(_) => None,
-            Self::InvalidSession(_) => None,
+            Self::PresenceUpdate(_)
+            | Self::Hello(_)
+            | Self::Ready(_)
+            | Self::InvalidSession(_)
+            | Self::HeartbeatAck => None,
         }
     }
 
     fn extract_user_id(&self) -> Option<Snowflake<User>> {
         match self {
-            Self::Hello(_) => None,
-            Self::HeartbeatAck => None,
             Self::MessageCreate(message) => message.extract_user_id(),
             Self::MemberCreate(member) => member.extract_user_id(),
             Self::MemberRemove(payload) => payload.extract_user_id(),
@@ -81,7 +78,7 @@ impl EventLike for GatewayEvent {
             Self::ChannelRemove(payload) => payload.extract_user_id(),
             Self::PresenceUpdate(payload) => Some(payload.user_id),
             Self::Ready(payload) => payload.extract_user_id(),
-            Self::InvalidSession(_) => None,
+            Self::InvalidSession(_) | Self::HeartbeatAck | Self::Hello(_) => None,
         }
     }
 }
@@ -141,13 +138,13 @@ pub struct HelloPayload {
 }
 
 impl HelloPayload {
-    pub fn new(heartbeat_interval: u64) -> Self {
+    pub const fn new(heartbeat_interval: u64) -> Self {
         Self { heartbeat_interval }
     }
 }
 
-/// A wrapper object around an ID with an optional guild_id to aid gateway event filtering.
-/// The guild_id field is not serialized and sent through the API.
+/// A wrapper object around an ID with an optional `guild_id` to aid gateway event filtering.
+/// The `guild_id` field is not serialized and sent through the API.
 #[derive(Debug, Clone, Serialize)]
 pub struct DeletePayload<T> {
     id: Snowflake<T>,
@@ -156,7 +153,7 @@ pub struct DeletePayload<T> {
 }
 
 impl<T> DeletePayload<T> {
-    pub fn new(id: Snowflake<T>, guild_id: Option<Snowflake<Guild>>) -> Self {
+    pub const fn new(id: Snowflake<T>, guild_id: Option<Snowflake<Guild>>) -> Self {
         Self { id, guild_id }
     }
 }
@@ -199,25 +196,21 @@ impl GuildCreatePayload {
 
     /// Create a new guild create payload by fetching all relevant data from the database.
     ///
-    /// ## Locks
-    ///
-    /// * `app().gateway` (read)
-    /// * `app().db` (read)
-    ///
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn from_guild(app: SharedState, guild: Guild) -> Result<Self, sqlx::Error> {
+    pub async fn from_guild(app: &ApplicationState, guild: Guild) -> Result<Self, sqlx::Error> {
         // Presences need to be included in the payload
-        let members = future::join_all(
-            guild
-                .fetch_members(app.clone())
-                .await?
-                .into_iter()
-                .map(|m| m.include_presence(app.clone())),
-        )
-        .await;
-        let channels = guild.fetch_channels(app).await?;
+        let members = app
+            .db
+            .guilds()
+            .fetch_members_for(&guild)
+            .await?
+            .into_iter()
+            .map(|m| m.include_presence(&app.gateway))
+            .collect();
+
+        let channels = app.db.guilds().fetch_channels_for(&guild).await?;
         Ok(Self::new(guild, members, channels))
     }
 }

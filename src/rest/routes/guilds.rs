@@ -5,10 +5,11 @@ use axum::{
     Json, Router,
 };
 
+use crate::models::gateway_event::GuildCreatePayload;
 use crate::models::{
     appstate::SharedState,
     auth::Token,
-    channel::{Channel, ChannelLike},
+    channel::Channel,
     errors::RESTError,
     gateway_event::{DeletePayload, GatewayEvent},
     guild::Guild,
@@ -17,7 +18,6 @@ use crate::models::{
     snowflake::Snowflake,
     user::User,
 };
-use crate::models::{channel::TextChannel, gateway_event::GuildCreatePayload};
 
 pub fn get_router() -> Router<SharedState> {
     Router::new()
@@ -54,26 +54,24 @@ async fn create_guild(
     State(app): State<SharedState>,
     Json(payload): Json<CreateGuild>,
 ) -> Result<(StatusCode, Json<Guild>), RESTError> {
-    let guild = Guild::from_payload(app.clone(), payload, token.data().user_id()).await;
-    guild.commit(app.clone()).await?;
-    guild.create_member(app.clone(), token.data().user_id()).await?;
+    let guild = Guild::from_payload(&app.config, payload, token.data().user_id());
+    let general = app.db.guilds().create_guild(&guild).await?;
 
-    let general = TextChannel::new(Snowflake::gen_new(app.clone()), &guild, "general".to_string());
-    general.commit(app.clone()).await?;
-
-    let member =
-        Member::fetch(app.clone(), token.data().user_id(), &guild)
-            .await
-            .ok_or(RESTError::InternalServerError(
-                "A member should have been created".into(),
-            ))?;
+    let member = app
+        .db
+        .guilds()
+        .fetch_member(token.data().user_id(), &guild)
+        .await
+        .ok_or(RESTError::InternalServerError(
+            "A member should have been created".into(),
+        ))?;
 
     app.gateway.add_member(token.data().user_id(), &guild);
 
     app.gateway.dispatch(GatewayEvent::GuildCreate(GuildCreatePayload::new(
         guild.clone(),
-        vec![member.clone()],
-        vec![general.clone().into()],
+        vec![member],
+        vec![general],
     )));
 
     Ok((StatusCode::CREATED, Json(guild)))
@@ -104,11 +102,17 @@ async fn create_channel(
     token: Token,
     Json(payload): Json<CreateChannel>,
 ) -> Result<(StatusCode, Json<Channel>), RESTError> {
-    let user = User::fetch(app.clone(), token.data().user_id())
+    let user = app
+        .db
+        .users()
+        .fetch_user(token.data().user_id())
         .await
         .ok_or(RESTError::NotFound("User not found".into()))?;
 
-    let guild = Guild::fetch(app.clone(), guild_id)
+    let guild = app
+        .db
+        .guilds()
+        .fetch_guild(guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild not found".into()))?;
 
@@ -116,9 +120,9 @@ async fn create_channel(
         return Err(RESTError::Forbidden("You are not the owner of this guild.".into()));
     }
 
-    let channel = Channel::from_payload(app.clone(), payload, guild_id).await;
+    let channel = Channel::from_payload(&app.config, payload, guild_id);
 
-    channel.commit(app.clone()).await?;
+    app.db.channels().create_channel(&channel).await?;
 
     app.gateway.dispatch(GatewayEvent::ChannelCreate(channel.clone()));
 
@@ -144,13 +148,20 @@ async fn fetch_guild(
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<Json<Guild>, RESTError> {
-    Member::fetch(app.clone(), token.data().user_id(), guild_id)
+    app.db
+        .guilds()
+        .fetch_member(token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
-    let guild = Guild::fetch(app, guild_id).await.ok_or(RESTError::InternalServerError(
-        "Failed to fetch guild from database".into(),
-    ))?;
+    let guild = app
+        .db
+        .guilds()
+        .fetch_guild(guild_id)
+        .await
+        .ok_or(RESTError::InternalServerError(
+            "Failed to fetch guild from database".into(),
+        ))?;
 
     Ok(Json(guild))
 }
@@ -170,7 +181,10 @@ async fn delete_guild(
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<StatusCode, RESTError> {
-    let mut guild = Guild::fetch(app.clone(), guild_id)
+    let guild = app
+        .db
+        .guilds()
+        .fetch_guild(guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
 
@@ -178,7 +192,7 @@ async fn delete_guild(
         return Err(RESTError::Forbidden("Not permitted to delete guild.".into()));
     }
 
-    guild.delete(app.clone()).await?;
+    app.db.guilds().delete_guild(&guild).await?;
 
     app.gateway.dispatch(GatewayEvent::GuildRemove(guild));
 
@@ -206,11 +220,16 @@ async fn fetch_member(
     token: Token,
 ) -> Result<Json<Member>, RESTError> {
     // Check if the user is in the channel's guild
-    Member::fetch(app.clone(), token.data().user_id(), guild_id)
+    app.db
+        .guilds()
+        .fetch_member(token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
-    let member = Member::fetch(app, member_id, guild_id)
+    let member = app
+        .db
+        .guilds()
+        .fetch_member(member_id, guild_id)
         .await
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
@@ -236,7 +255,10 @@ async fn fetch_member_self(
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<Json<Member>, RESTError> {
-    let member = Member::fetch(app, token.data().user_id(), guild_id)
+    let member = app
+        .db
+        .guilds()
+        .fetch_member(token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
@@ -267,19 +289,26 @@ async fn create_member(
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<(StatusCode, Json<Member>), RESTError> {
-    let guild = Guild::fetch(app.clone(), guild_id)
+    let guild = app
+        .db
+        .guilds()
+        .fetch_guild(guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
-    guild.create_member(app.clone(), token.data().user_id()).await?;
 
-    let member = Member::fetch(app.clone(), token.data().user_id(), guild_id)
+    app.db.guilds().create_member(&guild, token.data().user_id()).await?;
+
+    let member = app
+        .db
+        .guilds()
+        .fetch_member(token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::InternalServerError(
             "A member should have been created.".into(),
         ))?;
 
     // Create payload seperately as it needs read access to gateway
-    let gc_payload = GatewayEvent::GuildCreate(GuildCreatePayload::from_guild(app.clone(), guild).await?);
+    let gc_payload = GatewayEvent::GuildCreate(GuildCreatePayload::from_guild(&app, guild).await?);
 
     // Send GUILD_CREATE to the user who joined
     app.gateway.send_to(&member, gc_payload);
@@ -317,10 +346,16 @@ async fn leave_guild(
     State(app): State<SharedState>,
     token: Token,
 ) -> Result<StatusCode, RESTError> {
-    let guild = Guild::fetch(app.clone(), guild_id)
+    let guild = app
+        .db
+        .guilds()
+        .fetch_guild(guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
-    let member = Member::fetch(app.clone(), token.data().user_id(), guild_id)
+    let member = app
+        .db
+        .guilds()
+        .fetch_member(token.data().user_id(), guild_id)
         .await
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
@@ -328,19 +363,20 @@ async fn leave_guild(
         return Err(RESTError::Forbidden("Owner cannot leave owned guild.".into()));
     }
 
-    guild.remove_member(app.clone(), token.data().user_id()).await?;
+    app.db.guilds().delete_member(&guild, token.data().user_id()).await?;
 
-    // Remove the member from the gateway's cache
+    // Remove the member from the gateway's sessions
     app.gateway.remove_member(token.data().user_id(), guild_id);
+
+    // Send GUILD_REMOVE to the user who left
+    app.gateway
+        .send_to(member.user().id(), GatewayEvent::GuildRemove(guild));
+
     // Dispatch the member remove event
     app.gateway.dispatch(GatewayEvent::MemberRemove(DeletePayload::new(
         member.user().id(),
         Some(member.guild_id()),
     )));
-
-    // Send GUILD_REMOVE to the user who left
-    app.gateway
-        .send_to(member.user().id(), GatewayEvent::GuildRemove(guild));
 
     Ok(StatusCode::NO_CONTENT)
 }

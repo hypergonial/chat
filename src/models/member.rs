@@ -1,10 +1,9 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::SharedState, guild::Guild};
+use crate::gateway::handler::Gateway;
+
+use super::guild::Guild;
 
 use super::{snowflake::Snowflake, user::User};
 
@@ -37,43 +36,36 @@ pub struct Member {
     nickname: Option<String>,
     /// UNIX timestmap of when the user joined the guild
     joined_at: i64,
-    /// Used to check if the user was mutated and needs re-committing when calling commit()
-    #[serde(skip)]
-    _user_hash: u64,
 }
 
 impl Member {
     /// Create a new member with the given user, guild id, nickname, and joined at timestamp.
     pub fn new(user: User, guild: impl Into<Snowflake<Guild>>, nickname: Option<String>, joined_at: i64) -> Self {
-        let mut hasher = DefaultHasher::new();
-        user.hash(&mut hasher);
-        let _user_hash = hasher.finish();
-        Member {
+        Self {
             user,
             guild_id: guild.into(),
             nickname,
             joined_at,
-            _user_hash,
         }
     }
 
     /// The user this guild member represents
-    pub fn user(&self) -> &User {
+    pub const fn user(&self) -> &User {
         &self.user
     }
 
     /// The id of the guild this member is in
-    pub fn guild_id(&self) -> Snowflake<Guild> {
+    pub const fn guild_id(&self) -> Snowflake<Guild> {
         self.guild_id
     }
 
     /// Nickname of the user in this guild, if set
-    pub fn nickname(&self) -> &Option<String> {
+    pub const fn nickname(&self) -> &Option<String> {
         &self.nickname
     }
 
     /// UNIX timestmap of when the user joined the guild
-    pub fn joined_at(&self) -> i64 {
+    pub const fn joined_at(&self) -> i64 {
         self.joined_at
     }
 
@@ -82,19 +74,9 @@ impl Member {
         &mut self.user
     }
 
-    /// Build a member object directly from a database record.
-    /// The user part of the object will be fetched from the database.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    pub async fn from_record(app: SharedState, record: MemberRecord) -> Self {
-        Self::new(
-            User::fetch(app, record.user_id).await.unwrap(),
-            record.guild_id,
-            record.nickname,
-            record.joined_at,
-        )
+    /// Build a member object directly from a database record and a user
+    pub fn from_record(user: User, record: MemberRecord) -> Self {
+        Self::new(user, record.guild_id, record.nickname, record.joined_at)
     }
 
     /// Build a member object directly from a database record.
@@ -118,75 +100,15 @@ impl Member {
 
     /// Convert a user into a member with the given guild id.
     /// The join date of the member will be set to the current time.
-    pub async fn from_user(user: User, guild: impl Into<Snowflake<Guild>>) -> Self {
+    pub fn from_user(user: User, guild: impl Into<Snowflake<Guild>>) -> Self {
         Self::new(user, guild.into(), None, Utc::now().timestamp())
     }
 
     /// Include the user's presence field in the member payload.
-    pub async fn include_presence(self, app: SharedState) -> Self {
-        let user = self.user.include_presence(app).await;
+    #[must_use]
+    pub fn include_presence(self, gateway: &Gateway) -> Self {
+        let user = self.user.include_presence(gateway);
         Self { user, ..self }
-    }
-
-    /// Fetch a member from the database by id and guild id.
-    pub async fn fetch(
-        app: SharedState,
-        user: impl Into<Snowflake<User>>,
-        guild: impl Into<Snowflake<Guild>>,
-    ) -> Option<Self> {
-        let id_64: i64 = user.into().into();
-        let guild_id_64: i64 = guild.into().into();
-
-        let record = sqlx::query_as!(
-            ExtendedMemberRecord,
-            "SELECT members.*, users.username, users.display_name, users.last_presence 
-            FROM members
-            INNER JOIN users ON users.id = members.user_id
-            WHERE members.user_id = $1 AND members.guild_id = $2",
-            id_64,
-            guild_id_64
-        )
-        .fetch_optional(app.db.pool())
-        .await
-        .ok()??;
-
-        Some(Self::from_extended_record(record))
-    }
-
-    /// Commit the member to the database.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    ///
-    /// ## Errors
-    ///
-    /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn commit(&self, app: SharedState) -> Result<(), sqlx::Error> {
-        let id_64: i64 = self.user.id().into();
-        let guild_id_64: i64 = self.guild_id.into();
-        sqlx::query!(
-            "INSERT INTO members (user_id, guild_id, nickname, joined_at)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (user_id, guild_id) DO UPDATE
-            SET nickname = $3, joined_at = $4",
-            id_64,
-            guild_id_64,
-            self.nickname,
-            self.joined_at
-        )
-        .execute(app.db.pool())
-        .await?;
-
-        let mut hasher = DefaultHasher::new();
-        self.user.hash(&mut hasher);
-        let _current_hash = hasher.finish();
-
-        if _current_hash != self._user_hash {
-            self.user.commit(app).await?;
-        }
-
-        Ok(())
     }
 }
 
@@ -199,10 +121,10 @@ pub enum UserLike {
 }
 
 impl UserLike {
-    pub fn id(&self) -> Snowflake<User> {
+    pub const fn id(&self) -> Snowflake<User> {
         match self {
-            UserLike::Member(member) => member.user.id(),
-            UserLike::User(user) => user.id(),
+            Self::Member(member) => member.user.id(),
+            Self::User(user) => user.id(),
         }
     }
 }

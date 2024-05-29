@@ -14,7 +14,7 @@ bitflags! {
 
 impl Default for PrefFlags {
     fn default() -> Self {
-        PrefFlags::RENDER_ATTACHMENTS | PrefFlags::AUTOPLAY_GIF
+        Self::RENDER_ATTACHMENTS | Self::AUTOPLAY_GIF
     }
 }
 
@@ -27,7 +27,7 @@ impl Serialize for PrefFlags {
 impl<'de> Deserialize<'de> for PrefFlags {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let flags = u64::deserialize(deserializer)?;
-        Ok(PrefFlags::from_bits(flags).unwrap_or_default())
+        Ok(Self::from_bits(flags).unwrap_or_default())
     }
 }
 
@@ -42,10 +42,9 @@ pub enum Layout {
 impl<T: Into<u8>> From<T> for Layout {
     fn from(layout: T) -> Self {
         match layout.into() {
-            0 => Layout::Compact,
-            1 => Layout::Normal,
-            2 => Layout::Comfy,
-            _ => Layout::Normal,
+            0 => Self::Compact,
+            2 => Self::Comfy,
+            _ => Self::Normal,
         }
     }
 }
@@ -59,7 +58,7 @@ impl Serialize for Layout {
 impl<'de> Deserialize<'de> for Layout {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let layout = u8::deserialize(deserializer)?;
-        Ok(Layout::from(layout))
+        Ok(Self::from(layout))
     }
 }
 
@@ -91,7 +90,7 @@ pub struct Prefs {
 
 impl Prefs {
     pub fn new(user_id: Snowflake<User>) -> Self {
-        Prefs {
+        Self {
             user_id,
             flags: PrefFlags::default(),
             message_grouping_timeout: 60,
@@ -102,7 +101,7 @@ impl Prefs {
     }
 
     /// The user id of the user that owns the preferences.
-    pub fn user_id(&self) -> Snowflake<User> {
+    pub const fn user_id(&self) -> Snowflake<User> {
         self.user_id
     }
 
@@ -151,15 +150,14 @@ impl Prefs {
         .fetch_optional(app.db.pool())
         .await?;
 
-        if result.is_none() {
+        let Some(result) = result else {
             return Ok(Self::new(user_id));
-        }
-
-        let result = result.unwrap();
+        };
 
         Ok(Self {
             user_id,
-            flags: PrefFlags::from_bits(result.flags.try_into().unwrap()).unwrap_or_default(),
+            flags: PrefFlags::from_bits(result.flags.try_into().expect("Failed to fit PrefFlags into u64"))
+                .unwrap_or_default(),
             message_grouping_timeout: result.message_grouping_timeout as u64,
             layout: Layout::from(result.layout as u8),
             text_size: result.text_size as u8,
@@ -189,7 +187,7 @@ impl Prefs {
             flags,
             self.message_grouping_timeout as i32,
             self.layout as i32,
-            self.text_size as i32,
+            i16::from(self.text_size),
             self.locale,
         )
         .execute(app.db.pool())

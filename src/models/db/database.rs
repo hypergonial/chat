@@ -1,16 +1,34 @@
+use std::sync::{Arc, Weak};
+
 use sqlx::{migrate, postgres::PgPool};
+
+use crate::models::appstate::ApplicationState;
+
+use super::{channels::ChannelsHandler, guilds::GuildsHandler, messages::MessagesHandler, users::UsersHandler};
 
 #[derive(Clone, Debug)]
 pub struct Database {
     pool: Option<PgPool>,
+    app: Weak<ApplicationState>,
 }
 
 impl Database {
     /// Creates a new database instance
     ///
     /// Note: The database is not connected by default
-    pub const fn new() -> Self {
-        Database { pool: None }
+    pub fn new() -> Self {
+        Self {
+            pool: None,
+            app: Weak::new(),
+        }
+    }
+
+    pub fn bind_to(&mut self, app: Weak<ApplicationState>) {
+        self.app = app;
+    }
+
+    pub fn app(&self) -> Arc<ApplicationState> {
+        self.app.upgrade().expect("Application state has been dropped.")
     }
 
     /// The database pool
@@ -30,10 +48,7 @@ impl Database {
     ///
     /// `true` if the database is connected, `false` otherwise
     pub fn is_connected(&self) -> bool {
-        match self.pool {
-            Some(ref pool) => !pool.is_closed(),
-            None => false,
-        }
+        self.pool.as_ref().map_or(false, |pool| !pool.is_closed())
     }
 
     /// Connects to the database
@@ -54,6 +69,22 @@ impl Database {
     /// Closes the database connection
     pub async fn close(&self) {
         self.pool().close().await;
+    }
+
+    pub const fn users(&self) -> UsersHandler {
+        UsersHandler::new(self)
+    }
+
+    pub const fn guilds(&self) -> GuildsHandler {
+        GuildsHandler::new(self)
+    }
+
+    pub const fn channels(&self) -> ChannelsHandler {
+        ChannelsHandler::new(self)
+    }
+
+    pub const fn messages(&self) -> MessagesHandler {
+        MessagesHandler::new(self)
     }
 }
 

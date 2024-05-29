@@ -6,14 +6,16 @@ use derive_builder::Builder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::models::guild::GuildRecord;
+use crate::gateway::handler::Gateway;
 
-use super::{appstate::SharedState, errors::BuilderError, guild::Guild, requests::CreateUser, snowflake::Snowflake};
+use super::{appstate::Config, errors::BuilderError, requests::CreateUser, snowflake::Snowflake};
 
 fn username_regex() -> &'static Regex {
     static USERNAME_REGEX: OnceLock<Regex> = OnceLock::new();
-    USERNAME_REGEX
-        .get_or_init(|| Regex::new(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*[a-zA-Z0-9])$").unwrap())
+    USERNAME_REGEX.get_or_init(|| {
+        Regex::new(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*[a-zA-Z0-9])$")
+            .expect("Failed to compile username regex")
+    })
 }
 
 /// Represents the presence of a user.
@@ -33,11 +35,11 @@ pub enum Presence {
 
 impl From<i16> for Presence {
     fn from(presence: i16) -> Self {
-        if !(0..=3).contains(&presence) {
-            Self::Offline
-        } else {
-            // SAFETY: We checked bounds
-            unsafe { std::mem::transmute(presence) }
+        match presence {
+            0 => Self::Online,
+            1 => Self::Away,
+            2 => Self::Busy,
+            _ => Self::Offline,
         }
     }
 }
@@ -71,7 +73,7 @@ pub struct User {
     #[serde(skip)]
     #[builder(default)]
     last_presence: Presence,
-    /// Is 'null' in all cases except when the user is sent in a GUILD_CREATE event.
+    /// Is 'null' in all cases except when the user is sent in a `GUILD_CREATE` event.
     /// This is the presence that is sent in payloads to clients.
     #[serde(rename = "presence")]
     #[builder(setter(skip), default)]
@@ -85,10 +87,19 @@ impl User {
     }
 
     /// Creates a new user object from a create user payload.
-    pub async fn from_payload(app: SharedState, payload: CreateUser) -> Result<Self, BuilderError> {
+    ///
+    /// ## Arguments
+    ///
+    /// * `config` - The application configuration.
+    /// * `payload` - The payload to create the user from.
+    ///
+    /// ## Errors
+    ///
+    /// * [`BuilderError::ValidationError`] - If the username is invalid.
+    pub fn from_payload(config: &Config, payload: &CreateUser) -> Result<Self, BuilderError> {
         Self::validate_username(&payload.username)?;
-        Ok(User {
-            id: Snowflake::gen_new(app),
+        Ok(Self {
+            id: Snowflake::gen_new(config),
             username: payload.username.clone(),
             display_name: None,
             last_presence: Presence::default(),
@@ -97,7 +108,7 @@ impl User {
     }
 
     /// The snowflake belonging to this user.
-    pub fn id(&self) -> Snowflake<User> {
+    pub const fn id(&self) -> Snowflake<Self> {
         self.id
     }
 
@@ -107,25 +118,25 @@ impl User {
     }
 
     /// The user's username. This is unique to the user.
-    pub fn username(&self) -> &String {
+    pub const fn username(&self) -> &String {
         &self.username
     }
 
     /// The user's display name. This is the same as the username unless the user has changed it.
-    pub fn display_name(&self) -> &Option<String> {
-        &self.display_name
+    pub const fn display_name(&self) -> Option<&String> {
+        self.display_name.as_ref()
     }
 
     /// The last known presence of the user.
     ///
     /// This does not represent the user's actual presence, as that also depends on the gateway connection.
-    pub fn last_presence(&self) -> &Presence {
+    pub const fn last_presence(&self) -> &Presence {
         &self.last_presence
     }
 
     /// Retrieve the user's presence.
-    pub async fn presence(&self, app: SharedState) -> &Presence {
-        if app.gateway.is_connected(self.id()) {
+    pub fn presence(&self, gateway: &Gateway) -> &Presence {
+        if gateway.is_connected(self.id()) {
             &self.last_presence
         } else {
             &Presence::Offline
@@ -144,8 +155,9 @@ impl User {
     }
 
     /// Transform this object to also include the user's presence.
-    pub async fn include_presence(self, app: SharedState) -> Self {
-        let presence = self.presence(app).await;
+    #[must_use]
+    pub fn include_presence(self, gateway: &Gateway) -> Self {
+        let presence = self.presence(gateway);
         Self {
             displayed_presence: Some(*presence),
             ..self
@@ -177,124 +189,6 @@ impl User {
                 "Invalid username, must be between 3 and 32 characters long".to_string(),
             ));
         }
-        Ok(())
-    }
-
-    /// Retrieve a user from the database by their ID.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    pub async fn fetch(app: SharedState, id: impl Into<Snowflake<User>>) -> Option<Self> {
-        let id_i64: i64 = id.into().into();
-        let row = sqlx::query_as!(
-            UserRecord,
-            "SELECT id, username, display_name, last_presence
-            FROM users
-            WHERE id = $1",
-            id_i64
-        )
-        .fetch_optional(app.db.pool())
-        .await
-        .ok()??;
-
-        Some(Self::from_record(row))
-    }
-
-    /// Fetch the presence of a user.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    pub async fn fetch_presence(app: SharedState, user: impl Into<Snowflake<User>>) -> Option<Presence> {
-        let id_i64: i64 = user.into().into();
-        let row = sqlx::query!(
-            "SELECT last_presence
-            FROM users
-            WHERE id = $1",
-            id_i64
-        )
-        .fetch_optional(app.db.pool())
-        .await
-        .ok()??;
-
-        Some(Presence::from(row.last_presence))
-    }
-
-    /// Retrieve a user from the database by their username.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    pub async fn fetch_by_username(app: SharedState, username: &str) -> Option<Self> {
-        let row = sqlx::query!(
-            "SELECT id, username, display_name, last_presence
-            FROM users
-            WHERE username = $1",
-            username
-        )
-        .fetch_optional(app.db.pool())
-        .await
-        .ok()??;
-
-        Some(User {
-            id: row.id.into(),
-            username: row.username,
-            display_name: row.display_name,
-            last_presence: Presence::from(row.last_presence),
-            displayed_presence: None,
-        })
-    }
-
-    /// Fetch all guilds that this user is a member of.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    ///
-    /// ## Errors
-    ///
-    /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn fetch_guilds(&self, app: SharedState) -> Result<Vec<Guild>, sqlx::Error> {
-        let id_i64: i64 = self.id.into();
-
-        let records = sqlx::query_as!(
-            GuildRecord,
-            "SELECT guilds.id, guilds.name, guilds.owner_id
-            FROM guilds
-            INNER JOIN members ON members.guild_id = guilds.id
-            WHERE members.user_id = $1",
-            id_i64
-        )
-        .fetch_all(app.db.pool())
-        .await?;
-
-        Ok(records.into_iter().map(Guild::from_record).collect())
-    }
-
-    /// Commit this user to the database.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    ///
-    /// ## Errors
-    ///
-    /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn commit(&self, app: SharedState) -> Result<(), sqlx::Error> {
-        let id_i64: i64 = self.id.into();
-        sqlx::query!(
-            "INSERT INTO users (id, username, display_name, last_presence)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (id) DO UPDATE
-            SET username = $2, display_name = $3, last_presence = $4",
-            id_i64,
-            self.username,
-            self.display_name,
-            self.last_presence as i16
-        )
-        .execute(app.db.pool())
-        .await?;
         Ok(())
     }
 }

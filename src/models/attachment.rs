@@ -2,7 +2,9 @@ use std::sync::OnceLock;
 
 use super::{
     appstate::SharedState,
+    bucket::Buckets,
     channel::Channel,
+    db::Database,
     errors::{AppError, BuilderError, RESTError},
     message::{ExtendedMessageRecord, Message},
 };
@@ -18,7 +20,7 @@ use super::snowflake::Snowflake;
 
 fn attachment_regex() -> &'static Regex {
     static ATTACH_REGEX: OnceLock<Regex> = OnceLock::new();
-    ATTACH_REGEX.get_or_init(|| Regex::new(r"attachment-(?P<id>[0-9])").unwrap())
+    ATTACH_REGEX.get_or_init(|| Regex::new(r"attachment-(?P<id>[0-9])").expect("Failed to compile attachment regex"))
 }
 
 /// Trait used for enum dispatch
@@ -121,10 +123,10 @@ impl FullAttachment {
     /// * [`RESTError::App`] - If the field contents could not be read.
     pub async fn try_from_field(
         field: Field<'_>,
-        channel: impl Into<Snowflake<Channel>>,
-        message: impl Into<Snowflake<Message>>,
+        channel: impl Into<Snowflake<Channel>> + Send,
+        message: impl Into<Snowflake<Message>> + Send,
     ) -> Result<Self, RESTError> {
-        let mut builder = FullAttachment::builder();
+        let mut builder = Self::builder();
 
         let Some(name) = field.name() else {
             return Err(RESTError::MissingField("name".into()));
@@ -161,24 +163,30 @@ impl FullAttachment {
     }
 
     /// Commit the attachment to the database. Uploads the contents to S3 implicitly.
-    pub async fn commit(&self, app: SharedState) -> Result<(), AppError> {
+    ///
+    /// ## Errors
+    ///
+    /// * [`AppError::S3`] - If the S3 request fails.
+    pub async fn commit(&self, db: &Database) -> Result<(), AppError> {
         let message_id: i64 = self.message_id.into();
         let channel_id: i64 = self.channel_id.into();
 
-        self.upload(app.clone()).await?;
+        let buckets = &db.app().buckets;
+
+        self.upload(buckets).await?;
 
         sqlx::query!(
             "INSERT INTO attachments (id, filename, message_id, channel_id, content_type)
             VALUES ($1, $2, $3, $4, $5) 
             ON CONFLICT (id, message_id) 
             DO UPDATE SET filename = $2, content_type = $5",
-            self.id as i32,
+            i32::from(self.id),
             self.filename,
             message_id,
             channel_id,
             self.content_type,
         )
-        .execute(app.db.pool())
+        .execute(db.pool())
         .await?;
 
         Ok(())
@@ -189,10 +197,10 @@ impl FullAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn upload(&self, app: SharedState) -> Result<(), AppError> {
-        let bucket = app.buckets.attachments();
-        bucket
-            .put_object(&app.s3, self.s3_key(), self.content.clone(), self.mime())
+    pub async fn upload(&self, buckets: &Buckets) -> Result<(), AppError> {
+        buckets
+            .attachments()
+            .put_object(self.s3_key(), self.content.clone(), self.mime())
             .await
     }
 
@@ -201,9 +209,8 @@ impl FullAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn download(&mut self, app: SharedState) -> Result<(), AppError> {
-        let bucket = app.buckets.attachments();
-        self.content = bucket.get_object(&app.s3, self.s3_key()).await?;
+    pub async fn download(&mut self, buckets: &Buckets) -> Result<(), AppError> {
+        self.content = buckets.attachments().get_object(self.s3_key()).await?;
         Ok(())
     }
 
@@ -213,9 +220,8 @@ impl FullAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn delete(&self, app: SharedState) -> Result<(), AppError> {
-        let bucket = app.buckets.attachments();
-        bucket.delete_object(&app.s3, self.s3_key()).await
+    pub async fn delete(&self, buckets: &Buckets) -> Result<(), AppError> {
+        buckets.attachments().delete_object(self.s3_key()).await
     }
 }
 
@@ -290,7 +296,7 @@ impl PartialAttachment {
     /// ## Errors
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn download(self, app: SharedState) -> Result<FullAttachment, AppError> {
+    pub async fn download(self, buckets: &Buckets) -> Result<FullAttachment, AppError> {
         let mut attachment = FullAttachment::new(
             self.id,
             self.filename,
@@ -299,7 +305,7 @@ impl PartialAttachment {
             self.channel_id,
             self.message_id,
         );
-        attachment.download(app).await?;
+        attachment.download(buckets).await?;
         Ok(attachment)
     }
 
@@ -325,12 +331,12 @@ impl PartialAttachment {
             "SELECT id, filename, message_id, content_type
             FROM attachments
             WHERE id = $1 AND message_id = $2",
-            id as i32,
+            i32::from(id),
             message_id
         )
         .fetch_optional(app.db.pool())
         .await?
-        .map(|record| record.into()))
+        .map(Into::into))
     }
 
     /// Fetches all attachments belonging to a message from the database.
@@ -355,7 +361,7 @@ impl PartialAttachment {
         .fetch_all(app.db.pool())
         .await?
         .into_iter()
-        .map(|record| record.into())
+        .map(Into::into)
         .collect())
     }
 }
@@ -388,11 +394,11 @@ impl TryFrom<&ExtendedMessageRecord> for PartialAttachment {
     type Error = String;
 
     fn try_from(record: &ExtendedMessageRecord) -> Result<Self, Self::Error> {
-        let id = record.attachment_id.ok_or("No attachment ID".to_string())?;
+        let id = record.attachment_id.ok_or_else(|| "No attachment ID".to_string())?;
         let filename = record
             .attachment_filename
             .as_ref()
-            .ok_or("No attachment filename".to_string())?;
+            .ok_or_else(|| "No attachment filename".to_string())?;
         Ok(Self {
             id: id.try_into().expect("attachment ID should be a single positive digit"),
             channel_id: record.channel_id.into(),
@@ -401,7 +407,7 @@ impl TryFrom<&ExtendedMessageRecord> for PartialAttachment {
             content_type: record
                 .attachment_content_type
                 .clone()
-                .unwrap_or("application/octet-stream".into()),
+                .unwrap_or_else(|| "application/octet-stream".into()),
         })
     }
 }
@@ -424,6 +430,8 @@ impl AttachmentLike for PartialAttachment {
     }
 
     fn mime(&self) -> Mime {
-        self.content_type.parse().unwrap()
+        self.content_type
+            .parse()
+            .expect("Invalid MIME type stored in content_type")
     }
 }

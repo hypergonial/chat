@@ -5,6 +5,30 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+enum_glob_use = "deny"
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+significant_drop_tightening = { level = "allow", priority = 1 }
+module_name_repetitions = "allow"
+# This is just dumb
+must_use_candidate = "allow"
+# Sadly sqlx macros do not play nicely with clippy
+missing_panics_doc = "allow"
+# When impl Trait can be used in type aliases, remove this
+future_not_send = "allow"
+# Doesn't play nicely with tokio::select!
+redundant_pub_crate = "allow"
+
 [dependencies]
 tokio = { version = "1", features = ["full", "parking_lot", "tracing"] }
 axum = { version = "0.7", features = ["ws", "multipart", "tracing"] }

@@ -1,4 +1,9 @@
-use std::{borrow::Cow, collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    borrow::Cow,
+    collections::HashSet,
+    sync::{Arc, Weak},
+    time::Duration,
+};
 
 use axum::{
     extract::{
@@ -27,7 +32,7 @@ use tokio::{
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::models::{
-    appstate::SharedState,
+    appstate::{ApplicationState, SharedState},
     auth::Token,
     errors::GatewayError,
     gateway_event::{
@@ -60,6 +65,7 @@ enum GatewayRequest {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[repr(u16)]
 pub enum GatewayCloseCode {
     /// Successful operation / regular socket shutdown
     Normal = 1000,
@@ -95,29 +101,28 @@ pub enum GatewayCloseCode {
 
 impl From<GatewayCloseCode> for u16 {
     fn from(value: GatewayCloseCode) -> Self {
-        value as u16
+        value as Self
     }
 }
 
 impl From<u16> for GatewayCloseCode {
     fn from(value: u16) -> Self {
         match value {
-            1000 => GatewayCloseCode::Normal,
-            1001 => GatewayCloseCode::GoingAway,
-            1002 => GatewayCloseCode::ProtocolError,
-            1003 => GatewayCloseCode::Unsupported,
-            1005 => GatewayCloseCode::NoStatus,
-            1006 => GatewayCloseCode::Abnormal,
-            1007 => GatewayCloseCode::InvalidPayload,
-            1008 => GatewayCloseCode::PolicyViolation,
-            1009 => GatewayCloseCode::TooLarge,
-            1010 => GatewayCloseCode::ExtensionRequired,
-            1011 => GatewayCloseCode::ServerError,
-            1012 => GatewayCloseCode::ServiceRestart,
-            1013 => GatewayCloseCode::TryAgainLater,
-            1014 => GatewayCloseCode::BadGateway,
-            1015 => GatewayCloseCode::TLSHandshakeFail,
-            _ => GatewayCloseCode::Abnormal,
+            1000 => Self::Normal,
+            1001 => Self::GoingAway,
+            1002 => Self::ProtocolError,
+            1003 => Self::Unsupported,
+            1005 => Self::NoStatus,
+            1006 => Self::Abnormal,
+            1007 => Self::InvalidPayload,
+            1008 => Self::PolicyViolation,
+            1009 => Self::TooLarge,
+            1010 => Self::ExtensionRequired,
+            1012 => Self::ServiceRestart,
+            1013 => Self::TryAgainLater,
+            1014 => Self::BadGateway,
+            1015 => Self::TLSHandshakeFail,
+            _ => Self::ServerError,
         }
     }
 }
@@ -157,7 +162,7 @@ impl ConnectionHandle {
         receiver: Arc<broadcast::Sender<GatewayMessage>>,
         guilds: HashSet<Snowflake<Guild>>,
     ) -> Self {
-        ConnectionHandle {
+        Self {
             sender,
             broadcaster: receiver,
             guild_ids: guilds,
@@ -192,7 +197,7 @@ impl ConnectionHandle {
     }
 
     /// Get the guilds the user is a member of
-    pub fn guild_ids(&self) -> &HashSet<Snowflake<Guild>> {
+    pub const fn guild_ids(&self) -> &HashSet<Snowflake<Guild>> {
         &self.guild_ids
     }
 
@@ -207,11 +212,19 @@ impl ConnectionHandle {
 pub struct Gateway {
     /// A map of currently connected users and their connection handles
     peers: DashMap<Snowflake<User>, ConnectionHandle>,
+    app: Weak<ApplicationState>,
 }
 
 impl Gateway {
     pub fn new() -> Self {
-        Gateway { peers: DashMap::new() }
+        Self {
+            peers: DashMap::new(),
+            app: Weak::new(),
+        }
+    }
+
+    pub fn bind_to(&mut self, app: Weak<ApplicationState>) {
+        self.app = app;
     }
 
     /// Add a new connection handle to the gateway state
@@ -259,7 +272,7 @@ impl Gateway {
         // Avoid cloning the event for each user
         let event: Arc<GatewayEvent> = Arc::new(event);
 
-        for peer in self.peers.iter() {
+        for peer in &self.peers {
             let (uid, handle) = peer.pair();
             // If the event is guild-specific, only send it to users that are members of that guild
             if let Some(event_guild) = event.extract_guild_id() {
@@ -497,7 +510,7 @@ async fn handle_handshake(
     };
 
     let user_id = token.data().user_id();
-    let Some(user) = User::fetch(app, user_id).await else {
+    let Some(user) = app.db.users().fetch_user(user_id).await else {
         send_close_frame(ws_sink, GatewayCloseCode::ServerError, "No user belongs to token").await?;
         return Err(GatewayError::InternalServerError("No user belongs to token".into()));
     };
@@ -524,7 +537,7 @@ async fn handle_heartbeating(app: SharedState, user_id: Snowflake<User>, heartbe
         let heartbeat_task = tokio::spawn(async move {
             loop {
                 let msg = recv.recv().await.map_err(|_| GatewayCloseCode::InvalidPayload)?;
-                if let GatewayMessage::Heartbeat = msg {
+                if matches!(msg, GatewayMessage::Heartbeat) {
                     return Ok(()); // Heartbeat received, we're good
                 }
             }
@@ -551,19 +564,22 @@ async fn handle_heartbeating(app: SharedState, user_id: Snowflake<User>, heartbe
     }
 }
 
-/// Send the READY event, all GUILD_CREATE events, and dispatch a PRESENCE_UPDATE event for this user
+/// Send the `READY` event, all `GUILD_CREATE` events, and dispatch a `PRESENCE_UPDATE` event for this user
 ///
 /// ## Arguments
 ///
 /// * `app` - The shared application state
-/// * `user` - The user to send the READY event to
+/// * `user` - The user to send the `READY` event to
 /// * `ws_sink` - The sink for sending messages to the user
 async fn send_ready(
     app: SharedState,
     user: User,
     ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>,
 ) -> Result<(), axum::Error> {
-    let guilds = Guild::fetch_all_for_user(app.clone(), user.id())
+    let guilds = app
+        .db
+        .guilds()
+        .fetch_guilds_for_user(&user)
         .await
         .expect("Failed to fetch guilds during socket connection handling");
 
@@ -576,7 +592,7 @@ async fn send_ready(
 
     // Send GUILD_CREATE events for all guilds the user is in
     for guild in guilds {
-        let payload = GuildCreatePayload::from_guild(app.clone(), guild)
+        let payload = GuildCreatePayload::from_guild(&app, guild)
             .await
             .expect("Failed to fetch guild payload data");
 
@@ -597,7 +613,7 @@ async fn send_ready(
     Ok(())
 }
 
-/// Forward events received through the ConnectionHandle receiver to the user
+/// Forward events received through the `ConnectionHandle` receiver to the user
 ///
 /// ## Arguments
 ///
@@ -625,7 +641,7 @@ async fn send_events(
     }
 }
 
-/// Parse & forward events received through the socket to the ConnectionHandle sender
+/// Parse & forward events received through the socket to the `ConnectionHandle` sender
 ///
 /// ## Arguments
 ///
@@ -665,7 +681,7 @@ async fn receive_events(
                 send_close_frame(
                     &mut *ws_sink.lock().await,
                     GatewayCloseCode::InvalidPayload,
-                    format!("Invalid request payload: {}", e),
+                    format!("Invalid request payload: {e}"),
                 )
                 .await
                 .ok();
@@ -685,7 +701,12 @@ async fn handle_connection(app: SharedState, socket: WebSocket) {
     let (mut ws_sink, mut ws_stream) = socket.split();
     // Handle handshake and get user
     let Ok(user) = handle_handshake(app.clone(), &mut ws_sink, &mut ws_stream).await else {
-        ws_sink.reunite(ws_stream).unwrap().close().await.ok();
+        ws_sink
+            .reunite(ws_stream)
+            .expect("WS sink and stream should be reuniteable")
+            .close()
+            .await
+            .ok();
         return;
     };
 
@@ -714,7 +735,7 @@ async fn handle_connection(app: SharedState, socket: WebSocket) {
         ConnectionHandle::new(sender, broadcaster.clone(), guild_ids.clone()),
     );
 
-    let user = user.include_presence(app.clone()).await;
+    let user = user.include_presence(&app.gateway);
     let user_id = user.id();
 
     // We want to use the same sink in multiple tasks, so we wrap it in an Arc<Mutex>
@@ -744,7 +765,10 @@ async fn handle_connection(app: SharedState, socket: WebSocket) {
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 
     // Refetch presence in case it changed
-    let presence = User::fetch_presence(app.clone(), &user)
+    let presence = app
+        .db
+        .users()
+        .fetch_presence(&user)
         .await
         .expect("Failed to fetch presence");
 

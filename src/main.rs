@@ -4,8 +4,6 @@ pub mod gateway;
 pub mod models;
 pub mod rest;
 
-use std::sync::Arc;
-
 use axum::Router;
 use color_eyre::eyre::Result;
 use models::appstate::SharedState;
@@ -67,9 +65,7 @@ async fn main() -> Result<()> {
     let rest_routes = rest::routes::get_router();
 
     // Initialize the application state
-    let mut state = ApplicationState::new();
-    state.init().await?;
-    let state = Arc::new(state);
+    let state = ApplicationState::new().await?;
 
     let router = Router::new()
         .nest("/gateway/v1", gateway_routes)

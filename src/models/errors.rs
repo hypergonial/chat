@@ -41,7 +41,7 @@ impl IntoResponse for BuilderError {
             Self::UninitializedField(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::ValidationError(_) => StatusCode::BAD_REQUEST,
         };
-        if let StatusCode::INTERNAL_SERVER_ERROR = status {
+        if status == StatusCode::INTERNAL_SERVER_ERROR {
             tracing::error!(error = %self);
         }
         let body = Json(json!({
@@ -82,19 +82,14 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = match self {
-            Self::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::S3(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::JSON(_) => StatusCode::BAD_REQUEST,
             Self::Multipart(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::JWT(_) => StatusCode::BAD_REQUEST,
-            Self::Regex(_) => StatusCode::BAD_REQUEST,
+            Self::Regex(_) | Self::ParseInt(_) | Self::JWT(_) | Self::JSON(_) => StatusCode::BAD_REQUEST,
             Self::Builder(e) => return e.into_response(),
-            Self::ParseInt(_) => StatusCode::BAD_REQUEST,
-            Self::Axum(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Axum(_) | Self::Database(_) | Self::S3(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Auth(e) => return e.into_response(),
             // Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        if let StatusCode::INTERNAL_SERVER_ERROR = status {
+        if status == StatusCode::INTERNAL_SERVER_ERROR {
             tracing::error!(error = %self);
         }
         let body = Json(json!({
@@ -104,7 +99,7 @@ impl IntoResponse for AppError {
     }
 }
 
-/// Hacky workaround for SdkError having a generic type parameter
+/// Hacky workaround for `SdkError` having a generic type parameter
 impl<E, R> From<SdkError<E, R>> for AppError
 where
     E: std::error::Error + Send + Sync + 'static,
@@ -177,9 +172,9 @@ impl IntoResponse for RESTError {
                 tracing::error!(error = %message);
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
             }
-            Self::MissingField(_) => (StatusCode::BAD_REQUEST, self_str),
-            Self::MalformedField(_) => (StatusCode::BAD_REQUEST, self_str),
-            Self::DuplicateField(_) => (StatusCode::BAD_REQUEST, self_str),
+            Self::MissingField(_) | Self::MalformedField(_) | Self::DuplicateField(_) => {
+                (StatusCode::BAD_REQUEST, self_str)
+            }
             Self::NotFound(_) => (StatusCode::NOT_FOUND, self_str),
             Self::Forbidden(_) => (StatusCode::FORBIDDEN, self_str),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, self_str),
@@ -214,10 +209,9 @@ pub enum AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let status = match self {
-            Self::InvalidCredentials => StatusCode::UNAUTHORIZED,
-            Self::MissingCredentials => StatusCode::UNAUTHORIZED,
-            Self::TokenCreation => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::InvalidToken => StatusCode::UNAUTHORIZED,
+            Self::MissingCredentials | Self::TokenCreation | Self::InvalidToken | Self::InvalidCredentials => {
+                StatusCode::UNAUTHORIZED
+            }
             Self::PasswordHash(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let body = Json(json!({

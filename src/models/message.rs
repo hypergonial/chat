@@ -5,10 +5,10 @@ use serde::Serialize;
 use slice_group_by::GroupBy;
 
 use super::{
-    appstate::SharedState,
+    appstate::Config,
     attachment::{Attachment, AttachmentLike, FullAttachment},
     channel::Channel,
-    errors::{AppError, BuilderError, RESTError},
+    errors::{BuilderError, RESTError},
     member::UserLike,
     requests::CreateMessage,
     snowflake::Snowflake,
@@ -58,7 +58,7 @@ pub struct Message {
 
     /// The content of the message.
     #[builder(default)]
-    pub content: Option<String>,
+    content: Option<String>,
 
     /// Attachments sent with this message.
     #[builder(default)]
@@ -67,7 +67,9 @@ pub struct Message {
 
 impl MessageBuilder {
     fn validate(&self) -> Result<(), String> {
-        if self.content.is_none() && (self.attachments.is_none() || self.attachments.as_ref().unwrap().is_empty()) {
+        if self.content.is_none()
+            && (self.attachments.is_none() || self.attachments.as_ref().is_some_and(Vec::is_empty))
+        {
             Err("Message must have content or attachments".to_string())
         } else {
             Ok(())
@@ -79,6 +81,48 @@ impl Message {
     /// Create a new builder for a message.
     pub fn builder() -> MessageBuilder {
         MessageBuilder::default()
+    }
+
+    /// The unique ID of this message.
+    pub const fn id(&self) -> Snowflake<Self> {
+        self.id
+    }
+
+    /// The user who sent this message.
+    ///
+    /// This may be `None` if the author has been deleted since.
+    pub const fn author(&self) -> Option<&UserLike> {
+        self.author.as_ref()
+    }
+
+    pub const fn channel_id(&self) -> Snowflake<Channel> {
+        self.channel_id
+    }
+
+    /// The time at which this message was sent.
+    pub fn created_at(&self) -> DateTime<Utc> {
+        self.id.created_at()
+    }
+
+    /// A nonce that can be used by a client to determine if the message was sent.
+    /// The nonce is not stored in the database and thus is not returned by REST calls.
+    pub const fn nonce(&self) -> Option<&String> {
+        self.nonce.as_ref()
+    }
+
+    /// The content of the message.
+    pub const fn content(&self) -> Option<&String> {
+        self.content.as_ref()
+    }
+
+    /// Mutable handle to the content of the message.
+    pub fn content_mut(&mut self) -> Option<&mut String> {
+        self.content.as_mut()
+    }
+
+    /// The attachments sent with this message.
+    pub fn attachments(&self) -> &[Attachment] {
+        &self.attachments
     }
 
     /// Create a new message or messages from the given records. Multiple records are linked together by their ID.
@@ -94,7 +138,7 @@ impl Message {
                     UserLike::User(
                         User::builder()
                             .id(user_id)
-                            .username(group[0].username.clone().unwrap()) // SAFETY: This is safe because user_id is not None.
+                            .username(group[0].username.clone().expect("This should never happen")) // SAFETY: This is safe because user_id is not None.
                             .display_name(group[0].display_name.clone())
                             .build()
                             .expect("Failed to build user"),
@@ -103,7 +147,7 @@ impl Message {
 
                 let attachments = group
                     .iter()
-                    .flat_map(|r| r.try_into())
+                    .flat_map(TryInto::try_into)
                     .map(Attachment::Partial)
                     .collect();
 
@@ -124,20 +168,16 @@ impl Message {
     /// ## Errors
     ///
     /// * [`RESTError`] - If the formdata is invalid
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
     pub async fn from_formdata(
-        app: SharedState,
+        config: &Config,
         author: UserLike,
         channel: impl Into<Snowflake<Channel>>,
         mut form: Multipart,
     ) -> Result<Self, RESTError> {
-        let id = Snowflake::gen_new(app);
+        let id = Snowflake::gen_new(config);
         let channel_id: Snowflake<Channel> = channel.into();
         let mut attachments: Vec<Attachment> = Vec::new();
-        let mut builder = Message::builder();
+        let mut builder = Self::builder();
 
         builder.id(id).channel_id(channel_id).author(author);
 
@@ -164,6 +204,7 @@ impl Message {
     }
 
     /// Turns all attachments into partial attachments, removing the attachment contents from memory.
+    #[must_use]
     pub fn strip_attachment_contents(mut self) -> Self {
         self.attachments = self
             .attachments
@@ -177,85 +218,6 @@ impl Message {
             })
             .collect();
         self
-    }
-
-    /// The unique ID of this message.
-    pub fn id(&self) -> Snowflake<Message> {
-        self.id
-    }
-
-    /// The user who sent this message.
-    ///
-    /// This may be `None` if the author has been deleted since.
-    pub fn author(&self) -> &Option<UserLike> {
-        &self.author
-    }
-
-    /// The time at which this message was sent.
-    pub fn created_at(&self) -> DateTime<Utc> {
-        self.id.created_at()
-    }
-
-    /// Retrieve a message and fetch its author from the database in one query.
-    /// Attachment contents will not be retrieved from S3.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    pub async fn fetch(app: SharedState, message: impl Into<Snowflake<Message>>) -> Option<Self> {
-        let id_i64: i64 = message.into().into();
-
-        let records = sqlx::query_as!(
-            ExtendedMessageRecord,
-            "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
-            FROM messages
-            LEFT JOIN users ON messages.user_id = users.id
-            LEFT JOIN attachments ON messages.id = attachments.message_id
-            WHERE messages.id = $1",
-            id_i64
-        )
-        .fetch_all(app.db.pool())
-        .await
-        .ok()?;
-
-        Self::from_records(&records).pop()
-    }
-
-    /// Commit this message to the database. Uploads all attachments to S3.
-    /// It is highly recommended to call [`Message::strip_attachment_contents`] after calling
-    /// this method to remove the attachment contents from memory.
-    ///
-    /// ## Locks
-    ///
-    /// * `app().db` (read)
-    ///
-    /// ## Errors
-    ///
-    /// * [`AppError::S3`] - If the S3 request to upload one of the attachments fails.
-    /// * [`AppError::Database`] - If the database request fails.
-    pub async fn commit(&self, app: SharedState) -> Result<(), AppError> {
-        let id_i64: i64 = self.id.into();
-        let author_id_i64: Option<i64> = self.author.as_ref().map(|u| u.id().into());
-        let channel_id_i64: i64 = self.channel_id.into();
-        sqlx::query!(
-            "INSERT INTO messages (id, user_id, channel_id, content)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (id) DO UPDATE
-            SET user_id = $2, channel_id = $3, content = $4",
-            id_i64,
-            author_id_i64,
-            channel_id_i64,
-            self.content
-        )
-        .execute(app.db.pool())
-        .await?;
-
-        for attachment in &self.attachments {
-            if let Attachment::Full(f) = attachment {
-                f.commit(app.clone()).await?;
-            }
-        }
-        Ok(())
     }
 }
 

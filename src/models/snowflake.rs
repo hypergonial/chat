@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
 use std::time::SystemTime;
 
-use super::appstate::SharedState;
+use super::appstate::Config;
 
 // Custom epoch of 2023-01-01T00:00:00Z in miliseconds
-pub const EPOCH: i64 = 1672531200000;
+pub const EPOCH: i64 = 1_672_531_200_000;
 
 /// A snowflake ID used to identify entities.
 ///
@@ -23,43 +23,51 @@ pub struct Snowflake<T> {
 
 impl<T> Snowflake<T> {
     /// Create a new snowflake from a 64-bit integer.
-    pub fn new(value: i64) -> Self {
-        Snowflake {
+    pub const fn new(value: i64) -> Self {
+        Self {
             value,
             _marker: PhantomData,
         }
     }
 
     /// Generate a new snowflake using the current time.
-    pub fn gen_new(app: SharedState) -> Self {
-        let mut gen = get_generator(app.config.machine_id(), app.config.process_id());
+    pub fn gen_new(config: &Config) -> Self {
+        let mut gen = get_generator(config.machine_id(), config.process_id());
         gen.generate().into()
     }
 
+    /// Cast this snowflake to a different marker type.
+    pub const fn cast<U>(self) -> Snowflake<U> {
+        Snowflake {
+            value: self.value,
+            _marker: PhantomData,
+        }
+    }
+
     /// UNIX timestamp representing the time at which this snowflake was created in milliseconds.
-    pub fn timestamp(&self) -> i64 {
+    pub const fn timestamp(&self) -> i64 {
         (self.value >> 22) + EPOCH
     }
 
     /// Returns the creation time of this snowflake.
     pub fn created_at(&self) -> DateTime<Utc> {
-        DateTime::from_timestamp(self.timestamp(), 0).unwrap()
+        DateTime::from_timestamp(self.timestamp(), 0).expect("Failed to convert timestamp to DateTime")
     }
 
     /// Returns the worker ID that generated this snowflake.
-    pub fn worker_id(&self) -> i64 {
-        (self.value & 0x3E0000) >> 17
+    pub const fn worker_id(&self) -> i64 {
+        (self.value & 0x003E_0000) >> 17
     }
 
     /// Returns the process ID that generated this snowflake.
-    pub fn process_id(&self) -> i64 {
+    pub const fn process_id(&self) -> i64 {
         (self.value & 0x1F000) >> 12
     }
 }
 
 impl<T> From<i64> for Snowflake<T> {
     fn from(value: i64) -> Self {
-        Snowflake::new(value)
+        Self::new(value)
     }
 }
 
@@ -101,7 +109,7 @@ impl<T> FromStr for Snowflake<T> {
     type Err = ParseIntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        i64::from_str(s).map(Snowflake::new)
+        i64::from_str(s).map(Self::new)
     }
 }
 
@@ -118,7 +126,7 @@ impl<'de, T> Deserialize<'de> for Snowflake<T> {
         let value = String::deserialize(deserializer)?
             .parse()
             .map_err(|_| serde::de::Error::custom("failed parsing snowflake from string"))?;
-        Ok(Snowflake::new(value))
+        Ok(Self::new(value))
     }
 }
 

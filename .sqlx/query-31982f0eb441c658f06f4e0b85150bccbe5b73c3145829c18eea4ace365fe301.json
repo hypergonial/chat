@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, username, display_name, last_presence\n            FROM users\n            WHERE username = $1",
+  "query": "SELECT id, username, display_name, last_presence\n            FROM users\n            WHERE username = $1\n            LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -36,5 +36,5 @@
       false
     ]
   },
-  "hash": "5d7bc6bd8805058a40ef0f00becd280c8c7bda6fe35434c1ae6dd4f163ee3b78"
+  "hash": "31982f0eb441c658f06f4e0b85150bccbe5b73c3145829c18eea4ace365fe301"
 }

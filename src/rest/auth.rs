@@ -20,6 +20,11 @@ use crate::models::{
 ///
 /// * [`Ok(Snowflake)`] - The user id of the user that owns the credentials.
 /// * [`Err(AuthError)`] - If the credentials are invalid or the user was not found.
+///
+/// # Errors
+///
+/// * [`AuthError::InvalidCredentials`] - If the credentials are invalid.
+/// * [`AuthError::PasswordHash`] - If the password could not be hashed.
 pub async fn validate_credentials(app: SharedState, credentials: Credentials) -> Result<Snowflake<User>, AuthError> {
     let mut user_id: Option<Snowflake<User>> = None;
     // We set up a dummy hash here so verify_password_hash is always run.
@@ -38,16 +43,11 @@ pub async fn validate_credentials(app: SharedState, credentials: Credentials) ->
         expected_hash = stored_credentials.hash().clone();
     }
 
-    tokio::task::spawn_blocking(move || verify_password_hash(expected_hash, credentials.password().clone()))
+    tokio::task::spawn_blocking(move || verify_password_hash(&expected_hash, credentials.password()))
         .await
-        .unwrap()?;
+        .expect("Failed to join hash verification task")?;
 
-    // If the user doesn't actually exist, fail.
-    if user_id.is_none() {
-        return Err(AuthError::InvalidCredentials);
-    }
-
-    Ok(user_id.unwrap())
+    user_id.ok_or(AuthError::InvalidCredentials)
 }
 
 /// Verify a password candidate against a known hash.
@@ -62,7 +62,7 @@ pub async fn validate_credentials(app: SharedState, credentials: Credentials) ->
 /// * `Ok(())` - If the password candidate matches the hash.
 /// * `Err(AuthError::WrongCredentials)` - If the password candidate does not match the hash.
 /// * `Err(AuthError::PasswordHash)` - If the password candidate could not be hashed.
-fn verify_password_hash(expected_hash: Secret<String>, password_candidate: Secret<String>) -> Result<(), AuthError> {
+fn verify_password_hash(expected_hash: &Secret<String>, password_candidate: &Secret<String>) -> Result<(), AuthError> {
     let expected_hash = PasswordHash::new(expected_hash.expose_secret())?;
     Argon2::default()
         .verify_password(password_candidate.expose_secret().as_bytes(), &expected_hash)
@@ -77,8 +77,11 @@ fn verify_password_hash(expected_hash: Secret<String>, password_candidate: Secre
 ///
 /// # Returns
 ///
-/// * `Ok(String)` - The hash of the password.
-/// * `Err(AuthError::PasswordHash)` - If the password could not be hashed.
+/// * `String` - The hash of the password.
+///
+/// ## Errors
+///
+/// * [`AuthError::PasswordHash`] - If the password could not be hashed.
 pub fn generate_hash(password: &Secret<String>) -> Result<String, AuthError> {
     let hasher = Argon2::default();
     let salt = SaltString::generate(&mut rand::thread_rng());

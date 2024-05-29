@@ -37,7 +37,7 @@ impl TokenData {
     /// * `user_id` - The user id to store in the token
     /// * `iat` - The issuer time of the token
     fn new(user_id: Snowflake<User>, iat: usize) -> Self {
-        TokenData {
+        Self {
             user_id,
             iat,
             exp: Utc::now().timestamp() as usize + 86400,
@@ -45,17 +45,17 @@ impl TokenData {
     }
 
     /// Returns the user id of the token owner
-    pub fn user_id(&self) -> Snowflake<User> {
+    pub const fn user_id(&self) -> Snowflake<User> {
         self.user_id
     }
 
     /// Returns the issuer time of the token
-    pub fn iat(&self) -> usize {
+    pub const fn iat(&self) -> usize {
         self.iat
     }
 
     /// Returns the expiration time of the token
-    pub fn exp(&self) -> usize {
+    pub const fn exp(&self) -> usize {
         self.exp
     }
 }
@@ -81,7 +81,7 @@ impl Token {
     ///
     /// [`jsonwebtoken::errors::Error`] - If the token could not be generated.
     fn new(secret: &Secret<String>, data: &TokenData) -> Result<Self, jsonwebtoken::errors::Error> {
-        Ok(Token {
+        Ok(Self {
             data: data.clone(),
             token: Secret::new(encode(
                 &Header::default(),
@@ -121,7 +121,7 @@ impl Token {
             &DecodingKey::from_secret(secret.expose_secret().as_ref()),
             &Validation::default(),
         )?;
-        Ok(Token {
+        Ok(Self {
             data: decoded.claims,
             token: Secret::new(token.to_string()),
         })
@@ -152,7 +152,7 @@ impl Token {
     }
 
     /// Returns the token data
-    pub fn data(&self) -> &TokenData {
+    pub const fn data(&self) -> &TokenData {
         &self.data
     }
 }
@@ -184,7 +184,7 @@ impl FromRequestParts<SharedState> for Token {
             .await
             .map_err(|_| AuthError::MissingCredentials)?;
         // Decode the user data
-        Token::validate(state.clone(), bearer.token()).await
+        Self::validate(state.clone(), bearer.token()).await
     }
 }
 
@@ -198,7 +198,7 @@ pub struct Credentials {
 impl Credentials {
     /// Create a new set of credentials.
     pub fn new(username: String, password: String) -> Self {
-        Credentials {
+        Self {
             username,
             password: Secret::new(password),
         }
@@ -210,7 +210,7 @@ impl Credentials {
     }
 
     /// The password belonging to this set of credentials.
-    pub fn password(&self) -> &Secret<String> {
+    pub const fn password(&self) -> &Secret<String> {
         &self.password
     }
 }
@@ -225,7 +225,7 @@ pub struct StoredCredentials {
 impl StoredCredentials {
     /// Create a new set of stored credentials.
     pub fn new(user: impl Into<Snowflake<User>>, hash: String) -> Self {
-        StoredCredentials {
+        Self {
             user_id: user.into(),
             hash: Secret::new(hash),
             last_changed: Utc::now(),
@@ -233,12 +233,12 @@ impl StoredCredentials {
     }
 
     /// The user id of the user that owns the credentials.
-    pub fn user_id(&self) -> Snowflake<User> {
+    pub const fn user_id(&self) -> Snowflake<User> {
         self.user_id
     }
 
     /// The hashed password stored in PHC string format.
-    pub fn hash(&self) -> &Secret<String> {
+    pub const fn hash(&self) -> &Secret<String> {
         &self.hash
     }
 
@@ -251,7 +251,7 @@ impl StoredCredentials {
     /// # Returns
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
-    pub async fn fetch(app: SharedState, user: impl Into<Snowflake<User>>) -> Option<StoredCredentials> {
+    pub async fn fetch(app: SharedState, user: impl Into<Snowflake<User>>) -> Option<Self> {
         let user_id: i64 = user.into().into();
 
         let result = sqlx::query!(
@@ -267,7 +267,8 @@ impl StoredCredentials {
         Some(Self {
             user_id: result.user_id.into(),
             hash: Secret::new(result.password),
-            last_changed: DateTime::from_timestamp(result.last_changed, 0).unwrap(),
+            last_changed: DateTime::from_timestamp(result.last_changed, 0)
+                .expect("Failed to create DateTime from timestamp"),
         })
     }
 
@@ -280,7 +281,7 @@ impl StoredCredentials {
     /// # Returns
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
-    pub async fn fetch_by_username(app: SharedState, username: String) -> Option<StoredCredentials> {
+    pub async fn fetch_by_username(app: SharedState, username: String) -> Option<Self> {
         let result = sqlx::query!(
             "SELECT users.id, secrets.password, secrets.last_changed
             FROM users JOIN secrets ON users.id = secrets.user_id
@@ -294,7 +295,8 @@ impl StoredCredentials {
         Some(Self {
             user_id: result.id.into(),
             hash: Secret::new(result.password),
-            last_changed: DateTime::from_timestamp(result.last_changed, 0).unwrap(),
+            last_changed: DateTime::from_timestamp(result.last_changed, 0)
+                .expect("Failed to create DateTime from timestamp"),
         })
     }
 
@@ -320,7 +322,7 @@ impl StoredCredentials {
     }
 
     /// Update the password hash of the credentials, changing the last changed field with it.
-    pub async fn update_hash(&mut self, new_hash: Secret<String>) {
+    pub fn update_hash(&mut self, new_hash: Secret<String>) {
         self.hash = new_hash;
         self.last_changed = Utc::now();
     }
