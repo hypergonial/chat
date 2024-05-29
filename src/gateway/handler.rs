@@ -16,10 +16,13 @@ use futures_util::{
 };
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{
-    broadcast,
-    mpsc::{self, error::SendError},
-    Mutex,
+use tokio::{
+    sync::{
+        broadcast,
+        mpsc::{self, error::SendError},
+        Mutex,
+    },
+    time::timeout,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
@@ -426,8 +429,10 @@ async fn handle_handshake(
         .await
         .ok();
 
+    let maybe_ident = timeout(Duration::from_secs(5), ws_stream.next()).await;
+
     // IDENTIFY should be the first message sent
-    let Some(Ok(maybe_ident)) = ws_stream.next().await else {
+    let Ok(Some(Ok(ident))) = maybe_ident else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
                 code: GatewayCloseCode::PolicyViolation.into(),
@@ -438,7 +443,7 @@ async fn handle_handshake(
         return Err(());
     };
 
-    let Message::Text(text) = maybe_ident else {
+    let Message::Text(text) = ident else {
         ws_sink
             .send(Message::Close(Some(CloseFrame {
                 code: GatewayCloseCode::InvalidPayload.into(),
@@ -485,14 +490,6 @@ async fn handle_handshake(
 
     Ok(user)
 }
-
-// FIXME
-// the heartbeating system holds a reference to the handle
-// therefore nobody can get a mutable reference to any handle until the heartbeating system can get cancelled
-// which can only get cancelled at an await point
-// aka the next heartbeat cycle
-// so the connection deadass stalls until the next heartbeat cycle
-// at which point the heartbeat loop is finally cancelled by tokio, the lock is dropped, the handle is removed, and your connection is finally dropped
 
 /// Handle the heartbeat mechanism for a given user
 ///
