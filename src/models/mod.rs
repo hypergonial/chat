@@ -3,6 +3,7 @@ pub mod attachment;
 pub mod auth;
 pub mod bucket;
 pub mod channel;
+pub mod datauri;
 pub mod db;
 pub mod errors;
 pub mod gateway_event;
