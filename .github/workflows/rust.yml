@@ -12,8 +12,9 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    name: "Run tests"
 
     steps:
     - uses: actions/checkout@v4
@@ -30,3 +31,21 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+
+  clippy:
+    runs-on: ubuntu-latest
+    name: "Run clippy"
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Rust toolchain
+      run: |
+        rustup update --no-self-update ${{ env.RUST_CHANNEL }}
+        rustup component add --toolchain ${{ env.RUST_CHANNEL }} rustfmt rust-src clippy
+        rustup default ${{ env.RUST_CHANNEL }}
+    - name: Cache Dependencies
+      uses: Swatinem/rust-cache@640a22190e7a783d4c409684cea558f081f92012
+      with:
+        key: ${{ env.RUST_CHANNEL }}
+    - name: Run clippy
+      run: cargo clippy --verbose
