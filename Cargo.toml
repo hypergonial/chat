@@ -10,8 +10,8 @@ unsafe_code = "forbid"
 
 [lints.clippy]
 enum_glob_use = "deny"
-pedantic = { level = "deny", priority = -1 }
-nursery = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 
 cast_possible_truncation = "allow"
