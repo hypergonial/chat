@@ -2,8 +2,15 @@ use secrecy::Secret;
 use serde::Deserialize;
 
 use super::{
+    channel::Channel,
     data_uri::DataUri,
+    errors::AppError,
+    guild::Guild,
+    member::Member,
     prefs::{Layout, PrefFlags},
+    snowflake::Snowflake,
+    state::ApplicationState,
+    user::User,
 };
 
 /// A request to create a new user
@@ -25,6 +32,33 @@ pub struct CreateGuild {
     pub name: String,
 }
 
+impl CreateGuild {
+    /// Perform the create operation
+    ///
+    /// This is a shorthand for `app.ops().create_guild(payload, owner).await`
+    ///
+    /// # Parameters
+    ///
+    /// - `app` - The application state
+    /// - `owner` - The owner of the guild
+    ///
+    /// # Returns
+    ///
+    /// The created guild, channel, and member
+    ///
+    /// # Errors
+    ///
+    /// Fails if the guild creation fails
+    #[inline]
+    pub async fn perform_request(
+        self,
+        app: &ApplicationState,
+        owner: impl Into<Snowflake<User>>,
+    ) -> Result<(Guild, Channel, Member), sqlx::Error> {
+        app.ops().create_guild(self, owner).await
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CreateChannel {
@@ -33,8 +67,35 @@ pub enum CreateChannel {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct UpdateUser {
+    pub username: Option<String>,
     pub display_name: Option<String>,
     pub avatar: Option<DataUri>,
+}
+
+impl UpdateUser {
+    /// Perform the update operation
+    /// This is a shorthand for `app.ops().update_user(user, payload).await`
+    ///
+    /// # Parameters
+    ///
+    /// - `app` - The application state
+    /// - `user` - The user to update
+    ///
+    /// # Returns
+    ///
+    /// The updated user
+    ///
+    /// # Errors
+    ///
+    /// Fails if the user does not exist or the update operation fails
+    #[inline]
+    pub async fn perform_request(
+        self,
+        app: &ApplicationState,
+        user: impl Into<Snowflake<User>>,
+    ) -> Result<User, AppError> {
+        app.ops().update_user(user, self).await
+    }
 }
 
 /// Update payload for user preferences

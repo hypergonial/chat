@@ -2,12 +2,13 @@ use chrono::Utc;
 
 use crate::models::{
     attachment::{Attachment, AttachmentLike, FullAttachment},
+    avatar::{Avatar, AvatarLike},
     channel::{Channel, ChannelLike, ChannelRecord, TextChannel},
-    errors::{AppError, RESTError},
+    errors::{AppError, BuildError, RESTError},
     guild::{Guild, GuildRecord},
     member::{ExtendedMemberRecord, Member, MemberRecord},
     message::{ExtendedMessageRecord, Message},
-    requests::{CreateGuild, CreateUser},
+    requests::{CreateGuild, CreateUser, UpdateUser},
     snowflake::Snowflake,
     user::{Presence, User, UserRecord},
 };
@@ -131,7 +132,8 @@ impl<'a> Ops<'a> {
         let id_64: i64 = channel.into().into();
 
         let records: Vec<ExtendedMessageRecord> = if before.is_none() && after.is_none() {
-            sqlx::query_as!(
+            // SAFETY: sqlx doesn't understand LEFT JOIN properly, so we have to use unchecked here.
+            sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
                 "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
                 FROM messages
@@ -145,7 +147,7 @@ impl<'a> Ops<'a> {
             .fetch_all(self.app.db.pool())
             .await?
         } else {
-            sqlx::query_as!(
+            sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
                 "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
                 FROM messages
@@ -349,7 +351,7 @@ impl<'a> Ops<'a> {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn update_member(&self, member: &Member) -> Result<(), sqlx::Error> {
+    pub async fn update_member(&self, member: &Member) -> Result<(), AppError> {
         let id_64: i64 = member.user().id().into();
         let guild_id_64: i64 = member.guild_id().into();
         sqlx::query!(
@@ -365,7 +367,7 @@ impl<'a> Ops<'a> {
         .execute(self.app.db.pool())
         .await?;
 
-        self.app.ops().update_user(member.user()).await?;
+        //self.app.ops().update_user(member.user()).await?;
 
         Ok(())
     }
@@ -463,7 +465,8 @@ impl<'a> Ops<'a> {
     pub async fn fetch_message(&self, message: impl Into<Snowflake<Message>>) -> Option<Message> {
         let id_i64: i64 = message.into().into();
 
-        let records = sqlx::query_as!(
+        // sqlx cannot handle LEFT JOIN properly, so we have to use unchecked here.
+        let records = sqlx::query_as_unchecked!(
             ExtendedMessageRecord,
             "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
             FROM messages
@@ -632,33 +635,53 @@ impl<'a> Ops<'a> {
     ///
     /// ## Errors
     ///
-    /// * [`sqlx::Error`] - If the database query fails.
+    /// * [`AppError::Database`] - If the database query fails.
+    /// * [`AppError::NotFound`] - If the user does not exist.
+    /// * [`AppError::Build`] - If the avatar is partial.
     ///
     /// ## Returns
     ///
     /// The user if the commit was successful.
-    pub async fn update_user(&self, user: &User) -> Result<(), sqlx::Error> {
-        let id_i64: i64 = user.id().into();
+    pub async fn update_user(&self, user: impl Into<Snowflake<User>>, payload: UpdateUser) -> Result<User, AppError> {
+        let user_id = user.into();
 
-        let old_user = self.fetch_user(user.id()).await.ok_or(sqlx::Error::RowNotFound)?;
+        let old_user = self
+            .fetch_user(user_id)
+            .await
+            .ok_or(AppError::NotFound("User not found".into()))?;
 
-        if old_user.avatar_hash() != user.avatar_hash() {
-            // TODO: upload avatar to S3
-            // Making an avatar type would be nice, but is actually literal hell
+        let mut user = old_user.clone();
+        user.update(payload)?;
+
+        if old_user == user {
+            return Ok(user);
         }
 
-        sqlx::query!(
+        if old_user.avatar() != user.avatar() {
+            old_user.avatar().map(|a| async { a.delete(&self.app.s3).await });
+            match user.avatar() {
+                Some(Avatar::Full(f)) => f.upload(&self.app.s3).await?,
+                _ => {
+                    Err(BuildError::ValidationError("Cannot upload partial avatar".into()))?;
+                }
+            }
+        }
+
+        let id_i64: i64 = user_id.into();
+
+        let record = sqlx::query_as!(
+            UserRecord,
             "UPDATE users SET username = $2, display_name = $3, last_presence = $4, avatar_hash = $5
-            WHERE id = $1",
+            WHERE id = $1 RETURNING *",
             id_i64,
             user.username(),
             user.display_name(),
             *user.last_presence() as i16,
-            user.avatar_hash()
+            user.avatar().map(AvatarLike::avatar_hash),
         )
-        .execute(self.app.db.pool())
+        .fetch_one(self.app.db.pool())
         .await?;
-        Ok(())
+        Ok(User::from_record(record))
     }
 
     /// Commit the attachment to the database. Uploads the contents to S3 implicitly.

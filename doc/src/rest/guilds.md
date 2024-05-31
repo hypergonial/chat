@@ -100,7 +100,7 @@ The created [Member](../objects/member.md) object.
 
 ### Summary
 
-Gets a member's data. Use `@self` as the `user_id` to get the authenticated user's data.
+Gets a member's data. Use `@me` as the `user_id` to get the authenticated user's data.
 
 ### Response
 
@@ -118,7 +118,7 @@ A [Member](../objects/member.md) object.
 
 Removes a member from a guild.
 
-> Note: This endpoint currently only supports the use of `@self` as the `user_id`.
+> Note: This endpoint currently only supports the use of `@me` as the `user_id`.
 
 ### Response
 

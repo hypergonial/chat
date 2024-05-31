@@ -16,6 +16,7 @@ pub fn get_router() -> Router<App> {
     // https://javascript.info/fetch-crossorigin
     // https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
     let cors = CorsLayer::new()
+        // TODO: Change this to the actual origin
         .allow_origin(Any)
         .allow_methods([
             Method::GET,

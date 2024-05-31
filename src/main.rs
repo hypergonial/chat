@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     let rest_routes = rest::routes::get_router();
 
     // Initialize the application state
-    let state = ApplicationState::new().await?;
+    let state = ApplicationState::new_shared().await?;
 
     let router = Router::new()
         .nest("/gateway/v1", gateway_routes)

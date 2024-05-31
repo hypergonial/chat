@@ -12,7 +12,7 @@ use secrecy::{ExposeSecret, Secret};
 
 use super::ops::Ops;
 use crate::gateway::handler::Gateway;
-use crate::models::{bucket::Buckets, db::Database, errors::BuilderError};
+use crate::models::{bucket::Buckets, db::Database, errors::BuildError};
 
 pub type App = Arc<ApplicationState>;
 pub type S3Client = Client;
@@ -32,7 +32,7 @@ impl ApplicationState {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database initialization fails.
-    pub async fn new() -> Result<Arc<Self>, sqlx::Error> {
+    pub async fn new_shared() -> Result<Arc<Self>, sqlx::Error> {
         let config = Config::from_env();
 
         let s3creds = S3Creds::new(
@@ -93,7 +93,7 @@ impl ApplicationState {
 
 /// Application configuration
 #[derive(Debug, Clone, Builder)]
-#[builder(setter(into), build_fn(error = "BuilderError"))]
+#[builder(setter(into), build_fn(error = "BuildError"))]
 pub struct Config {
     database_url: Secret<String>,
     minio_url: String,

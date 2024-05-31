@@ -58,7 +58,7 @@ Authenticates a user, providing an authorization token for use in the REST API a
 | ---- | ----------- |
 | 401  | The username or password is incorrect. |
 
-# /users/@self
+# /users/@me
 
 ## GET
 
@@ -70,7 +70,29 @@ Gets the authenticated user's data.
 
 A [User](../objects/user.md) object.
 
-# /users/@self/guilds
+## PATCH
+
+### Summary
+
+Edits the authenticated user's data.
+
+### Payload
+
+All fields are optional. All fields specified will be overridden.
+
+```json
+{
+    "username": "new_username",
+    "display_name": "new display name",
+    "avatar": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAZABkAAD"
+}
+```
+
+### Response
+
+The updated [User](../objects/user.md) object.
+
+# /users/@me/guilds
 
 ## GET
 
@@ -82,7 +104,7 @@ Gets the authenticated user's guilds.
 
 An array of [Guild](../objects/guild.md) objects.
 
-# /users/@self/presence
+# /users/@me/presence
 
 ## PATCH
 

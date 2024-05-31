@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use super::{
     bucket::Buckets,
     channel::Channel,
-    errors::{AppError, BuilderError, RESTError},
+    errors::{AppError, BuildError, RESTError},
     message::{ExtendedMessageRecord, Message},
     state::App,
 };
@@ -60,7 +60,7 @@ pub enum Attachment {
 }
 
 #[derive(Debug, Clone, Builder, Serialize)]
-#[builder(setter(into), build_fn(error = "BuilderError"))]
+#[builder(setter(into), build_fn(error = "BuildError"))]
 pub struct FullAttachment {
     /// Describes the ordering of attachments within a message, starting from 0.
     id: u8,
@@ -169,7 +169,7 @@ impl FullAttachment {
     pub async fn upload(&self, buckets: &Buckets) -> Result<(), AppError> {
         buckets
             .attachments()
-            .put_object(self.s3_key(), self.content.clone(), self.mime())
+            .put_object(self.s3_key(), self.content.clone(), &self.mime())
             .await
     }
 
@@ -226,7 +226,7 @@ pub struct PartialAttachmentRecord {
 
 /// A partial attachment, with the binary content not loaded.
 #[derive(Debug, Clone, Builder, Serialize)]
-#[builder(setter(into), build_fn(error = "BuilderError"))]
+#[builder(setter(into), build_fn(error = "BuildError"))]
 pub struct PartialAttachment {
     /// Describes the ordering of attachments within a message, starting from 0.
     id: u8,

@@ -40,7 +40,7 @@ impl Buckets {
         &self.client
     }
 
-    const fn get_bucket(&self, name: &'static str) -> Bucket {
+    pub const fn get_bucket(&self, name: &'static str) -> Bucket {
         Bucket::new(self, name)
     }
 
@@ -173,7 +173,7 @@ impl<'a> Bucket<'a> {
         &self,
         key: impl Into<String>,
         data: impl Into<ByteStream>,
-        content_type: Mime,
+        content_type: &Mime,
     ) -> Result<(), AppError> {
         self.buckets
             .client()

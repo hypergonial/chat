@@ -1,7 +1,4 @@
-use std::{
-    hash::{DefaultHasher, Hash, Hasher},
-    sync::OnceLock,
-};
+use std::{hash::Hash, sync::OnceLock};
 
 use chrono::prelude::*;
 use chrono::DateTime;
@@ -12,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::gateway::handler::Gateway;
 
 use super::{
-    errors::BuilderError,
+    avatar::{Avatar, FullAvatar, PartialAvatar, UserAvatar},
+    errors::BuildError,
     requests::{CreateUser, UpdateUser},
     snowflake::Snowflake,
     state::Config,
@@ -27,7 +25,7 @@ fn username_regex() -> &'static Regex {
 }
 
 /// Represents the presence of a user.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[repr(i16)]
 pub enum Presence {
@@ -67,8 +65,8 @@ pub struct UserRecord {
     pub last_presence: i16,
 }
 
-#[derive(Serialize, Debug, Hash, Clone, Builder)]
-#[builder(setter(into), build_fn(error = "BuilderError"))]
+#[derive(Serialize, Debug, Clone, PartialEq, Eq, Builder)]
+#[builder(setter(into), build_fn(error = "BuildError"))]
 pub struct User {
     /// The snowflake belonging to this user.
     id: Snowflake<User>,
@@ -79,8 +77,9 @@ pub struct User {
     display_name: Option<String>,
 
     /// The user's avatar hash.
+    #[serde(rename = "avatar_hash")]
     #[builder(default)]
-    avatar_hash: Option<String>,
+    avatar: Option<Avatar<UserAvatar>>,
 
     /// The last presence used by this user.
     /// This does not represent the user's actual presence, as that also depends on the gateway connection.
@@ -125,9 +124,9 @@ impl User {
         self.display_name.as_mut()
     }
 
-    /// The user's avatar hash.
-    pub const fn avatar_hash(&self) -> Option<&String> {
-        self.avatar_hash.as_ref()
+    /// The user's avatar.
+    pub const fn avatar(&self) -> Option<&Avatar<UserAvatar>> {
+        self.avatar.as_ref()
     }
 
     /// The last known presence of the user.
@@ -156,13 +155,13 @@ impl User {
     /// ## Errors
     ///
     /// * [`BuilderError::ValidationError`] - If the username is invalid.
-    pub fn from_payload(config: &Config, payload: &CreateUser) -> Result<Self, BuilderError> {
+    pub fn from_payload(config: &Config, payload: &CreateUser) -> Result<Self, BuildError> {
         Self::validate_username(&payload.username)?;
         Ok(Self {
             id: Snowflake::gen_new(config),
             username: payload.username.clone(),
             display_name: None,
-            avatar_hash: None,
+            avatar: None,
             last_presence: Presence::default(),
             displayed_presence: None,
         })
@@ -173,7 +172,11 @@ impl User {
         Self {
             id: Snowflake::from(record.id),
             username: record.username,
-            avatar_hash: record.avatar_hash,
+            avatar: record.avatar_hash.map(|h| {
+                Avatar::Partial(
+                    PartialAvatar::<UserAvatar>::new(h, record.id).expect("Database should have valid avatar hash"),
+                )
+            }),
             display_name: record.display_name,
             last_presence: Presence::from(record.last_presence),
             displayed_presence: None,
@@ -181,8 +184,6 @@ impl User {
     }
 
     /// Update the model with new data.
-    ///
-    /// This will update the display name and avatar hash if they are provided.
     ///
     /// ## Arguments
     ///
@@ -192,20 +193,27 @@ impl User {
     ///
     /// `true` if the user's avatar has changed, `false` otherwise.
     ///
+    /// ## Errors
+    ///
+    /// * [`BuildError::ValidationError`] - If the new username is invalid.
+    /// * [`BuildError::ValidationError`] - If the new avatar data is invalid.
+    ///
     /// ## Note
     ///
     /// The avatar data still needs to be uploaded to S3.
-    pub fn update(&mut self, request: UpdateUser) -> bool {
+    pub fn update(&mut self, request: UpdateUser) -> Result<bool, BuildError> {
         self.display_name = request.display_name;
         let mut has_avatar_changed = false;
 
-        if let Some(avatar) = request.avatar {
-            let mut hasher = DefaultHasher::new();
-            avatar.hash(&mut hasher);
-            self.avatar_hash = Some(hasher.finish().to_string());
+        if let Some(username) = request.username {
+            self.set_username(username)?;
+        }
+
+        if let Some(uri) = request.avatar {
+            self.avatar = Some(Avatar::Full(FullAvatar::from_data_uri(&*self, uri)?));
             has_avatar_changed = true;
         }
-        has_avatar_changed
+        Ok(has_avatar_changed)
     }
 
     /// Transform this object to also include the user's presence.
@@ -225,25 +233,25 @@ impl User {
     /// ## Errors
     ///
     /// * [`BuilderError::ValidationError`] - If the username is invalid.
-    pub fn set_username(&mut self, username: String) -> Result<(), BuilderError> {
+    pub fn set_username(&mut self, username: String) -> Result<(), BuildError> {
         Self::validate_username(&username)?;
         self.username = username;
         Ok(())
     }
 
-    fn validate_username(username: &str) -> Result<(), BuilderError> {
+    fn validate_username(username: &str) -> Result<&str, BuildError> {
         if !username_regex().is_match(username) {
-            return Err(BuilderError::ValidationError(format!(
+            return Err(BuildError::ValidationError(format!(
                 "Invalid username, must match regex: {}",
                 username_regex().as_str()
             )));
         }
         if username.len() > 32 || username.len() < 3 {
-            return Err(BuilderError::ValidationError(
+            return Err(BuildError::ValidationError(
                 "Invalid username, must be between 3 and 32 characters long".to_string(),
             ));
         }
-        Ok(())
+        Ok(username)
     }
 }
 

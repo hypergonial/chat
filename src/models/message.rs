@@ -7,7 +7,7 @@ use slice_group_by::GroupBy;
 use super::{
     attachment::{Attachment, AttachmentLike, FullAttachment},
     channel::Channel,
-    errors::{BuilderError, RESTError},
+    errors::{BuildError, RESTError},
     member::UserLike,
     requests::CreateMessage,
     snowflake::Snowflake,
@@ -39,7 +39,7 @@ pub struct ExtendedMessageRecord {
 
 /// A chat message.
 #[derive(Serialize, Debug, Clone, Builder)]
-#[builder(setter(into), build_fn(validate = "Self::validate", error = "BuilderError"))]
+#[builder(setter(into), build_fn(validate = "Self::validate", error = "BuildError"))]
 pub struct Message {
     /// The id of the message.
     id: Snowflake<Message>,

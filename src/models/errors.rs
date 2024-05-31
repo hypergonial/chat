@@ -11,31 +11,31 @@ use derive_builder::UninitializedFieldError;
 use serde_json::json;
 use thiserror::Error;
 
-/// Errors triggered by builders.
+/// Errors encountered during object initialization.
 #[non_exhaustive]
 #[derive(Error, Debug)]
-pub enum BuilderError {
-    /// A field was not initialized before calling `.build()`.
+pub enum BuildError {
+    /// A field was not initialized before calling `.build()` in a builder.
     #[error("Uninitialized field: {0}")]
     UninitializedField(&'static str),
-    /// A validation check failed when calling `.build()`.
+    /// A validation check failed.
     #[error("Validation error: {0}")]
     ValidationError(String),
 }
 
-impl From<UninitializedFieldError> for BuilderError {
+impl From<UninitializedFieldError> for BuildError {
     fn from(e: UninitializedFieldError) -> Self {
         Self::UninitializedField(e.field_name())
     }
 }
 
-impl From<String> for BuilderError {
+impl From<String> for BuildError {
     fn from(e: String) -> Self {
         Self::ValidationError(e)
     }
 }
 
-impl IntoResponse for BuilderError {
+impl IntoResponse for BuildError {
     fn into_response(self) -> Response {
         let status = match self {
             Self::UninitializedField(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -68,13 +68,15 @@ pub enum AppError {
     #[error("Failed to match regex: {0}")]
     Regex(#[from] regex::Error),
     #[error("Failed to build object: {0}")]
-    Builder(#[from] BuilderError),
+    Build(#[from] BuildError),
     #[error("Failed to parse int: {0}")]
     ParseInt(#[from] ParseIntError),
     #[error("Authentication failure: {0}")]
     Auth(#[from] AuthError),
     #[error("Internal Server Error: {0}")]
     Axum(#[from] axum::Error),
+    #[error("Not Found: {0}")]
+    NotFound(String),
     /*     #[error(transparent)]
     Other(#[from] anyhow::Error), */
 }
@@ -84,9 +86,10 @@ impl IntoResponse for AppError {
         let status = match self {
             Self::Multipart(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Regex(_) | Self::ParseInt(_) | Self::JWT(_) | Self::JSON(_) => StatusCode::BAD_REQUEST,
-            Self::Builder(e) => return e.into_response(),
+            Self::Build(e) => return e.into_response(),
             Self::Axum(_) | Self::Database(_) | Self::S3(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Auth(e) => return e.into_response(),
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
             // Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         if status == StatusCode::INTERNAL_SERVER_ERROR {

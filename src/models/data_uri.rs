@@ -23,6 +23,10 @@ impl DataUri {
         }
     }
 
+    pub const fn mime(&self) -> &Mime {
+        &self.mime
+    }
+
     fn from_data_url<E: de::Error>(data_url: &DataUrl<'_>) -> Result<Self, E> {
         let mime = Mime::from_str(&format!(
             "{}/{}",
@@ -38,6 +42,12 @@ impl DataUri {
 impl<'de> Deserialize<'de> for DataUri {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_str(UriVisitor)
+    }
+}
+
+impl From<DataUri> for Bytes {
+    fn from(uri: DataUri) -> Self {
+        uri.inner
     }
 }
 

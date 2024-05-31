@@ -25,9 +25,9 @@ pub fn get_router() -> Router<App> {
         .route("/guilds/:guild_id", get(fetch_guild))
         .route("/guilds/:guild_id/channels", post(create_channel))
         .route("/guilds/:guild_id/members", post(create_member))
-        .route("/guilds/:guild_id/members/@self", get(fetch_member_self))
+        .route("/guilds/:guild_id/members/@me", get(fetch_member_self))
         .route("/guilds/:guild_id/members/:member_id", get(fetch_member))
-        .route("/guilds/:guild_id/members/@self", delete(leave_guild))
+        .route("/guilds/:guild_id/members/@me", delete(leave_guild))
         .route("/guilds/:guild_id", delete(delete_guild))
 }
 
@@ -54,7 +54,7 @@ async fn create_guild(
     State(app): State<App>,
     Json(payload): Json<CreateGuild>,
 ) -> Result<(StatusCode, Json<Guild>), RESTError> {
-    let (guild, general, owner) = app.ops().create_guild(payload, token.data().user_id()).await?;
+    let (guild, general, owner) = payload.perform_request(&app, token.data().user_id()).await?;
 
     app.gateway.add_member(token.data().user_id(), &guild);
 
@@ -232,7 +232,7 @@ async fn fetch_member(
 ///
 /// ## Endpoint
 ///
-/// GET `/guilds/{guild_id}/members/@self`
+/// GET `/guilds/{guild_id}/members/@me`
 async fn fetch_member_self(
     Path(guild_id): Path<Snowflake<Guild>>,
     State(app): State<App>,
@@ -320,7 +320,7 @@ async fn create_member(
 ///
 /// ## Endpoint
 ///
-/// DELETE `/guilds/{guild_id}/members/@self`
+/// DELETE `/guilds/{guild_id}/members/@me`
 async fn leave_guild(
     Path(guild_id): Path<Snowflake<Guild>>,
     State(app): State<App>,

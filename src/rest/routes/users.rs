@@ -6,8 +6,8 @@ use axum::{
 };
 use secrecy::ExposeSecret;
 use serde_json::json;
+use tower_http::limit::RequestBodyLimitLayer;
 
-use crate::models::errors::RESTError;
 use crate::models::{
     auth::{Credentials, StoredCredentials, Token},
     gateway_event::{GatewayEvent, PresenceUpdatePayload},
@@ -16,6 +16,7 @@ use crate::models::{
     state::App,
     user::{Presence, User},
 };
+use crate::models::{errors::RESTError, requests::UpdateUser};
 use crate::rest::auth::{generate_hash, validate_credentials};
 use serde_json::Value;
 
@@ -23,10 +24,14 @@ pub fn get_router() -> Router<App> {
     Router::new()
         .route("/users", post(create_user))
         .route("/users/auth", post(auth_user))
-        .route("/users/@self", get(fetch_self))
-        .route("/users/@self/guilds", get(fetch_self_guilds))
-        .route("/users/@self/presence", patch(update_presence))
+        .route("/users/@me", get(fetch_self))
+        .route("/users/@me/guilds", get(fetch_self_guilds))
+        .route("/users/@me/presence", patch(update_presence))
         .route("/usernames/:username", get(query_username))
+        .route(
+            "/users/@me",
+            patch(update_self).layer(RequestBodyLimitLayer::new(2 * 1024 * 1024 /* 2mb */)),
+        )
 }
 
 /// Create a new user and return the user data.
@@ -98,7 +103,7 @@ async fn auth_user(State(app): State<App>, Json(credentials): Json<Credentials>)
 ///
 /// ## Endpoint
 ///
-/// GET `/users/@self`
+/// GET `/users/@me`
 async fn fetch_self(State(app): State<App>, token: Token) -> Result<Json<User>, RESTError> {
     let user = app
         .ops()
@@ -121,7 +126,7 @@ async fn fetch_self(State(app): State<App>, token: Token) -> Result<Json<User>, 
 ///
 /// ## Endpoint
 ///
-/// GET `/users/@self/guilds`
+/// GET `/users/@me/guilds`
 async fn fetch_self_guilds(State(app): State<App>, token: Token) -> Result<Json<Vec<Guild>>, RESTError> {
     let guilds = app.ops().fetch_guilds_for_user(token.data().user_id()).await?;
 
@@ -150,7 +155,7 @@ async fn fetch_self_guilds(State(app): State<App>, token: Token) -> Result<Json<
 ///
 /// ## Endpoint
 ///
-/// PATCH `/users/@self/presence`
+/// PATCH `/users/@me/presence`
 pub async fn update_presence(
     State(app): State<App>,
     token: Token,
@@ -175,6 +180,35 @@ pub async fn update_presence(
     }
 
     Ok(Json(new_presence))
+}
+
+/// Update the token-holder's user data.
+///
+/// ## Arguments
+///
+/// * `token` - The user's session token, already validated
+/// * `payload` - The `UpdateUser` payload, containing the new user data
+///
+/// ## Returns
+///
+/// * [`User`] - A JSON response containing the updated [`User`] object
+///
+/// ## Errors
+///
+/// * [`RESTError::NotFound`] - If the user is not found
+/// * [`RESTError::App`] - If the database query fails, or the user data is invalid
+///
+/// ## Endpoint
+///
+/// PATCH `/users/@me`
+pub async fn update_self(
+    State(app): State<App>,
+    token: Token,
+    Json(payload): Json<UpdateUser>,
+) -> Result<Json<User>, RESTError> {
+    let user = payload.perform_request(&app, token.data().user_id()).await?;
+
+    Ok(Json(user))
 }
 
 /// Check for the existence of a user with the given username.

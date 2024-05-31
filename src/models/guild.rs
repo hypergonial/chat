@@ -9,7 +9,7 @@ pub struct GuildRecord {
 }
 
 /// Represents a guild.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Guild {
     id: Snowflake<Guild>,
     name: String,

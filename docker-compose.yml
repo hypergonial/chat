@@ -76,6 +76,7 @@ services:
       - nginx
     networks:
       - private
+    restart: on-failure
     entrypoint: >
       /bin/sh -c '
 
@@ -86,7 +87,7 @@ services:
           exit 1;
       fi;
 
-      buckets="attachments test";
+      buckets="attachments users";
 
       for bucket in $$buckets; do
           /usr/bin/mc ls s3-local | grep -wq $$bucket;
