@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, username, display_name, last_presence\n            FROM users\n            WHERE id = $1",
+  "query": "SELECT id, username, display_name, avatar_hash, last_presence\n            FROM users\n            WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -20,6 +20,11 @@
       },
       {
         "ordinal": 3,
+        "name": "avatar_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
         "name": "last_presence",
         "type_info": "Int2"
       }
@@ -33,8 +38,9 @@
       false,
       false,
       true,
+      true,
       false
     ]
   },
-  "hash": "86112aac62e1fce3b32eaf673ca36482a1b6225369d898a02c13382ea0664d1b"
+  "hash": "d4795ff7f715d6076d25009d78a509ce7fc024a85d00b29e19e13f61b25aa59d"
 }

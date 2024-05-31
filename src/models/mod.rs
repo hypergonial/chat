@@ -1,9 +1,8 @@
-pub mod appstate;
 pub mod attachment;
 pub mod auth;
 pub mod bucket;
 pub mod channel;
-pub mod datauri;
+pub mod data_uri;
 pub mod db;
 pub mod errors;
 pub mod gateway_event;
@@ -13,4 +12,5 @@ pub mod message;
 pub mod prefs;
 pub mod requests;
 pub mod snowflake;
+pub mod state;
 pub mod user;

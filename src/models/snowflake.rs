@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
 use std::time::SystemTime;
 
-use super::appstate::Config;
+use super::state::Config;
 
 // Custom epoch of 2023-01-01T00:00:00Z in miliseconds
 pub const EPOCH: i64 = 1_672_531_200_000;

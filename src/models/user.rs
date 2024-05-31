@@ -1,4 +1,7 @@
-use std::sync::OnceLock;
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    sync::OnceLock,
+};
 
 use chrono::prelude::*;
 use chrono::DateTime;
@@ -8,7 +11,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::gateway::handler::Gateway;
 
-use super::{appstate::Config, errors::BuilderError, requests::CreateUser, snowflake::Snowflake};
+use super::{
+    errors::BuilderError,
+    requests::{CreateUser, UpdateUser},
+    snowflake::Snowflake,
+    state::Config,
+};
 
 fn username_regex() -> &'static Regex {
     static USERNAME_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -55,10 +63,11 @@ pub struct UserRecord {
     pub id: i64,
     pub username: String,
     pub display_name: Option<String>,
+    pub avatar_hash: Option<String>,
     pub last_presence: i16,
 }
 
-#[derive(Serialize, Deserialize, Debug, Hash, Clone, Builder)]
+#[derive(Serialize, Debug, Hash, Clone, Builder)]
 #[builder(setter(into), build_fn(error = "BuilderError"))]
 pub struct User {
     /// The snowflake belonging to this user.
@@ -67,7 +76,12 @@ pub struct User {
     username: String,
     /// A user's displayname.
     #[builder(default)]
-    pub display_name: Option<String>,
+    display_name: Option<String>,
+
+    /// The user's avatar hash.
+    #[builder(default)]
+    avatar_hash: Option<String>,
+
     /// The last presence used by this user.
     /// This does not represent the user's actual presence, as that also depends on the gateway connection.
     #[serde(skip)]
@@ -84,27 +98,6 @@ impl User {
     /// Create a new builder to construct a user.
     pub fn builder() -> UserBuilder {
         UserBuilder::default()
-    }
-
-    /// Creates a new user object from a create user payload.
-    ///
-    /// ## Arguments
-    ///
-    /// * `config` - The application configuration.
-    /// * `payload` - The payload to create the user from.
-    ///
-    /// ## Errors
-    ///
-    /// * [`BuilderError::ValidationError`] - If the username is invalid.
-    pub fn from_payload(config: &Config, payload: &CreateUser) -> Result<Self, BuilderError> {
-        Self::validate_username(&payload.username)?;
-        Ok(Self {
-            id: Snowflake::gen_new(config),
-            username: payload.username.clone(),
-            display_name: None,
-            last_presence: Presence::default(),
-            displayed_presence: None,
-        })
     }
 
     /// The snowflake belonging to this user.
@@ -127,6 +120,16 @@ impl User {
         self.display_name.as_ref()
     }
 
+    /// The user's display name. This is the same as the username unless the user has changed it.
+    pub fn display_name_mut(&mut self) -> Option<&mut String> {
+        self.display_name.as_mut()
+    }
+
+    /// The user's avatar hash.
+    pub const fn avatar_hash(&self) -> Option<&String> {
+        self.avatar_hash.as_ref()
+    }
+
     /// The last known presence of the user.
     ///
     /// This does not represent the user's actual presence, as that also depends on the gateway connection.
@@ -143,15 +146,66 @@ impl User {
         }
     }
 
+    /// Creates a new user object from a create user payload.
+    ///
+    /// ## Arguments
+    ///
+    /// * `config` - The application configuration.
+    /// * `payload` - The payload to create the user from.
+    ///
+    /// ## Errors
+    ///
+    /// * [`BuilderError::ValidationError`] - If the username is invalid.
+    pub fn from_payload(config: &Config, payload: &CreateUser) -> Result<Self, BuilderError> {
+        Self::validate_username(&payload.username)?;
+        Ok(Self {
+            id: Snowflake::gen_new(config),
+            username: payload.username.clone(),
+            display_name: None,
+            avatar_hash: None,
+            last_presence: Presence::default(),
+            displayed_presence: None,
+        })
+    }
+
     /// Build a user object directly from a database record.
     pub fn from_record(record: UserRecord) -> Self {
         Self {
             id: Snowflake::from(record.id),
             username: record.username,
+            avatar_hash: record.avatar_hash,
             display_name: record.display_name,
             last_presence: Presence::from(record.last_presence),
             displayed_presence: None,
         }
+    }
+
+    /// Update the model with new data.
+    ///
+    /// This will update the display name and avatar hash if they are provided.
+    ///
+    /// ## Arguments
+    ///
+    /// * `request` - The update request.
+    ///
+    /// ## Returns
+    ///
+    /// `true` if the user's avatar has changed, `false` otherwise.
+    ///
+    /// ## Note
+    ///
+    /// The avatar data still needs to be uploaded to S3.
+    pub fn update(&mut self, request: UpdateUser) -> bool {
+        self.display_name = request.display_name;
+        let mut has_avatar_changed = false;
+
+        if let Some(avatar) = request.avatar {
+            let mut hasher = DefaultHasher::new();
+            avatar.hash(&mut hasher);
+            self.avatar_hash = Some(hasher.finish().to_string());
+            has_avatar_changed = true;
+        }
+        has_avatar_changed
     }
 
     /// Transform this object to also include the user's presence.
@@ -201,6 +255,12 @@ impl From<User> for Snowflake<User> {
 
 impl From<&User> for Snowflake<User> {
     fn from(user: &User) -> Self {
+        user.id()
+    }
+}
+
+impl From<&mut User> for Snowflake<User> {
+    fn from(user: &mut User) -> Self {
         user.id()
     }
 }

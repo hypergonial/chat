@@ -1,5 +1,5 @@
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::gateway::handler::Gateway;
 
@@ -26,7 +26,7 @@ pub struct ExtendedMemberRecord {
     pub last_presence: i16,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Member {
     /// The user this guild member represents
     user: User,
@@ -113,7 +113,7 @@ impl Member {
 }
 
 /// A user or member, depending on the context.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum UserLike {
     Member(Member),

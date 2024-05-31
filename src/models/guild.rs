@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::Config, db::guilds::GuildRecord, requests::CreateGuild, snowflake::Snowflake, user::User};
+use super::{requests::CreateGuild, snowflake::Snowflake, state::Config, user::User};
+
+pub struct GuildRecord {
+    pub id: i64,
+    pub name: String,
+    pub owner_id: i64,
+}
 
 /// Represents a guild.
 #[derive(Serialize, Deserialize, Debug, Clone)]

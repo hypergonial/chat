@@ -2,9 +2,7 @@ use std::sync::{Arc, Weak};
 
 use sqlx::{migrate, postgres::PgPool};
 
-use crate::models::appstate::ApplicationState;
-
-use super::{channels::ChannelsHandler, guilds::GuildsHandler, messages::MessagesHandler, users::UsersHandler};
+use crate::models::state::ApplicationState;
 
 #[derive(Clone, Debug)]
 pub struct Database {
@@ -69,22 +67,6 @@ impl Database {
     /// Closes the database connection
     pub async fn close(&self) {
         self.pool().close().await;
-    }
-
-    pub const fn users(&self) -> UsersHandler {
-        UsersHandler::new(self)
-    }
-
-    pub const fn guilds(&self) -> GuildsHandler {
-        GuildsHandler::new(self)
-    }
-
-    pub const fn channels(&self) -> ChannelsHandler {
-        ChannelsHandler::new(self)
-    }
-
-    pub const fn messages(&self) -> MessagesHandler {
-        MessagesHandler::new(self)
     }
 }
 

@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use tower_http::limit::RequestBodyLimitLayer;
 
 use crate::models::{
-    appstate::SharedState,
     auth::Token,
     channel::{Channel, ChannelLike},
     errors::RESTError,
@@ -16,6 +15,7 @@ use crate::models::{
     member::UserLike,
     message::Message,
     snowflake::Snowflake,
+    state::App,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -29,7 +29,7 @@ struct FetchMessagesQuery {
     Quota::per_second(nonzero!(5u32)).allow_burst(nonzero!(5u32)),
 )); */
 
-pub fn get_router() -> Router<SharedState> {
+pub fn get_router() -> Router<App> {
     Router::new()
         .route("/channels/:channel_id", get(fetch_channel))
         .route("/channels/:channel_id", delete(delete_channel))
@@ -55,21 +55,15 @@ pub fn get_router() -> Router<SharedState> {
 /// GET `/channels/{channel_id}`
 async fn fetch_channel(
     Path(channel_id): Path<Snowflake<Channel>>,
-    State(app): State<SharedState>,
+    State(app): State<App>,
     token: Token,
 ) -> Result<Json<Channel>, RESTError> {
-    let channel = app
-        .db
-        .channels()
-        .fetch_channel(channel_id)
-        .await
-        .ok_or(RESTError::NotFound(
-            "Channel does not exist or is not available.".to_string(),
-        ))?;
+    let channel = app.ops().fetch_channel(channel_id).await.ok_or(RESTError::NotFound(
+        "Channel does not exist or is not available.".to_string(),
+    ))?;
 
     // Check if the user is in the channel's guild
-    app.db
-        .guilds()
+    app.ops()
         .fetch_member(token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".to_string()))?;
@@ -97,22 +91,16 @@ async fn fetch_channel(
 /// DELETE `/channels/{channel_id}`
 async fn delete_channel(
     Path(channel_id): Path<Snowflake<Channel>>,
-    State(app): State<SharedState>,
+    State(app): State<App>,
     token: Token,
 ) -> Result<StatusCode, RESTError> {
-    let channel = app
-        .db
-        .channels()
-        .fetch_channel(channel_id)
-        .await
-        .ok_or(RESTError::NotFound(
-            "Channel does not exist or is not available.".into(),
-        ))?;
+    let channel = app.ops().fetch_channel(channel_id).await.ok_or(RESTError::NotFound(
+        "Channel does not exist or is not available.".into(),
+    ))?;
 
     // Check guild owner_id
     let guild = app
-        .db
-        .guilds()
+        .ops()
         .fetch_guild(channel.guild_id())
         .await
         .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
@@ -121,7 +109,7 @@ async fn delete_channel(
         return Err(RESTError::NotFound("Not permitted to delete channel.".into()));
     }
 
-    app.db.channels().delete_channel(&channel).await?;
+    app.ops().delete_channel(&channel).await?;
 
     app.gateway.dispatch(GatewayEvent::ChannelRemove(channel));
 
@@ -148,29 +136,23 @@ async fn delete_channel(
 /// POST `/channels/{channel_id}/messages`
 async fn create_message(
     Path(channel_id): Path<Snowflake<Channel>>,
-    State(app): State<SharedState>,
+    State(app): State<App>,
     token: Token,
     payload: Multipart,
 ) -> Result<(StatusCode, Json<Message>), RESTError> {
-    let channel = app
-        .db
-        .channels()
-        .fetch_channel(channel_id)
-        .await
-        .ok_or(RESTError::NotFound(
-            "Channel does not exist or is not available.".into(),
-        ))?;
+    let channel = app.ops().fetch_channel(channel_id).await.ok_or(RESTError::NotFound(
+        "Channel does not exist or is not available.".into(),
+    ))?;
 
     let member = app
-        .db
-        .guilds()
+        .ops()
         .fetch_member(token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to access resource.".into()))?;
 
     let message = Message::from_formdata(&app.config, UserLike::Member(member), channel_id, payload).await?;
 
-    app.db.messages().update_message(&message).await?;
+    app.ops().update_message(&message).await?;
 
     let message = message.strip_attachment_contents();
     let reply = Json(message.clone());
@@ -196,29 +178,22 @@ async fn create_message(
 /// GET `/channels/{channel_id}/messages`
 async fn fetch_messages(
     Path(channel_id): Path<Snowflake<Channel>>,
-    State(app): State<SharedState>,
+    State(app): State<App>,
     token: Token,
     Query(query): Query<FetchMessagesQuery>,
 ) -> Result<(StatusCode, Json<Vec<Message>>), RESTError> {
-    let channel = app
-        .db
-        .channels()
-        .fetch_channel(channel_id)
-        .await
-        .ok_or(RESTError::NotFound(
-            "Channel does not exist or is not available.".into(),
-        ))?;
+    let channel = app.ops().fetch_channel(channel_id).await.ok_or(RESTError::NotFound(
+        "Channel does not exist or is not available.".into(),
+    ))?;
 
     // Check if the user is in the channel's guild
-    app.db
-        .guilds()
+    app.ops()
         .fetch_member(token.data().user_id(), channel.guild_id())
         .await
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
     let messages = app
-        .db
-        .channels()
+        .ops()
         .fetch_messages_from(channel_id, query.limit, query.before, query.after)
         .await?;
 

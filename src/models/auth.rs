@@ -11,9 +11,9 @@ use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    appstate::SharedState,
     errors::{AuthError, RESTError},
     snowflake::Snowflake,
+    state::App,
     user::User,
 };
 
@@ -139,7 +139,7 @@ impl Token {
     /// [`jsonwebtoken::errors::Error`] - If the token could not be decoded.
     /// [`AuthError::InvalidToken`] - If the token is invalid.
     /// [`RESTError::NotFound`] - If the user entry for the token could not be found.
-    pub async fn validate(app: SharedState, token: &str) -> Result<Self, RESTError> {
+    pub async fn validate(app: App, token: &str) -> Result<Self, RESTError> {
         let token = Self::decode(app.config.app_secret(), token)?;
         let stored_creds = StoredCredentials::fetch(app, token.data().user_id())
             .await
@@ -174,11 +174,11 @@ impl Debug for Token {
 
 /// Token extractor for axum.
 #[async_trait::async_trait]
-impl FromRequestParts<SharedState> for Token {
+impl FromRequestParts<App> for Token {
     type Rejection = RESTError;
 
     /// Extract a token from request Authorization header
-    async fn from_request_parts(parts: &mut Parts, state: &SharedState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &App) -> Result<Self, Self::Rejection> {
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
@@ -251,7 +251,7 @@ impl StoredCredentials {
     /// # Returns
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
-    pub async fn fetch(app: SharedState, user: impl Into<Snowflake<User>>) -> Option<Self> {
+    pub async fn fetch(app: App, user: impl Into<Snowflake<User>>) -> Option<Self> {
         let user_id: i64 = user.into().into();
 
         let result = sqlx::query!(
@@ -281,7 +281,7 @@ impl StoredCredentials {
     /// # Returns
     ///
     /// * `Option<StoredCredentials>` - The credentials if they exist.
-    pub async fn fetch_by_username(app: SharedState, username: String) -> Option<Self> {
+    pub async fn fetch_by_username(app: App, username: String) -> Option<Self> {
         let result = sqlx::query!(
             "SELECT users.id, secrets.password, secrets.last_changed
             FROM users JOIN secrets ON users.id = secrets.user_id
@@ -305,7 +305,7 @@ impl StoredCredentials {
     /// # Errors
     ///
     /// * [`sqlx::Error`] - If the query fails. This could be due to the user not existing in the DB.
-    pub async fn commit(&self, app: SharedState) -> Result<(), sqlx::Error> {
+    pub async fn commit(&self, app: App) -> Result<(), sqlx::Error> {
         let user_id: i64 = self.user_id.into();
 
         sqlx::query!(

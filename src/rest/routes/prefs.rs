@@ -5,19 +5,16 @@ use axum::{
     Json, Router,
 };
 
-use crate::models::{appstate::SharedState, errors::RESTError};
-use crate::models::{
-    auth::Token,
-    prefs::{Prefs, PrefsUpdate},
-};
+use crate::models::{auth::Token, prefs::Prefs};
+use crate::models::{errors::RESTError, requests::UpdatePrefs, state::App};
 
-pub fn get_router() -> Router<SharedState> {
+pub fn get_router() -> Router<App> {
     Router::new()
         .route("/prefs", get(get_prefs))
         .route("/prefs", patch(update_prefs))
 }
 
-async fn get_prefs(State(app): State<SharedState>, token: Token) -> Result<Json<Prefs>, RESTError> {
+async fn get_prefs(State(app): State<App>, token: Token) -> Result<Json<Prefs>, RESTError> {
     Prefs::fetch(app, token.data().user_id())
         .await
         .map(Json)
@@ -25,9 +22,9 @@ async fn get_prefs(State(app): State<SharedState>, token: Token) -> Result<Json<
 }
 
 async fn update_prefs(
-    State(app): State<SharedState>,
+    State(app): State<App>,
     token: Token,
-    Json(payload): Json<PrefsUpdate>,
+    Json(payload): Json<UpdatePrefs>,
 ) -> Result<StatusCode, RESTError> {
     let mut prefs = Prefs::fetch(app.clone(), token.data().user_id()).await?;
     prefs.update(payload);

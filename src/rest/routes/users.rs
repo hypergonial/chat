@@ -9,17 +9,17 @@ use serde_json::json;
 
 use crate::models::errors::RESTError;
 use crate::models::{
-    appstate::SharedState,
     auth::{Credentials, StoredCredentials, Token},
     gateway_event::{GatewayEvent, PresenceUpdatePayload},
     guild::Guild,
     requests::CreateUser,
+    state::App,
     user::{Presence, User},
 };
 use crate::rest::auth::{generate_hash, validate_credentials};
 use serde_json::Value;
 
-pub fn get_router() -> Router<SharedState> {
+pub fn get_router() -> Router<App> {
     Router::new()
         .route("/users", post(create_user))
         .route("/users/auth", post(auth_user))
@@ -42,12 +42,12 @@ pub fn get_router() -> Router<SharedState> {
 /// ## Endpoint
 ///
 /// POST `/users`
-async fn create_user(State(app): State<SharedState>, Json(payload): Json<CreateUser>) -> Result<Json<User>, RESTError> {
+async fn create_user(State(app): State<App>, Json(payload): Json<CreateUser>) -> Result<Json<User>, RESTError> {
     let password = payload.password.clone();
 
     let user = User::from_payload(&app.config, &payload)?;
 
-    if app.db.users().fetch_user_by_username(user.username()).await.is_some() {
+    if app.ops().fetch_user_by_username(user.username()).await.is_some() {
         return Err(RESTError::BadRequest(format!(
             "User with username {} already exists",
             user.username()
@@ -57,7 +57,7 @@ async fn create_user(State(app): State<SharedState>, Json(payload): Json<CreateU
     let credentials = StoredCredentials::new(user.id(), generate_hash(&password)?);
 
     // User needs to be created before credentials to avoid foreign key constraint
-    app.db.users().create_user(&user).await?;
+    app.ops().create_user(payload).await?;
     credentials.commit(app).await?;
 
     Ok(Json(user))
@@ -76,10 +76,7 @@ async fn create_user(State(app): State<SharedState>, Json(payload): Json<CreateU
 /// ## Endpoint
 ///
 /// POST `/users/auth`
-async fn auth_user(
-    State(app): State<SharedState>,
-    Json(credentials): Json<Credentials>,
-) -> Result<Json<Value>, RESTError> {
+async fn auth_user(State(app): State<App>, Json(credentials): Json<Credentials>) -> Result<Json<Value>, RESTError> {
     let user_id = validate_credentials(app.clone(), credentials).await?;
     let token = Token::new_for(app.config.app_secret(), user_id)?;
 
@@ -102,10 +99,9 @@ async fn auth_user(
 /// ## Endpoint
 ///
 /// GET `/users/@self`
-async fn fetch_self(State(app): State<SharedState>, token: Token) -> Result<Json<User>, RESTError> {
+async fn fetch_self(State(app): State<App>, token: Token) -> Result<Json<User>, RESTError> {
     let user = app
-        .db
-        .users()
+        .ops()
         .fetch_user(token.data().user_id())
         .await
         .ok_or(RESTError::NotFound("User not found".into()))?;
@@ -126,8 +122,8 @@ async fn fetch_self(State(app): State<SharedState>, token: Token) -> Result<Json
 /// ## Endpoint
 ///
 /// GET `/users/@self/guilds`
-async fn fetch_self_guilds(State(app): State<SharedState>, token: Token) -> Result<Json<Vec<Guild>>, RESTError> {
-    let guilds = app.db.guilds().fetch_guilds_for_user(token.data().user_id()).await?;
+async fn fetch_self_guilds(State(app): State<App>, token: Token) -> Result<Json<Vec<Guild>>, RESTError> {
+    let guilds = app.ops().fetch_guilds_for_user(token.data().user_id()).await?;
 
     Ok(Json(guilds))
 }
@@ -156,7 +152,7 @@ async fn fetch_self_guilds(State(app): State<SharedState>, token: Token) -> Resu
 ///
 /// PATCH `/users/@self/presence`
 pub async fn update_presence(
-    State(app): State<SharedState>,
+    State(app): State<App>,
     token: Token,
     Json(new_presence): Json<Presence>,
 ) -> Result<Json<Presence>, RESTError> {
@@ -195,7 +191,7 @@ pub async fn update_presence(
 /// ## Endpoint
 ///
 /// GET `/users/{username}`
-pub async fn query_username(State(app): State<SharedState>, username: String) -> Result<StatusCode, RESTError> {
+pub async fn query_username(State(app): State<App>, username: String) -> Result<StatusCode, RESTError> {
     sqlx::query!("SELECT id FROM users WHERE username = $1", username)
         .fetch_optional(app.db.pool())
         .await?

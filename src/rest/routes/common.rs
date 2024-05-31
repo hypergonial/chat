@@ -4,7 +4,7 @@ use axum::Router;
 use http::{header, Method};
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::models::appstate::SharedState;
+use crate::models::state::App;
 
 use super::channels::get_router as get_channel_router;
 use super::guilds::get_router as get_guild_router;
@@ -12,7 +12,7 @@ use super::prefs::get_router as get_prefs_router;
 use super::users::get_router as get_user_router;
 
 /// Get all routes for the REST API. Includes CORS.
-pub fn get_router() -> Router<SharedState> {
+pub fn get_router() -> Router<App> {
     // https://javascript.info/fetch-crossorigin
     // https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
     let cors = CorsLayer::new()

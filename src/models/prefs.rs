@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use super::{appstate::SharedState, snowflake::Snowflake, user::User};
+use super::{requests::UpdatePrefs, snowflake::Snowflake, state::App, user::User};
 
 bitflags! {
     /// Boolean flags for user preferences
@@ -62,16 +62,6 @@ impl<'de> Deserialize<'de> for Layout {
     }
 }
 
-/// Update payload for user preferences
-#[derive(Debug, Clone, Deserialize)]
-pub struct PrefsUpdate {
-    pub flags: Option<PrefFlags>,
-    pub message_grouping_timeout: Option<u64>,
-    pub layout: Option<Layout>,
-    pub text_size: Option<u8>,
-    pub locale: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct Prefs {
     #[serde(skip)]
@@ -106,7 +96,7 @@ impl Prefs {
     }
 
     /// Apply a set of updates to the preferences.
-    pub fn update(&mut self, update: PrefsUpdate) {
+    pub fn update(&mut self, update: UpdatePrefs) {
         if let Some(flags) = update.flags {
             self.flags = flags;
         }
@@ -137,7 +127,7 @@ impl Prefs {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn fetch(app: SharedState, user: impl Into<Snowflake<User>>) -> Result<Self, sqlx::Error> {
+    pub async fn fetch(app: App, user: impl Into<Snowflake<User>>) -> Result<Self, sqlx::Error> {
         let user_id: Snowflake<User> = user.into();
         let user_id_i64: i64 = user_id.into();
 
@@ -174,7 +164,7 @@ impl Prefs {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn commit(&self, app: SharedState) -> Result<(), sqlx::Error> {
+    pub async fn commit(&self, app: App) -> Result<(), sqlx::Error> {
         let user_id: i64 = self.user_id.into();
         let flags: i64 = self.flags.bits().try_into().expect("Cannot fit flag into i64");
 

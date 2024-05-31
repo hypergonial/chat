@@ -3,17 +3,14 @@ use std::sync::{Arc, Weak};
 use aws_sdk_s3::{
     primitives::ByteStream,
     types::{Delete, Object, ObjectIdentifier},
+    Client,
 };
 use bytes::{Bytes, BytesMut};
 use mime::Mime;
 
-use super::{
-    appstate::{ApplicationState, S3Client},
-    channel::Channel,
-    errors::AppError,
-    guild::Guild,
-    snowflake::Snowflake,
-};
+use super::{channel::Channel, errors::AppError, guild::Guild, snowflake::Snowflake, state::ApplicationState};
+
+pub type S3Client = Client;
 
 /// All S3 buckets used by the application.
 #[derive(Debug, Clone)]
@@ -51,6 +48,10 @@ impl Buckets {
     /// It is responsible for storing all message attachments.
     pub const fn attachments(&self) -> Bucket {
         self.get_bucket("attachments")
+    }
+
+    pub const fn users(&self) -> Bucket {
+        self.get_bucket("users")
     }
 
     /// Remove all S3 data for the given channel.

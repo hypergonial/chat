@@ -10,11 +10,11 @@ use derive_builder::Builder;
 use dotenvy::dotenv;
 use secrecy::{ExposeSecret, Secret};
 
-use super::errors::BuilderError;
-use super::{bucket::Buckets, db::Database};
+use super::ops::Ops;
 use crate::gateway::handler::Gateway;
+use crate::models::{bucket::Buckets, db::Database, errors::BuilderError};
 
-pub type SharedState = Arc<ApplicationState>;
+pub type App = Arc<ApplicationState>;
 pub type S3Client = Client;
 
 /// Contains all the application state and manages application state changes.
@@ -23,7 +23,7 @@ pub struct ApplicationState {
     pub db: Database,
     pub gateway: Gateway,
     pub config: Config,
-    pub buckets: Buckets,
+    pub s3: Buckets,
 }
 
 impl ApplicationState {
@@ -57,7 +57,7 @@ impl ApplicationState {
             db: Database::new(),
             config,
             gateway: Gateway::new(),
-            buckets,
+            s3: buckets,
         };
 
         state.init().await?;
@@ -65,7 +65,7 @@ impl ApplicationState {
         Ok(Arc::new_cyclic(|w| {
             state.db.bind_to(w.clone());
             state.gateway.bind_to(w.clone());
-            state.buckets.bind_to(w.clone());
+            state.s3.bind_to(w.clone());
             state
         }))
     }
@@ -83,6 +83,11 @@ impl ApplicationState {
     pub async fn close(&self) {
         self.gateway.close();
         self.db.close().await;
+    }
+
+    #[inline]
+    pub const fn ops(&self) -> Ops {
+        Ops::new(self)
     }
 }
 

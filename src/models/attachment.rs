@@ -1,12 +1,11 @@
 use std::sync::OnceLock;
 
 use super::{
-    appstate::SharedState,
     bucket::Buckets,
     channel::Channel,
-    db::Database,
     errors::{AppError, BuilderError, RESTError},
     message::{ExtendedMessageRecord, Message},
+    state::App,
 };
 use axum::extract::multipart::Field;
 use bytes::Bytes;
@@ -162,36 +161,6 @@ impl FullAttachment {
             .build()?)
     }
 
-    /// Commit the attachment to the database. Uploads the contents to S3 implicitly.
-    ///
-    /// ## Errors
-    ///
-    /// * [`AppError::S3`] - If the S3 request fails.
-    pub async fn commit(&self, db: &Database) -> Result<(), AppError> {
-        let message_id: i64 = self.message_id.into();
-        let channel_id: i64 = self.channel_id.into();
-
-        let buckets = &db.app().buckets;
-
-        self.upload(buckets).await?;
-
-        sqlx::query!(
-            "INSERT INTO attachments (id, filename, message_id, channel_id, content_type)
-            VALUES ($1, $2, $3, $4, $5) 
-            ON CONFLICT (id, message_id) 
-            DO UPDATE SET filename = $2, content_type = $5",
-            i32::from(self.id),
-            self.filename,
-            message_id,
-            channel_id,
-            self.content_type,
-        )
-        .execute(db.pool())
-        .await?;
-
-        Ok(())
-    }
-
     /// Upload the attachment content to S3. This function is called implicitly by [`Attachment`]`::commit`.
     ///
     /// ## Errors
@@ -319,11 +288,7 @@ impl PartialAttachment {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the SQL query fails.
-    pub async fn fetch(
-        app: SharedState,
-        id: u8,
-        message: impl Into<Snowflake<Message>>,
-    ) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn fetch(app: App, id: u8, message: impl Into<Snowflake<Message>>) -> Result<Option<Self>, sqlx::Error> {
         let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(
@@ -348,7 +313,7 @@ impl PartialAttachment {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the SQL query fails.
-    pub async fn fetch_all(app: SharedState, message: impl Into<Snowflake<Message>>) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn fetch_all(app: App, message: impl Into<Snowflake<Message>>) -> Result<Vec<Self>, sqlx::Error> {
         let message_id: i64 = message.into().into();
 
         Ok(sqlx::query_as!(

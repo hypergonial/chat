@@ -32,7 +32,6 @@ use tokio::{
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::models::{
-    appstate::{ApplicationState, SharedState},
     auth::Token,
     errors::GatewayError,
     gateway_event::{
@@ -40,6 +39,7 @@ use crate::models::{
     },
     guild::Guild,
     snowflake::Snowflake,
+    state::{App, ApplicationState},
     user::{Presence, User},
 };
 
@@ -430,11 +430,11 @@ impl Default for Gateway {
 /// ## Returns
 ///
 /// A filter that can be used to handle the gateway
-pub fn get_router() -> Router<SharedState> {
+pub fn get_router() -> Router<App> {
     Router::new().route("/", get(websocket_handler))
 }
 
-async fn websocket_handler(State(app): State<SharedState>, ws: WebSocketUpgrade) -> impl IntoResponse {
+async fn websocket_handler(State(app): State<App>, ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(|socket| async move { handle_connection(app, socket).await })
 }
 
@@ -493,7 +493,7 @@ async fn send_close_frame(
 ///
 /// The resolved user if the handshake was successful
 async fn handle_handshake(
-    app: SharedState,
+    app: App,
     ws_sink: &mut SplitSink<WebSocket, Message>,
     ws_stream: &mut SplitStream<WebSocket>,
 ) -> Result<User, GatewayError> {
@@ -530,7 +530,7 @@ async fn handle_handshake(
     };
 
     let user_id = token.data().user_id();
-    let Some(user) = app.db.users().fetch_user(user_id).await else {
+    let Some(user) = app.ops().fetch_user(user_id).await else {
         send_close_frame(ws_sink, GatewayCloseCode::ServerError, "No user belongs to token").await?;
         return Err(GatewayError::InternalServerError("No user belongs to token".into()));
     };
@@ -547,7 +547,7 @@ async fn handle_handshake(
 /// * `app` - The shared application state
 /// * `heartbeat_interval` - The interval at which heartbeats should be received from the user
 /// * `user_id` - The ID of the user to receive heartbeats from
-async fn handle_heartbeating(app: SharedState, user_id: Snowflake<User>, heartbeat_interval: Duration) {
+async fn handle_heartbeating(app: App, user_id: Snowflake<User>, heartbeat_interval: Duration) {
     loop {
         let Some(mut recv) = app.gateway.peers.get(&user_id).map(|h| h.get_receiver()) else {
             return;
@@ -564,7 +564,7 @@ async fn handle_heartbeating(app: SharedState, user_id: Snowflake<User>, heartbe
         });
 
         // Close if either the time runs out or an invalid payload is received
-        let should_close: Result<(), GatewayCloseCode> = tokio::select! {
+        let should_close = tokio::select! {
             _ = sleep_task => Err(GatewayCloseCode::PolicyViolation),
             ret = heartbeat_task => ret.unwrap_or(Err(GatewayCloseCode::ServerError)),
         };
@@ -592,13 +592,12 @@ async fn handle_heartbeating(app: SharedState, user_id: Snowflake<User>, heartbe
 /// * `user` - The user to send the `READY` event to
 /// * `ws_sink` - The sink for sending messages to the user
 async fn send_ready(
-    app: SharedState,
+    app: App,
     user: User,
     ws_sink: Arc<Mutex<SplitSink<WebSocket, Message>>>,
 ) -> Result<(), axum::Error> {
     let guilds = app
-        .db
-        .guilds()
+        .ops()
         .fetch_guilds_for_user(&user)
         .await
         .expect("Failed to fetch guilds during socket connection handling");
@@ -718,7 +717,7 @@ async fn receive_events(
 ///
 /// * `app` - The shared application state
 /// * `socket` - The websocket connection to handle
-async fn handle_connection(app: SharedState, socket: WebSocket) {
+async fn handle_connection(app: App, socket: WebSocket) {
     let (mut ws_sink, mut ws_stream) = socket.split();
     // Handle handshake and get user
     let Ok(user) = handle_handshake(app.clone(), &mut ws_sink, &mut ws_stream).await else {
@@ -791,12 +790,7 @@ async fn handle_connection(app: SharedState, socket: WebSocket) {
     tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
 
     // Refetch presence in case it changed
-    let presence = app
-        .db
-        .users()
-        .fetch_presence(&user)
-        .await
-        .expect("Failed to fetch presence");
+    let presence = app.ops().fetch_presence(&user).await.expect("Failed to fetch presence");
 
     // Send presence update to OFFLINE
     match presence {

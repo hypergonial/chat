@@ -2,12 +2,12 @@ use secrecy::Secret;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    appstate::ApplicationState,
     channel::{Channel, ChannelLike},
     guild::Guild,
     member::{Member, UserLike},
     message::Message,
     snowflake::Snowflake,
+    state::ApplicationState,
     user::{Presence, User},
 };
 
@@ -202,15 +202,14 @@ impl GuildCreatePayload {
     pub async fn from_guild(app: &ApplicationState, guild: Guild) -> Result<Self, sqlx::Error> {
         // Presences need to be included in the payload
         let members = app
-            .db
-            .guilds()
+            .ops()
             .fetch_members_for(&guild)
             .await?
             .into_iter()
             .map(|m| m.include_presence(&app.gateway))
             .collect();
 
-        let channels = app.db.guilds().fetch_channels_for(&guild).await?;
+        let channels = app.ops().fetch_channels_for(&guild).await?;
         Ok(Self::new(guild, members, channels))
     }
 }

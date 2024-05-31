@@ -9,7 +9,7 @@ use serde::{
 };
 
 /// A wrapper around `DataUrl` that implements `Deserialize` and a couple of other useful traits.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DataUri {
     inner: Bytes,
     mime: Mime,

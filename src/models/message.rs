@@ -5,13 +5,13 @@ use serde::Serialize;
 use slice_group_by::GroupBy;
 
 use super::{
-    appstate::Config,
     attachment::{Attachment, AttachmentLike, FullAttachment},
     channel::Channel,
     errors::{BuilderError, RESTError},
     member::UserLike,
     requests::CreateMessage,
     snowflake::Snowflake,
+    state::Config,
     user::User,
 };
 

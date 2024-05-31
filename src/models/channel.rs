@@ -2,7 +2,7 @@ use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 
 use super::snowflake::Snowflake;
-use super::{appstate::Config, guild::Guild, requests::CreateChannel};
+use super::{guild::Guild, requests::CreateChannel, state::Config};
 
 #[enum_dispatch(Channel)]
 pub trait ChannelLike {

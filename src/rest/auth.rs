@@ -2,11 +2,11 @@ use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use secrecy::{ExposeSecret, Secret};
 
-use crate::models::{appstate::SharedState, snowflake::Snowflake, user::User};
 use crate::models::{
     auth::{Credentials, StoredCredentials},
     errors::AuthError,
 };
+use crate::models::{snowflake::Snowflake, state::App, user::User};
 
 // TODO: Add auth attempts logging and authenticated endpoint to query it.
 
@@ -25,7 +25,7 @@ use crate::models::{
 ///
 /// * [`AuthError::InvalidCredentials`] - If the credentials are invalid.
 /// * [`AuthError::PasswordHash`] - If the password could not be hashed.
-pub async fn validate_credentials(app: SharedState, credentials: Credentials) -> Result<Snowflake<User>, AuthError> {
+pub async fn validate_credentials(app: App, credentials: Credentials) -> Result<Snowflake<User>, AuthError> {
     let mut user_id: Option<Snowflake<User>> = None;
     // We set up a dummy hash here so verify_password_hash is always run.
     // This is to prevent timing attacks.

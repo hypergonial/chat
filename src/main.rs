@@ -6,7 +6,7 @@ pub mod rest;
 
 use axum::Router;
 use color_eyre::eyre::Result;
-use models::appstate::SharedState;
+use models::state::App;
 use tokio::signal::ctrl_c;
 use tower_http::trace::TraceLayer;
 
@@ -16,10 +16,10 @@ use tracing::level_filters::LevelFilter;
 #[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
 
-use crate::models::appstate::ApplicationState;
+use crate::models::state::ApplicationState;
 
 #[cfg(unix)]
-async fn handle_signals(state: SharedState) {
+async fn handle_signals(state: App) {
     let mut sigterm = signal(SignalKind::terminate()).expect("Failed to create SIGTERM signal listener");
 
     tokio::select! {
@@ -34,7 +34,7 @@ async fn handle_signals(state: SharedState) {
 }
 
 #[cfg(not(unix))]
-async fn handle_signals(state: SharedState) {
+async fn handle_signals(state: App) {
     ctrl_c().await.expect("Failed to create CTRL+C signal listener");
     state.close().await;
 }
