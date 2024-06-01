@@ -87,7 +87,7 @@ services:
           exit 1;
       fi;
 
-      buckets="attachments users";
+      buckets="attachments users guilds";
 
       for bucket in $$buckets; do
           /usr/bin/mc ls s3-local | grep -wq $$bucket;

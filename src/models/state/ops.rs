@@ -8,7 +8,7 @@ use crate::models::{
     guild::{Guild, GuildRecord},
     member::{ExtendedMemberRecord, Member, MemberRecord},
     message::{ExtendedMessageRecord, Message},
-    requests::{CreateGuild, CreateUser, UpdateUser},
+    requests::{CreateGuild, CreateUser, UpdateGuild, UpdateUser},
     snowflake::Snowflake,
     user::{Presence, User, UserRecord},
 };
@@ -175,7 +175,7 @@ impl<'a> Ops<'a> {
         let id_64: i64 = guild.into().into();
         let record = sqlx::query_as!(
             GuildRecord,
-            "SELECT id, name, owner_id FROM guilds WHERE id = $1",
+            "SELECT id, name, owner_id, avatar_hash FROM guilds WHERE id = $1",
             id_64
         )
         .fetch_optional(self.app.db.pool())
@@ -439,21 +439,40 @@ impl<'a> Ops<'a> {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn update_guild(&self, guild: &Guild) -> Result<(), sqlx::Error> {
+    pub async fn update_guild(&self, payload: UpdateGuild, old_guild: &Guild) -> Result<Guild, AppError> {
+        let mut guild = old_guild.clone();
+        guild.update(payload)?;
+
+        if old_guild == &guild {
+            return Ok(guild);
+        }
+
+        if old_guild.avatar() != guild.avatar() {
+            old_guild.avatar().map(|a| async { a.delete(&self.app.s3).await });
+            match guild.avatar() {
+                Some(Avatar::Full(f)) => f.upload(&self.app.s3).await?,
+                _ => {
+                    Err(BuildError::ValidationError("Cannot upload partial avatar".into()))?;
+                }
+            }
+        }
+
         let id_64: i64 = guild.id().into();
         let owner_id_i64: i64 = guild.owner_id().into();
-        sqlx::query!(
-            "INSERT INTO guilds (id, name, owner_id)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (id) DO UPDATE
-            SET name = $2, owner_id = $3",
+
+        let record = sqlx::query_as!(
+            GuildRecord,
+            "UPDATE guilds
+            SET name = $2, owner_id = $3, avatar_hash = $4
+            WHERE id = $1 RETURNING *",
             id_64,
             guild.name(),
-            owner_id_i64
+            owner_id_i64,
+            guild.avatar().map(AvatarLike::avatar_hash),
         )
-        .execute(self.app.db.pool())
+        .fetch_one(self.app.db.pool())
         .await?;
-        Ok(())
+        Ok(Guild::from_record(record))
     }
 
     /// Deletes the guild.
@@ -626,7 +645,7 @@ impl<'a> Ops<'a> {
 
         let records = sqlx::query_as!(
             GuildRecord,
-            "SELECT guilds.id, guilds.name, guilds.owner_id
+            "SELECT guilds.id, guilds.name, guilds.owner_id, guilds.avatar_hash
             FROM guilds
             INNER JOIN members ON members.guild_id = guilds.id
             WHERE members.user_id = $1",

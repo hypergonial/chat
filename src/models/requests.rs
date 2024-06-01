@@ -60,6 +60,36 @@ impl CreateGuild {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+pub struct UpdateGuild {
+    pub name: Option<String>,
+    pub owner_id: Option<Snowflake<User>>,
+    pub avatar: Option<DataUri>,
+}
+
+impl UpdateGuild {
+    /// Perform the update operation
+    ///
+    /// This is a shorthand for `app.ops().update_guild(payload).await`
+    ///
+    /// # Parameters
+    ///
+    /// - `app` - The application state
+    /// - `guild` - The current guild state that needs to be updated
+    ///
+    /// # Returns
+    ///
+    /// The updated guild
+    ///
+    /// # Errors
+    ///
+    /// Fails if the guild does not exist or the update operation fails
+    #[inline]
+    pub async fn perform_request(self, app: &ApplicationState, guild: &Guild) -> Result<Guild, AppError> {
+        app.ops().update_guild(self, guild).await
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CreateChannel {
     GuildText { name: String },

@@ -1,19 +1,30 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use super::{requests::CreateGuild, snowflake::Snowflake, state::Config, user::User};
+use super::{
+    avatar::{Avatar, FullAvatar, GuildAvatar, PartialAvatar},
+    errors::AppError,
+    requests::{CreateGuild, UpdateGuild},
+    snowflake::Snowflake,
+    state::Config,
+    user::User,
+};
 
 pub struct GuildRecord {
     pub id: i64,
     pub name: String,
     pub owner_id: i64,
+    pub avatar_hash: Option<String>,
 }
 
 /// Represents a guild.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Guild {
     id: Snowflake<Guild>,
     name: String,
     owner_id: Snowflake<User>,
+
+    #[serde(rename = "avatar_hash")]
+    avatar: Option<Avatar<GuildAvatar>>,
 }
 
 impl Guild {
@@ -29,6 +40,7 @@ impl Guild {
             id,
             name,
             owner_id: owner.into(),
+            avatar: None,
         }
     }
 
@@ -47,12 +59,22 @@ impl Guild {
         self.owner_id
     }
 
+    /// The guild's avatar.
+    pub const fn avatar(&self) -> Option<&Avatar<GuildAvatar>> {
+        self.avatar.as_ref()
+    }
+
     /// Create a new guild object from a database record.
     pub fn from_record(record: GuildRecord) -> Self {
         Self {
             id: record.id.into(),
             name: record.name,
             owner_id: record.owner_id.into(),
+            avatar: record.avatar_hash.map(|h| {
+                Avatar::Partial(
+                    PartialAvatar::<GuildAvatar>::new(h, record.id).expect("Database should have valid avatar hash"),
+                )
+            }),
         }
     }
 
@@ -64,6 +86,28 @@ impl Guild {
     /// * `owner` - The ID of the guild's owner.
     pub fn from_payload(config: &Config, payload: CreateGuild, owner: impl Into<Snowflake<User>>) -> Self {
         Self::new(Snowflake::gen_new(config), payload.name, owner.into())
+    }
+
+    /// Update the guild with the given payload.
+    ///
+    /// ## Arguments
+    ///
+    /// * `payload` - The update payload.
+    ///
+    /// ## Errors
+    ///
+    /// * [`AppError::Build`] - If the avatar data URI is invalid.
+    pub fn update(&mut self, payload: UpdateGuild) -> Result<(), AppError> {
+        if let Some(name) = payload.name {
+            self.name = name;
+        }
+        if let Some(owner_id) = payload.owner_id {
+            self.owner_id = owner_id;
+        }
+        if let Some(avatar) = payload.avatar {
+            self.avatar = Some(Avatar::Full(FullAvatar::from_data_uri(self.id(), avatar)?));
+        }
+        Ok(())
     }
 }
 

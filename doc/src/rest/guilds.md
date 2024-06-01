@@ -34,6 +34,36 @@ A [Guild](../objects/guild.md) object.
 
 | Code | Description |
 | ---- | ----------- |
+| 403  | You are not authorized to view this resource. |
+| 404  | The guild was not found. |
+
+## PATCH
+
+### Summary
+
+Update a guild. All fields are optional. All fields specified will be overridden.
+
+Note that if you edit the owner of the guild, you will lose permissions to make further edits to it.
+
+### Example Payload
+
+```json
+{
+    "name": "Among Us",
+    "avatar": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAZABkAAD",
+    "owner_id": null,
+}
+```
+
+### Response
+
+The updated [Guild](../objects/guild.md) object.
+
+### Errors
+
+| Code | Description |
+| ---- | ----------- |
+| 403  | You are not authorized to patch this resource. |
 | 404  | The guild was not found. |
 
 ## DELETE
@@ -46,7 +76,7 @@ Deletes a guild.
 
 | Code | Description |
 | ---- | ----------- |
-| 403  | The user is not the guild's owner. |
+| 403  | You are not authorized to delete this resource. |
 | 404  | The guild was not found. |
 
 # /guilds/\{guild_id\}/channels
@@ -74,6 +104,7 @@ The created [Channel](../objects/channel.md) object.
 
 | Code | Description |
 | ---- | ----------- |
+| 403  | You are not authorized to create this resource. |
 | 404  | The guild was not found. |
 
 # /guilds/\{guild_id\}/members

@@ -1,11 +1,11 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
+use tower_http::limit::RequestBodyLimitLayer;
 
-use crate::models::gateway_event::GuildCreatePayload;
 use crate::models::{
     auth::Token,
     channel::Channel,
@@ -18,6 +18,7 @@ use crate::models::{
     state::App,
     user::User,
 };
+use crate::models::{gateway_event::GuildCreatePayload, requests::UpdateGuild};
 
 pub fn get_router() -> Router<App> {
     Router::new()
@@ -29,6 +30,10 @@ pub fn get_router() -> Router<App> {
         .route("/guilds/:guild_id/members/:member_id", get(fetch_member))
         .route("/guilds/:guild_id/members/@me", delete(leave_guild))
         .route("/guilds/:guild_id", delete(delete_guild))
+        .route(
+            "/guilds/:guild_id",
+            patch(update_guild).layer(RequestBodyLimitLayer::new(2 * 1024 * 1024 /* 2mb */)),
+        )
 }
 
 /// Create a new guild and return the guild data.
@@ -92,19 +97,13 @@ async fn create_channel(
     token: Token,
     Json(payload): Json<CreateChannel>,
 ) -> Result<(StatusCode, Json<Channel>), RESTError> {
-    let user = app
-        .ops()
-        .fetch_user(token.data().user_id())
-        .await
-        .ok_or(RESTError::NotFound("User not found".into()))?;
-
     let guild = app
         .ops()
         .fetch_guild(guild_id)
         .await
         .ok_or(RESTError::NotFound("Guild not found".into()))?;
 
-    if guild.owner_id() != user.id() {
+    if guild.owner_id() != token.data().user_id() {
         return Err(RESTError::Forbidden("You are not the owner of this guild.".into()));
     }
 
@@ -149,6 +148,40 @@ async fn fetch_guild(
             "Failed to fetch guild from database".into(),
         ))?;
 
+    Ok(Json(guild))
+}
+
+/// Update a guild's data.
+///
+/// ## Arguments
+///
+/// * `guild_id` - The ID of the guild to update
+/// * `token` - The user's session token, already validated
+/// * `payload` - The [`UpdateGuild`] payload, containing the fields to update
+///
+/// ## Returns
+///
+/// * [`Guild`] - A JSON response containing the updated [`Guild`] object
+///
+/// ## Endpoint
+///
+/// PATCH `/guilds/{guild_id}`
+async fn update_guild(
+    Path(guild_id): Path<Snowflake<Guild>>,
+    State(app): State<App>,
+    token: Token,
+    Json(payload): Json<UpdateGuild>,
+) -> Result<Json<Guild>, RESTError> {
+    let guild = app
+        .ops()
+        .fetch_guild(guild_id)
+        .await
+        .ok_or(RESTError::NotFound("Guild does not exist or is not available.".into()))?;
+
+    if guild.owner_id() != token.data().user_id() {
+        return Err(RESTError::Forbidden("Not permitted to update resource.".into()));
+    }
+    let guild = payload.perform_request(&app, &guild).await?;
     Ok(Json(guild))
 }
 
