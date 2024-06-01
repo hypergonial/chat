@@ -6,6 +6,7 @@ use slice_group_by::GroupBy;
 
 use super::{
     attachment::{Attachment, AttachmentLike, FullAttachment},
+    avatar::{Avatar, PartialAvatar, UserAvatar},
     channel::Channel,
     errors::{BuildError, RESTError},
     member::UserLike,
@@ -32,6 +33,7 @@ pub struct ExtendedMessageRecord {
     pub user_id: Option<i64>,
     pub username: Option<String>,
     pub display_name: Option<String>,
+    pub avatar_hash: Option<String>,
     pub attachment_id: Option<i32>,
     pub attachment_filename: Option<String>,
     pub attachment_content_type: Option<String>,
@@ -126,24 +128,37 @@ impl Message {
     }
 
     /// Create a new message or messages from the given records. Multiple records are linked together by their ID.
-    pub fn from_records(records: &[ExtendedMessageRecord]) -> Vec<Self> {
+    ///
+    /// ## Errors
+    ///
+    /// * [`BuildError`] - If the records are invalid
+    pub fn from_records(records: &[ExtendedMessageRecord]) -> Result<Vec<Self>, BuildError> {
         if records.is_empty() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
         records
             .linear_group_by(|a, b| a.id == b.id)
             .map(|group| {
-                let author = group[0].user_id.map(|user_id| {
-                    UserLike::User(
-                        User::builder()
+                let author = {
+                    if let Some(user_id) = group[0].user_id {
+                        let avatar: Option<Avatar<UserAvatar>> = group[0]
+                            .avatar_hash
+                            .clone()
+                            .map(|h| PartialAvatar::new(h, user_id).map(Avatar::Partial))
+                            .transpose()?;
+
+                        let user = User::builder()
                             .id(user_id)
-                            .username(group[0].username.clone().expect("This should never happen")) // SAFETY: This is safe because user_id is not None.
+                            .username(group[0].username.clone().expect("User should have username")) // SAFETY: This is safe because user_id is not None.
                             .display_name(group[0].display_name.clone())
-                            .build()
-                            .expect("Failed to build user"),
-                    )
-                });
+                            .avatar(avatar)
+                            .build()?;
+                        Some(UserLike::User(user))
+                    } else {
+                        None
+                    }
+                };
 
                 let attachments = group
                     .iter()
@@ -151,14 +166,14 @@ impl Message {
                     .map(Attachment::Partial)
                     .collect();
 
-                Self {
+                Ok(Self {
                     id: group[0].id.into(),
                     channel_id: group[0].channel_id.into(),
                     author,
                     content: group[0].content.clone(),
                     nonce: None,
                     attachments,
-                }
+                })
             })
             .collect()
     }

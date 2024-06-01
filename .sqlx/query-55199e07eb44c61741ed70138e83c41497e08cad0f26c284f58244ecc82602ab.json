@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                LEFT JOIN attachments ON messages.id = attachments.message_id\n                WHERE messages.channel_id = $1\n                ORDER BY messages.id DESC LIMIT $2",
+  "query": "SELECT messages.*, users.username, users.display_name, users.avatar_hash, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type\n                FROM messages\n                LEFT JOIN users ON messages.user_id = users.id\n                LEFT JOIN attachments ON messages.id = attachments.message_id\n                WHERE messages.channel_id = $1 AND messages.id > $2 AND messages.id < $3\n                ORDER BY messages.id DESC LIMIT $4",
   "describe": {
     "columns": [
       {
@@ -35,22 +35,29 @@
       },
       {
         "ordinal": 6,
+        "name": "avatar_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
         "name": "attachment_id",
         "type_info": "Int4"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "attachment_filename",
         "type_info": "Text"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "attachment_content_type",
         "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
+        "Int8",
+        "Int8",
         "Int8",
         "Int8"
       ]
@@ -62,10 +69,11 @@
       true,
       false,
       true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "ed82e3e1c3605ccb73f7c33b59002f0d606d8030ca55d6d5bd7a88809fc2b4a2"
+  "hash": "55199e07eb44c61741ed70138e83c41497e08cad0f26c284f58244ecc82602ab"
 }

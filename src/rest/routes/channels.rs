@@ -65,7 +65,7 @@ async fn fetch_channel(
     // Check if the user is in the channel's guild
     app.ops()
         .fetch_member(token.data().user_id(), channel.guild_id())
-        .await
+        .await?
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".to_string()))?;
 
     Ok(Json(channel))
@@ -147,7 +147,7 @@ async fn create_message(
     let member = app
         .ops()
         .fetch_member(token.data().user_id(), channel.guild_id())
-        .await
+        .await?
         .ok_or(RESTError::Forbidden("Not permitted to access resource.".into()))?;
 
     let message = Message::from_formdata(&app.config, UserLike::Member(member), channel_id, payload).await?;
@@ -189,7 +189,7 @@ async fn fetch_messages(
     // Check if the user is in the channel's guild
     app.ops()
         .fetch_member(token.data().user_id(), channel.guild_id())
-        .await
+        .await?
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
     let messages = app

@@ -126,7 +126,7 @@ impl<'a> Ops<'a> {
         limit: Option<u32>,
         before: Option<Snowflake<Message>>,
         after: Option<Snowflake<Message>>,
-    ) -> Result<Vec<Message>, sqlx::Error> {
+    ) -> Result<Vec<Message>, AppError> {
         let limit = limit.unwrap_or(50).min(100);
 
         let id_64: i64 = channel.into().into();
@@ -135,7 +135,7 @@ impl<'a> Ops<'a> {
             // SAFETY: sqlx doesn't understand LEFT JOIN properly, so we have to use unchecked here.
             sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
-                "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
+                "SELECT messages.*, users.username, users.display_name, users.avatar_hash, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
                 FROM messages
                 LEFT JOIN users ON messages.user_id = users.id
                 LEFT JOIN attachments ON messages.id = attachments.message_id
@@ -149,7 +149,7 @@ impl<'a> Ops<'a> {
         } else {
             sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
-                "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
+                "SELECT messages.*, users.username, users.display_name, users.avatar_hash, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
                 FROM messages
                 LEFT JOIN users ON messages.user_id = users.id
                 LEFT JOIN attachments ON messages.id = attachments.message_id
@@ -163,7 +163,7 @@ impl<'a> Ops<'a> {
             .fetch_all(self.app.db.pool())
             .await?
         };
-        Ok(Message::from_records(&records))
+        Ok(Message::from_records(&records)?)
     }
 
     /// Fetches a guild from the database by ID.
@@ -222,9 +222,15 @@ impl<'a> Ops<'a> {
     }
 
     /// Fetch the owner of the guild.
-    pub async fn fetch_guild_owner(&self, guild: &Guild) -> Member {
+    ///
+    /// ## Errors
+    ///
+    /// * [`AppError::Build`] - If the member could not be built.
+    /// * [`AppError::Database`] - If the database query fails.
+    pub async fn fetch_guild_owner(&self, guild: &Guild) -> Result<Member, AppError> {
         self.fetch_member(guild.owner_id(), guild)
             .await
+            .transpose()
             .expect("Owner doesn't exist for guild, this should be impossible")
     }
 
@@ -233,12 +239,12 @@ impl<'a> Ops<'a> {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn fetch_members_for(&self, guild: impl Into<Snowflake<Guild>>) -> Result<Vec<Member>, sqlx::Error> {
+    pub async fn fetch_members_for(&self, guild: impl Into<Snowflake<Guild>>) -> Result<Vec<Member>, AppError> {
         let guild_id_64: i64 = guild.into().into();
 
         let records = sqlx::query_as!(
             ExtendedMemberRecord,
-            "SELECT members.*, users.username, users.display_name, users.last_presence 
+            "SELECT members.*, users.username, users.display_name, users.avatar_hash, users.last_presence 
             FROM members
             INNER JOIN users ON users.id = members.user_id
             WHERE members.guild_id = $1",
@@ -247,7 +253,11 @@ impl<'a> Ops<'a> {
         .fetch_all(self.app.db.pool())
         .await?;
 
-        Ok(records.into_iter().map(Member::from_extended_record).collect())
+        records
+            .into_iter()
+            .map(Member::from_extended_record)
+            .collect::<Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// Fetch all channels that are in the guild.
@@ -322,17 +332,31 @@ impl<'a> Ops<'a> {
     }
 
     /// Fetch a member from the database by id and guild id.
+    ///
+    /// ## Arguments
+    ///
+    /// * `user` - The ID of the user to fetch.
+    /// * `guild` - The ID of the guild the user is in.
+    ///
+    /// ## Returns
+    ///
+    /// The member if found, otherwise `None`.
+    ///
+    /// ## Errors
+    ///
+    /// * [`AppError::Database`] - If the database query fails.
+    /// * [`AppError::Build`] - If the member could not be built.
     pub async fn fetch_member(
         &self,
         user: impl Into<Snowflake<User>>,
         guild: impl Into<Snowflake<Guild>>,
-    ) -> Option<Member> {
+    ) -> Result<Option<Member>, AppError> {
         let id_64: i64 = user.into().into();
         let guild_id_64: i64 = guild.into().into();
 
         let record = sqlx::query_as!(
             ExtendedMemberRecord,
-            "SELECT members.*, users.username, users.display_name, users.last_presence 
+            "SELECT members.*, users.username, users.display_name, users.avatar_hash, users.last_presence 
             FROM members
             INNER JOIN users ON users.id = members.user_id
             WHERE members.user_id = $1 AND members.guild_id = $2",
@@ -340,10 +364,9 @@ impl<'a> Ops<'a> {
             guild_id_64
         )
         .fetch_optional(self.app.db.pool())
-        .await
-        .ok()??;
+        .await?;
 
-        Some(Member::from_extended_record(record))
+        record.map(Member::from_extended_record).transpose().map_err(Into::into)
     }
 
     /// Commit the member to the database.
@@ -351,7 +374,7 @@ impl<'a> Ops<'a> {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn update_member(&self, member: &Member) -> Result<(), AppError> {
+    pub async fn update_member(&self, member: &Member) -> Result<(), sqlx::Error> {
         let id_64: i64 = member.user().id().into();
         let guild_id_64: i64 = member.guild_id().into();
         sqlx::query!(
@@ -462,13 +485,18 @@ impl<'a> Ops<'a> {
     /// ## Returns
     ///
     /// The message if found, otherwise `None`.
-    pub async fn fetch_message(&self, message: impl Into<Snowflake<Message>>) -> Option<Message> {
+    ///
+    /// ## Errors
+    ///
+    /// * [`AppError::Database`] - If the database query fails.
+    /// * [`AppError::Build`] - If the message is malformed.
+    pub async fn fetch_message(&self, message: impl Into<Snowflake<Message>>) -> Result<Option<Message>, AppError> {
         let id_i64: i64 = message.into().into();
 
         // sqlx cannot handle LEFT JOIN properly, so we have to use unchecked here.
         let records = sqlx::query_as_unchecked!(
             ExtendedMessageRecord,
-            "SELECT messages.*, users.username, users.display_name, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
+            "SELECT messages.*, users.username, users.display_name, users.avatar_hash, attachments.id AS attachment_id, attachments.filename AS attachment_filename, attachments.content_type AS attachment_content_type
             FROM messages
             LEFT JOIN users ON messages.user_id = users.id
             LEFT JOIN attachments ON messages.id = attachments.message_id
@@ -476,10 +504,9 @@ impl<'a> Ops<'a> {
             id_i64
         )
         .fetch_all(self.app.db.pool())
-        .await
-        .ok()?;
+        .await?;
 
-        Message::from_records(&records).pop()
+        Ok(Message::from_records(&records)?.pop())
     }
 
     /// Commit this message to the database. Uploads all attachments to S3.

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     channel::{Channel, ChannelLike},
+    errors::AppError,
     guild::Guild,
     member::{Member, UserLike},
     message::Message,
@@ -199,7 +200,7 @@ impl GuildCreatePayload {
     /// ## Errors
     ///
     /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn from_guild(app: &ApplicationState, guild: Guild) -> Result<Self, sqlx::Error> {
+    pub async fn from_guild(app: &ApplicationState, guild: Guild) -> Result<Self, AppError> {
         // Presences need to be included in the payload
         let members = app
             .ops()

@@ -3,7 +3,11 @@ use serde::Serialize;
 
 use crate::gateway::handler::Gateway;
 
-use super::guild::Guild;
+use super::{
+    avatar::{Avatar, PartialAvatar},
+    errors::BuildError,
+    guild::Guild,
+};
 
 use super::{snowflake::Snowflake, user::User};
 
@@ -23,6 +27,7 @@ pub struct ExtendedMemberRecord {
     pub joined_at: i64,
     pub username: String,
     pub display_name: Option<String>,
+    pub avatar_hash: Option<String>,
     pub last_presence: i16,
 }
 
@@ -81,11 +86,23 @@ impl Member {
 
     /// Build a member object directly from a database record.
     /// The user is contained in the record, so it will not be fetched from the database.
-    pub fn from_extended_record(record: ExtendedMemberRecord) -> Self {
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Member` object if the member could be built.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `BuildError` if the user object could not be built.
+    pub fn from_extended_record(record: ExtendedMemberRecord) -> Result<Self, BuildError> {
         let mut builder = User::builder();
 
         if let Some(display_name) = record.display_name {
             builder.display_name(display_name);
+        }
+
+        if let Some(avatar_hash) = record.avatar_hash {
+            builder.avatar(Avatar::Partial(PartialAvatar::new(avatar_hash, record.user_id)?));
         }
 
         let user = builder
@@ -95,7 +112,7 @@ impl Member {
             .build()
             .expect("Failed to build user object.");
 
-        Self::new(user, record.guild_id, record.nickname, record.joined_at)
+        Ok(Self::new(user, record.guild_id, record.nickname, record.joined_at))
     }
 
     /// Convert a user into a member with the given guild id.

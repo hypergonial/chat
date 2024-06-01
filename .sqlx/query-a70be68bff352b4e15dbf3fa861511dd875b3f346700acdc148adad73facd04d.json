@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT members.*, users.username, users.display_name, users.last_presence \n            FROM members\n            INNER JOIN users ON users.id = members.user_id\n            WHERE members.guild_id = $1",
+  "query": "SELECT members.*, users.username, users.display_name, users.avatar_hash, users.last_presence \n            FROM members\n            INNER JOIN users ON users.id = members.user_id\n            WHERE members.user_id = $1 AND members.guild_id = $2",
   "describe": {
     "columns": [
       {
@@ -35,12 +35,18 @@
       },
       {
         "ordinal": 6,
+        "name": "avatar_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
         "name": "last_presence",
         "type_info": "Int2"
       }
     ],
     "parameters": {
       "Left": [
+        "Int8",
         "Int8"
       ]
     },
@@ -51,8 +57,9 @@
       false,
       false,
       true,
+      true,
       false
     ]
   },
-  "hash": "b621a0fadcbee2c113143dd975e10c3d534f2cb4140c3282c385afe467aa02dd"
+  "hash": "a70be68bff352b4e15dbf3fa861511dd875b3f346700acdc148adad73facd04d"
 }

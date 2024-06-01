@@ -138,7 +138,7 @@ async fn fetch_guild(
 ) -> Result<Json<Guild>, RESTError> {
     app.ops()
         .fetch_member(token.data().user_id(), guild_id)
-        .await
+        .await?
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
     let guild = app
@@ -207,13 +207,13 @@ async fn fetch_member(
     // Check if the user is in the channel's guild
     app.ops()
         .fetch_member(token.data().user_id(), guild_id)
-        .await
+        .await?
         .ok_or(RESTError::Forbidden("Not permitted to view resource.".into()))?;
 
     let member = app
         .ops()
         .fetch_member(member_id, guild_id)
-        .await
+        .await?
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
     Ok(Json(member))
@@ -241,7 +241,7 @@ async fn fetch_member_self(
     let member = app
         .ops()
         .fetch_member(token.data().user_id(), guild_id)
-        .await
+        .await?
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
     Ok(Json(member))
@@ -282,7 +282,7 @@ async fn create_member(
     let member =
         app.ops()
             .fetch_member(token.data().user_id(), guild_id)
-            .await
+            .await?
             .ok_or(RESTError::InternalServerError(
                 "A member should have been created.".into(),
             ))?;
@@ -334,7 +334,7 @@ async fn leave_guild(
     let member = app
         .ops()
         .fetch_member(token.data().user_id(), guild_id)
-        .await
+        .await?
         .ok_or(RESTError::NotFound("Member does not exist or is not available.".into()))?;
 
     if member.user().id() == guild.owner_id() {
