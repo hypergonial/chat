@@ -1,8 +1,9 @@
-use std::{fmt::Display, hash::Hash, marker::PhantomData, num::ParseIntError, str::FromStr};
+use std::{error::Error, fmt::Display, hash::Hash, marker::PhantomData, num::ParseIntError, str::FromStr};
 
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
+use sqlx::{database::HasValueRef, postgres::PgHasArrayType, Decode};
 use std::time::SystemTime;
 
 use super::state::Config;
@@ -15,6 +16,7 @@ pub const EPOCH: i64 = 1_672_531_200_000;
 /// Snowflakes are 64-bit integers that are guaranteed to be unique.
 /// The first 41 bits are a timestamp, the next 10 are a worker ID, and the last 12 are a process ID.
 #[derive(Debug)]
+#[repr(transparent)]
 pub struct Snowflake<T> {
     // Note: We are using i64 instead of u64 because postgres does not support unsigned integers.
     value: i64,
@@ -113,20 +115,55 @@ impl<T> FromStr for Snowflake<T> {
     }
 }
 
-// implement serialization as a i64
 impl<T> Serialize for Snowflake<T> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.value.to_string().serialize(serializer)
     }
 }
 
-// implement deserialization from a i64
 impl<'de, T> Deserialize<'de> for Snowflake<T> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = String::deserialize(deserializer)?
             .parse()
             .map_err(|_| serde::de::Error::custom("failed parsing snowflake from string"))?;
         Ok(Self::new(value))
+    }
+}
+
+impl<DB: sqlx::Database, T> sqlx::Type<DB> for Snowflake<T>
+where
+    i64: sqlx::Type<DB>,
+{
+    fn type_info() -> <DB as sqlx::Database>::TypeInfo {
+        <i64 as sqlx::Type<DB>>::type_info()
+    }
+}
+
+impl<'q, DB: sqlx::Database, T> sqlx::Encode<'q, DB> for Snowflake<T>
+where
+    i64: sqlx::Encode<'q, DB>,
+{
+    fn encode_by_ref(
+        &self,
+        buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+    ) -> sqlx::encode::IsNull {
+        <i64 as sqlx::Encode<DB>>::encode_by_ref(&self.value, buf)
+    }
+}
+
+impl<'r, DB: sqlx::Database, T> Decode<'r, DB> for Snowflake<T>
+where
+    &'r i64: Decode<'r, DB>,
+{
+    fn decode(value: <DB as HasValueRef<'r>>::ValueRef) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let value = <&i64 as Decode<DB>>::decode(value)?;
+        Ok(Self::new(*value))
+    }
+}
+
+impl<T> PgHasArrayType for Snowflake<T> {
+    fn array_type_info() -> sqlx::postgres::PgTypeInfo {
+        <i64 as PgHasArrayType>::array_type_info()
     }
 }
 

@@ -6,7 +6,7 @@ use crate::models::{
     channel::{Channel, ChannelLike, ChannelRecord, TextChannel},
     errors::{AppError, BuildError, RESTError},
     guild::{Guild, GuildRecord},
-    member::{ExtendedMemberRecord, Member, MemberRecord},
+    member::{ExtendedMemberRecord, Member, MemberRecord, UserLike},
     message::{ExtendedMessageRecord, Message},
     requests::{CreateGuild, CreateUser, UpdateGuild, UpdateUser},
     snowflake::Snowflake,
@@ -36,12 +36,14 @@ impl<'a> Ops<'a> {
     ///
     /// The channel if found, otherwise `None`.
     pub async fn fetch_channel(&self, id: impl Into<Snowflake<Channel>>) -> Option<Channel> {
-        let id_64: i64 = id.into().into();
-
-        let record = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE id = $1", id_64)
-            .fetch_optional(self.app.db.pool())
-            .await
-            .ok()??;
+        let record = sqlx::query_as!(
+            ChannelRecord,
+            "SELECT * FROM channels WHERE id = $1",
+            id.into() as Snowflake<Channel>
+        )
+        .fetch_optional(self.app.db.pool())
+        .await
+        .ok()??;
 
         Some(Channel::from_record(record))
     }
@@ -52,14 +54,12 @@ impl<'a> Ops<'a> {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn create_channel(&self, channel: &Channel) -> Result<Channel, sqlx::Error> {
-        let id_64: i64 = channel.id().into();
-        let guild_id_64: i64 = channel.guild_id().into();
         sqlx::query_as!(
             ChannelRecord,
             "INSERT INTO channels (id, guild_id, name, channel_type)
             VALUES ($1, $2, $3, $4) RETURNING *",
-            id_64,
-            guild_id_64,
+            channel.id() as Snowflake<Channel>,
+            channel.guild_id() as Snowflake<Guild>,
             channel.name(),
             channel.channel_type(),
         )
@@ -74,10 +74,13 @@ impl<'a> Ops<'a> {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn update_channel(&self, channel: &Channel) -> Result<(), sqlx::Error> {
-        let id_64: i64 = channel.id().into();
-        sqlx::query!("UPDATE channels SET name = $2 WHERE id = $1", id_64, channel.name(),)
-            .execute(self.app.db.pool())
-            .await?;
+        sqlx::query!(
+            "UPDATE channels SET name = $2 WHERE id = $1",
+            channel.id() as Snowflake<Channel>,
+            channel.name()
+        )
+        .execute(self.app.db.pool())
+        .await?;
 
         Ok(())
     }
@@ -97,9 +100,7 @@ impl<'a> Ops<'a> {
 
         self.app.s3.remove_all_for_channel(channel_id).await?;
 
-        let id_i64: i64 = channel_id.into();
-
-        sqlx::query!("DELETE FROM channels WHERE id = $1", id_i64)
+        sqlx::query!("DELETE FROM channels WHERE id = $1", channel_id as Snowflake<Channel>)
             .execute(self.app.db.pool())
             .await?;
 
@@ -129,9 +130,7 @@ impl<'a> Ops<'a> {
     ) -> Result<Vec<Message>, AppError> {
         let limit = limit.unwrap_or(50).min(100);
 
-        let id_64: i64 = channel.into().into();
-
-        let records: Vec<ExtendedMessageRecord> = if before.is_none() && after.is_none() {
+        let records = if before.is_none() && after.is_none() {
             // SAFETY: sqlx doesn't understand LEFT JOIN properly, so we have to use unchecked here.
             sqlx::query_as_unchecked!(
                 ExtendedMessageRecord,
@@ -141,7 +140,7 @@ impl<'a> Ops<'a> {
                 LEFT JOIN attachments ON messages.id = attachments.message_id
                 WHERE messages.channel_id = $1
                 ORDER BY messages.id DESC LIMIT $2",
-                id_64,
+                channel.into() as Snowflake<Channel>,
                 i64::from(limit)
             )
             .fetch_all(self.app.db.pool())
@@ -155,7 +154,7 @@ impl<'a> Ops<'a> {
                 LEFT JOIN attachments ON messages.id = attachments.message_id
                 WHERE messages.channel_id = $1 AND messages.id > $2 AND messages.id < $3
                 ORDER BY messages.id DESC LIMIT $4",
-                id_64,
+                channel.into() as Snowflake<Channel>,
                 before.map_or(i64::MAX, Into::into),
                 after.map_or(i64::MIN, Into::into),
                 i64::from(limit)
@@ -172,11 +171,10 @@ impl<'a> Ops<'a> {
     ///
     /// * `guild` - The ID of the guild to fetch.
     pub async fn fetch_guild(&self, guild: impl Into<Snowflake<Guild>>) -> Option<Guild> {
-        let id_64: i64 = guild.into().into();
         let record = sqlx::query_as!(
             GuildRecord,
             "SELECT id, name, owner_id, avatar_hash FROM guilds WHERE id = $1",
-            id_64
+            guild.into() as Snowflake<Guild>,
         )
         .fetch_optional(self.app.db.pool())
         .await
@@ -199,12 +197,11 @@ impl<'a> Ops<'a> {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_guilds_for_user(&self, user: impl Into<Snowflake<User>>) -> Result<Vec<Guild>, sqlx::Error> {
-        let user_id_64: i64 = user.into().into();
         let records = sqlx::query!(
             "SELECT guilds.id, guilds.name, guilds.owner_id 
             FROM guilds JOIN members ON guilds.id = members.guild_id 
             WHERE members.user_id = $1",
-            user_id_64
+            user.into() as Snowflake<User>,
         )
         .fetch_all(self.app.db.pool())
         .await?;
@@ -240,15 +237,13 @@ impl<'a> Ops<'a> {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_members_for(&self, guild: impl Into<Snowflake<Guild>>) -> Result<Vec<Member>, AppError> {
-        let guild_id_64: i64 = guild.into().into();
-
         let records = sqlx::query_as!(
             ExtendedMemberRecord,
             "SELECT members.*, users.username, users.display_name, users.avatar_hash, users.last_presence 
             FROM members
             INNER JOIN users ON users.id = members.user_id
             WHERE members.guild_id = $1",
-            guild_id_64
+            guild.into() as Snowflake<Guild>
         )
         .fetch_all(self.app.db.pool())
         .await?;
@@ -266,11 +261,13 @@ impl<'a> Ops<'a> {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_channels_for(&self, guild: impl Into<Snowflake<Guild>>) -> Result<Vec<Channel>, sqlx::Error> {
-        let guild_id_64: i64 = guild.into().into();
-
-        let records = sqlx::query_as!(ChannelRecord, "SELECT * FROM channels WHERE guild_id = $1", guild_id_64)
-            .fetch_all(self.app.db.pool())
-            .await?;
+        let records = sqlx::query_as!(
+            ChannelRecord,
+            "SELECT * FROM channels WHERE guild_id = $1",
+            guild.into() as Snowflake<Guild>
+        )
+        .fetch_all(self.app.db.pool())
+        .await?;
 
         Ok(records.into_iter().map(Channel::from_record).collect())
     }
@@ -289,15 +286,12 @@ impl<'a> Ops<'a> {
 
         let user = self.fetch_user(user_id).await.ok_or(sqlx::Error::RowNotFound)?;
 
-        let user_id_64: i64 = user_id.into();
-        let guild_id_64: i64 = guild.into().into();
-
         let record = sqlx::query_as!(
             MemberRecord,
             "INSERT INTO members (user_id, guild_id, joined_at)
             VALUES ($1, $2, $3) RETURNING *",
-            user_id_64,
-            guild_id_64,
+            user_id as Snowflake<User>,
+            guild.into() as Snowflake<Guild>,
             Utc::now().timestamp(),
         )
         .fetch_one(self.app.db.pool())
@@ -319,12 +313,10 @@ impl<'a> Ops<'a> {
             return Err(RESTError::Forbidden("Cannot remove owner from guild".into()));
         }
 
-        let user_id_64: i64 = user_id.into();
-        let guild_id_64: i64 = guild.id().into();
         sqlx::query!(
             "DELETE FROM members WHERE user_id = $1 AND guild_id = $2",
-            user_id_64,
-            guild_id_64
+            user_id as Snowflake<User>,
+            guild.id() as Snowflake<Guild>,
         )
         .execute(self.app.db.pool())
         .await?;
@@ -351,17 +343,14 @@ impl<'a> Ops<'a> {
         user: impl Into<Snowflake<User>>,
         guild: impl Into<Snowflake<Guild>>,
     ) -> Result<Option<Member>, AppError> {
-        let id_64: i64 = user.into().into();
-        let guild_id_64: i64 = guild.into().into();
-
         let record = sqlx::query_as!(
             ExtendedMemberRecord,
             "SELECT members.*, users.username, users.display_name, users.avatar_hash, users.last_presence 
             FROM members
             INNER JOIN users ON users.id = members.user_id
             WHERE members.user_id = $1 AND members.guild_id = $2",
-            id_64,
-            guild_id_64
+            user.into() as Snowflake<User>,
+            guild.into() as Snowflake<Guild>,
         )
         .fetch_optional(self.app.db.pool())
         .await?;
@@ -375,15 +364,13 @@ impl<'a> Ops<'a> {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn update_member(&self, member: &Member) -> Result<(), sqlx::Error> {
-        let id_64: i64 = member.user().id().into();
-        let guild_id_64: i64 = member.guild_id().into();
         sqlx::query!(
             "INSERT INTO members (user_id, guild_id, nickname, joined_at)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (user_id, guild_id) DO UPDATE
             SET nickname = $3, joined_at = $4",
-            id_64,
-            guild_id_64,
+            member.user().id() as Snowflake<User>,
+            member.guild_id() as Snowflake<Guild>,
             member.nickname().as_ref(),
             member.joined_at()
         )
@@ -414,15 +401,12 @@ impl<'a> Ops<'a> {
         owner: impl Into<Snowflake<User>>,
     ) -> Result<(Guild, Channel, Member), sqlx::Error> {
         let guild = Guild::from_payload(&self.app.config, payload, owner);
-
-        let id_64: i64 = guild.id().into();
-        let owner_id_i64: i64 = guild.owner_id().into();
         sqlx::query!(
             "INSERT INTO guilds (id, name, owner_id)
             VALUES ($1, $2, $3)",
-            id_64,
+            guild.id() as Snowflake<Guild>,
             guild.name(),
-            owner_id_i64
+            guild.owner_id() as Snowflake<User>,
         )
         .execute(self.app.db.pool())
         .await?;
@@ -457,17 +441,14 @@ impl<'a> Ops<'a> {
             }
         }
 
-        let id_64: i64 = guild.id().into();
-        let owner_id_i64: i64 = guild.owner_id().into();
-
         let record = sqlx::query_as!(
             GuildRecord,
             "UPDATE guilds
             SET name = $2, owner_id = $3, avatar_hash = $4
             WHERE id = $1 RETURNING *",
-            id_64,
+            guild.id() as Snowflake<Guild>,
             guild.name(),
-            owner_id_i64,
+            guild.owner_id() as Snowflake<User>,
             guild.avatar().map(AvatarLike::avatar_hash),
         )
         .fetch_one(self.app.db.pool())
@@ -486,9 +467,7 @@ impl<'a> Ops<'a> {
 
         self.app.s3.remove_all_for_guild(guild_id).await?;
 
-        let id_i64: i64 = guild_id.into();
-
-        sqlx::query!("DELETE FROM guilds WHERE id = $1", id_i64)
+        sqlx::query!("DELETE FROM guilds WHERE id = $1", guild_id as Snowflake<Guild>)
             .execute(self.app.db.pool())
             .await?;
         Ok(())
@@ -510,8 +489,6 @@ impl<'a> Ops<'a> {
     /// * [`AppError::Database`] - If the database query fails.
     /// * [`AppError::Build`] - If the message is malformed.
     pub async fn fetch_message(&self, message: impl Into<Snowflake<Message>>) -> Result<Option<Message>, AppError> {
-        let id_i64: i64 = message.into().into();
-
         // sqlx cannot handle LEFT JOIN properly, so we have to use unchecked here.
         let records = sqlx::query_as_unchecked!(
             ExtendedMessageRecord,
@@ -520,7 +497,7 @@ impl<'a> Ops<'a> {
             LEFT JOIN users ON messages.user_id = users.id
             LEFT JOIN attachments ON messages.id = attachments.message_id
             WHERE messages.id = $1",
-            id_i64
+            message.into() as Snowflake<Message>
         )
         .fetch_all(self.app.db.pool())
         .await?;
@@ -537,17 +514,14 @@ impl<'a> Ops<'a> {
     /// * [`AppError::S3`] - If the S3 request to upload one of the attachments fails.
     /// * [`AppError::Database`] - If the database request fails.
     pub async fn update_message(&self, message: &Message) -> Result<(), AppError> {
-        let id_i64: i64 = message.id().into();
-        let author_id_i64: Option<i64> = message.author().map(|u| u.id().into());
-        let channel_id_i64: i64 = message.channel_id().into();
         sqlx::query!(
             "INSERT INTO messages (id, user_id, channel_id, content)
             VALUES ($1, $2, $3, $4)
             ON CONFLICT (id) DO UPDATE
             SET user_id = $2, channel_id = $3, content = $4",
-            id_i64,
-            author_id_i64,
-            channel_id_i64,
+            message.id() as Snowflake<Message>,
+            message.author().map(UserLike::id) as Option<Snowflake<User>>,
+            message.channel_id() as Snowflake<Channel>,
             message.content(),
         )
         .execute(self.app.db.pool())
@@ -571,13 +545,12 @@ impl<'a> Ops<'a> {
     ///
     /// The user if found, otherwise `None`.
     pub async fn fetch_user(&self, user: impl Into<Snowflake<User>>) -> Option<User> {
-        let id_i64: i64 = user.into().into();
         let row = sqlx::query_as!(
             UserRecord,
             "SELECT id, username, display_name, avatar_hash, last_presence
             FROM users
             WHERE id = $1",
-            id_i64
+            user.into() as Snowflake<User>
         )
         .fetch_optional(self.app.db.pool())
         .await
@@ -596,12 +569,11 @@ impl<'a> Ops<'a> {
     ///
     /// The presence of the user if found, otherwise `None`.
     pub async fn fetch_presence(&self, user: impl Into<Snowflake<User>>) -> Option<Presence> {
-        let id_i64: i64 = user.into().into();
         let row = sqlx::query!(
             "SELECT last_presence
             FROM users
             WHERE id = $1",
-            id_i64
+            user.into() as Snowflake<User>
         )
         .fetch_optional(self.app.db.pool())
         .await
@@ -641,15 +613,13 @@ impl<'a> Ops<'a> {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn fetch_guilds_for(&self, user: impl Into<Snowflake<User>>) -> Result<Vec<Guild>, sqlx::Error> {
-        let id_i64: i64 = user.into().into();
-
         let records = sqlx::query_as!(
             GuildRecord,
             "SELECT guilds.id, guilds.name, guilds.owner_id, guilds.avatar_hash
             FROM guilds
             INNER JOIN members ON members.guild_id = guilds.id
             WHERE members.user_id = $1",
-            id_i64
+            user.into() as Snowflake<User>
         )
         .fetch_all(self.app.db.pool())
         .await?;
@@ -663,13 +633,13 @@ impl<'a> Ops<'a> {
     ///
     /// * [`sqlx::Error`] - If the database query fails.
     pub async fn create_user(&self, payload: CreateUser) -> Result<User, sqlx::Error> {
-        let id_i64: i64 = Snowflake::<User>::gen_new(&self.app.config).into();
+        let gen_id = Snowflake::<User>::gen_new(&self.app.config);
 
         sqlx::query_as!(
             UserRecord,
             "INSERT INTO users (id, username)
             VALUES ($1, $2) RETURNING *",
-            id_i64,
+            gen_id as Snowflake<User>,
             payload.username,
         )
         .fetch_one(self.app.db.pool())
@@ -713,13 +683,11 @@ impl<'a> Ops<'a> {
             }
         }
 
-        let id_i64: i64 = user_id.into();
-
         let record = sqlx::query_as!(
             UserRecord,
             "UPDATE users SET username = $2, display_name = $3, last_presence = $4, avatar_hash = $5
             WHERE id = $1 RETURNING *",
-            id_i64,
+            user_id as Snowflake<User>,
             user.username(),
             user.display_name(),
             *user.last_presence() as i16,
@@ -736,9 +704,6 @@ impl<'a> Ops<'a> {
     ///
     /// * [`AppError::S3`] - If the S3 request fails.
     pub async fn create_attachment(&self, attachment: &FullAttachment) -> Result<(), AppError> {
-        let message_id: i64 = attachment.message_id().into();
-        let channel_id: i64 = attachment.channel_id().into();
-
         attachment.upload(&self.app.s3).await?;
 
         sqlx::query!(
@@ -748,8 +713,8 @@ impl<'a> Ops<'a> {
             DO UPDATE SET filename = $2, content_type = $5",
             i32::from(attachment.id()),
             attachment.filename(),
-            message_id,
-            channel_id,
+            attachment.message_id() as Snowflake<Message>,
+            attachment.channel_id() as Snowflake<Channel>,
             attachment.mime().to_string(),
         )
         .execute(self.app.db.pool())
