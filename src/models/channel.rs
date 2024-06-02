@@ -20,8 +20,8 @@ pub trait ChannelLike {
 
 /// Represents a row representing a channel.
 pub struct ChannelRecord {
-    pub id: i64,
-    pub guild_id: i64,
+    pub id: Snowflake<Channel>,
+    pub guild_id: Snowflake<Guild>,
     pub name: String,
     pub channel_type: String,
 }
@@ -37,11 +37,7 @@ pub enum Channel {
 impl Channel {
     pub fn from_record(record: ChannelRecord) -> Self {
         match record.channel_type.as_str() {
-            "TEXT_CHANNEL" => Self::GuildText(TextChannel::new(
-                Snowflake::from(record.id),
-                Snowflake::from(record.guild_id),
-                record.name,
-            )),
+            "TEXT_CHANNEL" => Self::GuildText(TextChannel::new(record.id, record.guild_id, record.name)),
             _ => panic!("Invalid channel type"),
         }
     }

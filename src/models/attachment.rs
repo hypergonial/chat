@@ -220,7 +220,8 @@ impl AttachmentLike for FullAttachment {
 pub struct PartialAttachmentRecord {
     id: i32,
     filename: String,
-    message_id: i64,
+    message_id: Snowflake<Message>,
+    channel_id: Snowflake<Channel>,
     content_type: String,
 }
 
@@ -293,7 +294,7 @@ impl PartialAttachment {
 
         Ok(sqlx::query_as!(
             PartialAttachmentRecord,
-            "SELECT id, filename, message_id, content_type
+            "SELECT id, filename, message_id, channel_id, content_type
             FROM attachments
             WHERE id = $1 AND message_id = $2",
             i32::from(id),
@@ -318,7 +319,7 @@ impl PartialAttachment {
 
         Ok(sqlx::query_as!(
             PartialAttachmentRecord,
-            "SELECT id, filename, message_id, content_type
+            "SELECT id, filename, message_id, channel_id, content_type
             FROM attachments
             WHERE message_id = $1",
             message_id
@@ -348,8 +349,8 @@ impl From<PartialAttachmentRecord> for PartialAttachment {
         Self {
             id: record.id as u8,
             filename: record.filename,
-            channel_id: Snowflake::from(record.message_id),
-            message_id: Snowflake::from(record.message_id),
+            channel_id: record.channel_id,
+            message_id: record.message_id,
             content_type: record.content_type,
         }
     }

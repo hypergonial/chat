@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, filename, message_id, content_type\n            FROM attachments\n            WHERE message_id = $1",
+  "query": "SELECT id, filename, message_id, channel_id, content_type\n            FROM attachments\n            WHERE message_id = $1",
   "describe": {
     "columns": [
       {
@@ -20,6 +20,11 @@
       },
       {
         "ordinal": 3,
+        "name": "channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
         "name": "content_type",
         "type_info": "Varchar"
       }
@@ -33,8 +38,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "a2d646b9c356ebd73401cd30898c711b3b4a30df1d4b840decfe3917c5f5e4eb"
+  "hash": "de45a2d705b75b79e1475ef86116ef6318f231b51582b295b65248c052cf80fa"
 }

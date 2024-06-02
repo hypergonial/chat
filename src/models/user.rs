@@ -58,7 +58,7 @@ impl Default for Presence {
 
 /// Represents a user record stored in the database.
 pub struct UserRecord {
-    pub id: i64,
+    pub id: Snowflake<User>,
     pub username: String,
     pub display_name: Option<String>,
     pub avatar_hash: Option<String>,
@@ -170,7 +170,7 @@ impl User {
     /// Build a user object directly from a database record.
     pub fn from_record(record: UserRecord) -> Self {
         Self {
-            id: Snowflake::from(record.id),
+            id: record.id,
             username: record.username,
             avatar: record.avatar_hash.map(|h| {
                 Avatar::Partial(

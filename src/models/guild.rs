@@ -10,16 +10,16 @@ use super::{
 };
 
 pub struct GuildRecord {
-    pub id: i64,
+    pub id: Snowflake<Guild>,
     pub name: String,
-    pub owner_id: i64,
+    pub owner_id: Snowflake<User>,
     pub avatar_hash: Option<String>,
 }
 
 /// Represents a guild.
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Guild {
-    id: Snowflake<Guild>,
+    id: Snowflake<Self>,
     name: String,
     owner_id: Snowflake<User>,
 
@@ -67,9 +67,9 @@ impl Guild {
     /// Create a new guild object from a database record.
     pub fn from_record(record: GuildRecord) -> Self {
         Self {
-            id: record.id.into(),
+            id: record.id,
             name: record.name,
-            owner_id: record.owner_id.into(),
+            owner_id: record.owner_id,
             avatar: record.avatar_hash.map(|h| {
                 Avatar::Partial(
                     PartialAvatar::<GuildAvatar>::new(h, record.id).expect("Database should have valid avatar hash"),

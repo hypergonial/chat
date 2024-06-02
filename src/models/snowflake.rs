@@ -3,7 +3,7 @@ use std::{error::Error, fmt::Display, hash::Hash, marker::PhantomData, num::Pars
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
-use sqlx::{database::HasValueRef, postgres::PgHasArrayType, Decode};
+use sqlx::{database::HasValueRef, postgres::PgHasArrayType, Decode, Encode};
 use std::time::SystemTime;
 
 use super::state::Config;
@@ -139,9 +139,9 @@ where
     }
 }
 
-impl<'q, DB: sqlx::Database, T> sqlx::Encode<'q, DB> for Snowflake<T>
+impl<'q, DB: sqlx::Database, T> Encode<'q, DB> for Snowflake<T>
 where
-    i64: sqlx::Encode<'q, DB>,
+    i64: Encode<'q, DB>,
 {
     fn encode_by_ref(
         &self,
@@ -153,11 +153,11 @@ where
 
 impl<'r, DB: sqlx::Database, T> Decode<'r, DB> for Snowflake<T>
 where
-    &'r i64: Decode<'r, DB>,
+    i64: Decode<'r, DB>,
 {
     fn decode(value: <DB as HasValueRef<'r>>::ValueRef) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let value = <&i64 as Decode<DB>>::decode(value)?;
-        Ok(Self::new(*value))
+        let value = <i64 as Decode<DB>>::decode(value)?;
+        Ok(Self::new(value))
     }
 }
 

@@ -13,16 +13,16 @@ use super::{snowflake::Snowflake, user::User};
 
 /// Represents a guild member record stored in the database.
 pub struct MemberRecord {
-    pub user_id: i64,
-    pub guild_id: i64,
+    pub user_id: Snowflake<User>,
+    pub guild_id: Snowflake<Guild>,
     pub nickname: Option<String>,
     pub joined_at: i64,
 }
 
 /// Represents a guild member record with associated user data as queried.
 pub struct ExtendedMemberRecord {
-    pub user_id: i64,
-    pub guild_id: i64,
+    pub user_id: Snowflake<User>,
+    pub guild_id: Snowflake<Guild>,
     pub nickname: Option<String>,
     pub joined_at: i64,
     pub username: String,

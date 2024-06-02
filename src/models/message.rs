@@ -18,9 +18,9 @@ use super::{
 
 /// Represents a message record stored in the database.
 pub struct MessageRecord {
-    pub id: i64,
-    pub channel_id: i64,
-    pub user_id: Option<i64>,
+    pub id: Snowflake<Message>,
+    pub channel_id: Snowflake<Channel>,
+    pub user_id: Option<Snowflake<User>>,
     pub content: String,
 }
 
@@ -30,7 +30,7 @@ pub struct ExtendedMessageRecord {
     pub id: i64,
     pub channel_id: i64,
     pub content: Option<String>,
-    pub user_id: Option<i64>,
+    pub user_id: Option<Snowflake<User>>,
     pub username: Option<String>,
     pub display_name: Option<String>,
     pub avatar_hash: Option<String>,
