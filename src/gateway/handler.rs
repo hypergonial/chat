@@ -764,20 +764,24 @@ async fn handle_connection(app: App, socket: WebSocket) {
     // Send READY and guild creates to user
     let send_ready = tokio::spawn(send_ready(app.clone(), user.clone(), ws_sink.clone()));
 
-    let send_events = tokio::spawn(send_events(user_id, receiver, ws_sink.clone()));
-    let receive_events = tokio::spawn(receive_events(user_id, ws_stream, ws_sink, broadcaster));
-    let handle_heartbeat = tokio::spawn(handle_heartbeating(
+    let mut send_events = tokio::spawn(send_events(user_id, receiver, ws_sink.clone()));
+    let mut receive_events = tokio::spawn(receive_events(user_id, ws_stream, ws_sink, broadcaster));
+    let mut handle_heartbeat = tokio::spawn(handle_heartbeating(
         app.clone(),
         user_id,
         Duration::from_millis(HEARTBEAT_INTERVAL),
     ));
 
-    let is_server_shutting_down: bool = tokio::select! {
-        res = send_events => { matches!(res, Ok(Ok(GatewayCloseCode::GoingAway))) },
-        _ = receive_events => { false },
-        _ = handle_heartbeat => { false },
+    // Tasks do not get aborted if select! drops them, so we need to manually abort them
+    let is_server_shutting_down = tokio::select! {
+        res = &mut send_events => { matches!(res, Ok(Ok(GatewayCloseCode::GoingAway))) },
+        _ = &mut receive_events => { false },
+        _ = &mut handle_heartbeat => { false },
     };
 
+    send_events.abort();
+    receive_events.abort();
+    handle_heartbeat.abort();
     send_ready.abort();
 
     // If we're shutting down, don't spam out presence updates
