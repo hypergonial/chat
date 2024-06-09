@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display, hash::Hash, marker::PhantomData, num::ParseIntError, str::FromStr};
+use std::{error::Error, fmt::Debug, fmt::Display, hash::Hash, marker::PhantomData, num::ParseIntError, str::FromStr};
 
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,6 @@ pub const EPOCH: i64 = 1_672_531_200_000;
 ///
 /// Snowflakes are 64-bit integers that are guaranteed to be unique.
 /// The first 41 bits are a timestamp, the next 10 are a worker ID, and the last 12 are a process ID.
-#[derive(Debug)]
 #[repr(transparent)]
 pub struct Snowflake<T> {
     // Note: We are using i64 instead of u64 because postgres does not support unsigned integers.
@@ -103,7 +102,13 @@ impl<T> Hash for Snowflake<T> {
 
 impl<T> Display for Snowflake<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.value.fmt(f)
+        write!(f, "{}", self.value)
+    }
+}
+
+impl<T> Debug for Snowflake<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Snowflake({})", self.value)
     }
 }
 
