@@ -3,6 +3,7 @@
 pub mod gateway;
 pub mod models;
 pub mod rest;
+pub mod utils;
 
 use axum::Router;
 use color_eyre::eyre::Result;

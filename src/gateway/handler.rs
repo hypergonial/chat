@@ -31,16 +31,20 @@ use tokio::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use crate::models::{
-    auth::Token,
-    errors::GatewayError,
-    gateway_event::{
-        EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, HelloPayload, PresenceUpdatePayload, ReadyPayload,
+use crate::{
+    models::{
+        auth::Token,
+        errors::GatewayError,
+        gateway_event::{
+            EventLike, GatewayEvent, GatewayMessage, GuildCreatePayload, HelloPayload, PresenceUpdatePayload,
+            ReadyPayload,
+        },
+        guild::Guild,
+        snowflake::Snowflake,
+        state::{App, ApplicationState},
+        user::{Presence, User},
     },
-    guild::Guild,
-    snowflake::Snowflake,
-    state::{App, ApplicationState},
-    user::{Presence, User},
+    utils::join_handle::JoinHandleExt,
 };
 
 /// Default heartbeat interval in milliseconds
@@ -552,7 +556,7 @@ async fn handle_heartbeating(app: App, user_id: Snowflake<User>, heartbeat_inter
         let Some(mut recv) = app.gateway.peers.get(&user_id).map(|h| h.get_receiver()) else {
             return;
         };
-        let sleep_task = tokio::spawn(tokio::time::sleep(heartbeat_interval + Duration::from_secs(5)));
+        let sleep_task = tokio::time::sleep(heartbeat_interval + Duration::from_secs(5));
         // Wait for a single heartbeat message
         let heartbeat_task = tokio::spawn(async move {
             loop {
@@ -561,11 +565,12 @@ async fn handle_heartbeating(app: App, user_id: Snowflake<User>, heartbeat_inter
                     return Ok(()); // Heartbeat received, we're good
                 }
             }
-        });
+        })
+        .abort_on_drop();
 
         // Close if either the time runs out or an invalid payload is received
         let should_close = tokio::select! {
-            _ = sleep_task => Err(GatewayCloseCode::PolicyViolation),
+            () = sleep_task => Err(GatewayCloseCode::PolicyViolation),
             ret = heartbeat_task => ret.unwrap_or(Err(GatewayCloseCode::ServerError)),
         };
 
@@ -764,24 +769,22 @@ async fn handle_connection(app: App, socket: WebSocket) {
     // Send READY and guild creates to user
     let send_ready = tokio::spawn(send_ready(app.clone(), user.clone(), ws_sink.clone()));
 
-    let mut send_events = tokio::spawn(send_events(user_id, receiver, ws_sink.clone()));
-    let mut receive_events = tokio::spawn(receive_events(user_id, ws_stream, ws_sink, broadcaster));
-    let mut handle_heartbeat = tokio::spawn(handle_heartbeating(
+    // The tasks need to be dropped when their joinhandles are dropped by select!
+    let send_events = tokio::spawn(send_events(user_id, receiver, ws_sink.clone())).abort_on_drop();
+    let receive_events = tokio::spawn(receive_events(user_id, ws_stream, ws_sink, broadcaster)).abort_on_drop();
+    let handle_heartbeat = tokio::spawn(handle_heartbeating(
         app.clone(),
         user_id,
         Duration::from_millis(HEARTBEAT_INTERVAL),
-    ));
+    ))
+    .abort_on_drop();
 
-    // Tasks do not get aborted if select! drops them, so we need to manually abort them
     let is_server_shutting_down = tokio::select! {
-        res = &mut send_events => { matches!(res, Ok(Ok(GatewayCloseCode::GoingAway))) },
-        _ = &mut receive_events => { false },
-        _ = &mut handle_heartbeat => { false },
+        res = send_events => { matches!(res, Ok(Ok(GatewayCloseCode::GoingAway))) },
+        _ = receive_events => { false },
+        _ = handle_heartbeat => { false },
     };
 
-    send_events.abort();
-    receive_events.abort();
-    handle_heartbeat.abort();
     send_ready.abort();
 
     // If we're shutting down, don't spam out presence updates
