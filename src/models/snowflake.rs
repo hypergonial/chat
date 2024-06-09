@@ -1,4 +1,11 @@
-use std::{error::Error, fmt::Debug, fmt::Display, hash::Hash, marker::PhantomData, num::ParseIntError, str::FromStr};
+use std::{
+    error::Error,
+    fmt::{Debug, Display, Formatter},
+    hash::Hash,
+    marker::PhantomData,
+    num::ParseIntError,
+    str::FromStr,
+};
 
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -101,13 +108,13 @@ impl<T> Hash for Snowflake<T> {
 }
 
 impl<T> Display for Snowflake<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
     }
 }
 
 impl<T> Debug for Snowflake<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Snowflake({})", self.value)
     }
 }
