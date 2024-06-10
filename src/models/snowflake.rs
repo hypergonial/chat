@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fmt::{Debug, Display, Formatter},
-    hash::Hash,
+    hash::{Hash, Hasher},
     marker::PhantomData,
     num::ParseIntError,
     str::FromStr,
@@ -102,7 +102,7 @@ impl<T> PartialEq for Snowflake<T> {
 impl<T> Eq for Snowflake<T> {}
 
 impl<T> Hash for Snowflake<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.value.hash(state);
     }
 }

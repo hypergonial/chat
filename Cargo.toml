@@ -31,9 +31,16 @@ redundant_pub_crate = "allow"
 
 [dependencies]
 tokio = { version = "1", features = ["full", "parking_lot", "tracing"] }
+tokio-stream = "0.1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+bytes = "1.6"
 axum = { version = "0.7", features = ["ws", "multipart", "tracing"] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
+tower-http = { version = "0.5", features = ["limit", "cors", "trace"] }
+http = "1.1.0"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 sqlx = { version = "0.7", features = [
     "macros",
     "migrate",
@@ -46,30 +53,23 @@ chrono = { version = "0.4", default-features = false, features = [
     "std",
     "clock",
 ] }
-tower-http = { version = "0.5", features = ["limit", "cors", "trace"] }
+aws-config = "1.5.0"
+aws-sdk-s3 = "1.31"
 secrecy = { version = "0.8", features = ["serde"] }
 argon2 = { version = "0.5", features = ["std"] }
 bitflags = { version = "2.5", features = ["serde"] }
-http = "1.1.0"
-aws-config = "1.5.0"
-aws-sdk-s3 = "1.31"
-serde_json = "1.0"
 futures = "0.3"
 futures-util = "0.3"
-tokio-stream = "0.1"
 jsonwebtoken = "9.3"
 rs-snowflake = "0.6"
 dotenvy = "0.15"
 async-trait = "0.1"
 rand = "0.8"
 regex = "1.10"
-tracing = "0.1"
-tracing-subscriber = "0.3"
 enum_dispatch = "0.3"
 derive_builder = "0.20"
 slice-group-by = "0.3"
 thiserror = "1.0"
-bytes = "1.6"
 mime = "0.3"
 dashmap = "5.5"
 color-eyre = "0.6"
