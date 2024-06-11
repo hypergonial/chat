@@ -46,10 +46,7 @@ impl<T> Snowflake<T> {
 
     /// Cast this snowflake to a different marker type.
     pub const fn cast<U>(self) -> Snowflake<U> {
-        Snowflake {
-            value: self.value,
-            _marker: PhantomData,
-        }
+        Snowflake::new(self.value)
     }
 
     /// UNIX timestamp representing the time at which this snowflake was created in milliseconds.
