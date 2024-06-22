@@ -77,8 +77,6 @@ pub enum AppError {
     Axum(#[from] axum::Error),
     #[error("Not Found: {0}")]
     NotFound(String),
-    /*     #[error(transparent)]
-    Other(#[from] anyhow::Error), */
 }
 
 impl IntoResponse for AppError {
@@ -90,7 +88,6 @@ impl IntoResponse for AppError {
             Self::Axum(_) | Self::Database(_) | Self::S3(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Auth(e) => return e.into_response(),
             Self::NotFound(_) => StatusCode::NOT_FOUND,
-            // Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             tracing::error!(error = %self);
