@@ -268,7 +268,7 @@ impl Gateway {
     ///
     /// * `peers` (write)
     pub fn dispatch(&self, event: GatewayEvent) {
-        tracing::debug!("Dispatching event: {:?}", event);
+        tracing::debug!(?event, "Dispatching event");
 
         // TODO: Figure out how to use the `HashMap::retain` method here without killing borrowck
         let mut to_drop: Vec<Snowflake<User>> = Vec::new();
@@ -291,8 +291,8 @@ impl Gateway {
                 }
             }
 
-            if let Err(_disconnected) = handle.send(event.clone()) {
-                tracing::warn!("Error dispatching event to user: {}", uid);
+            if let Err(err) = handle.send(event.clone()) {
+                tracing::warn!(error = %err, "Error dispatching event to user: {uid}");
                 to_drop.push(*uid);
             }
         }
@@ -373,10 +373,10 @@ impl Gateway {
     pub fn send_to(&self, user: impl Into<Snowflake<User>>, event: GatewayEvent) {
         let user_id: Snowflake<User> = user.into();
         if let Some(handle) = self.peers.get(&user_id) {
-            if let Err(_disconnected) = handle.send(Arc::new(event)) {
+            if let Err(err) = handle.send(Arc::new(event)) {
                 // Drop handle to prevent deadlock
                 std::mem::drop(handle);
-                tracing::warn!("Error sending event to user: {}", user_id);
+                tracing::warn!(error = %err, "Error sending event to user: {user_id}");
                 self.remove_handle(user_id);
             }
         }
@@ -460,7 +460,7 @@ async fn send_serializable(
     ws_sink: &mut SplitSink<WebSocket, Message>,
     ser: impl Serialize,
 ) -> Result<(), axum::Error> {
-    let message = serde_json::to_string(&ser).expect("Failed to serialize WS message");
+    let message = serde_json::to_string(&ser).expect("Expected Serializable object to not fail serialization");
     ws_sink.send(Message::Text(message)).await
 }
 
@@ -657,7 +657,7 @@ async fn send_events(
             }
             GatewayResponse::Event(event) => {
                 if let Err(e) = send_serializable(&mut *ws_sink.lock().await, event).await {
-                    tracing::warn!("Error sending event to user {}: {}", user_id, e);
+                    tracing::warn!(error = %e, "Error sending event to user {user_id}: {e}");
                     return Err(e);
                 }
             }
@@ -682,7 +682,7 @@ async fn receive_events(
     while let Some(msg) = ws_stream.next().await {
         // Close if the user sends a close frame
         if let Ok(Message::Close(f)) = msg {
-            tracing::debug!("Received close frame from user {}: {:?}", user_id, f);
+            tracing::debug!(close_frame = ?f, "Gateway stream closed by {user_id}: {f:?}");
             break;
         }
         // Otherwise attempt to parse the message and send it
@@ -735,7 +735,7 @@ async fn handle_connection(app: App, socket: WebSocket) {
         return;
     };
 
-    tracing::debug!("Connected: {} ({})", user.username(), user.id());
+    tracing::debug!(?user, "Connected: {} ({})", user.username(), user.id());
 
     let (sender, receiver) = mpsc::unbounded_channel::<GatewayResponse>();
     let (broadcaster, _) = broadcast::channel::<GatewayMessage>(100);
@@ -744,15 +744,16 @@ async fn handle_connection(app: App, socket: WebSocket) {
     // turn receiver into a stream for easier handling
     let receiver = UnboundedReceiverStream::new(receiver);
 
-    let user_id_i64: i64 = user.id().into();
-
-    let guild_ids = sqlx::query!("SELECT guild_id FROM members WHERE user_id = $1", user_id_i64)
-        .fetch_all(app.db.pool())
-        .await
-        .expect("Failed to fetch guilds during socket connection handling")
-        .into_iter()
-        .map(|row| row.guild_id.into())
-        .collect::<HashSet<Snowflake<Guild>>>();
+    let guild_ids = sqlx::query!(
+        "SELECT guild_id FROM members WHERE user_id = $1",
+        user.id() as Snowflake<User>
+    )
+    .fetch_all(app.db.pool())
+    .await
+    .expect("Failed to fetch guilds during socket connection handling")
+    .into_iter()
+    .map(|row| row.guild_id.into())
+    .collect::<HashSet<Snowflake<Guild>>>();
 
     // Add user to peermap
     app.gateway.add_handle(
@@ -794,7 +795,7 @@ async fn handle_connection(app: App, socket: WebSocket) {
 
     // Disconnection logic
     app.gateway.remove_handle(user.id());
-    tracing::debug!("Disconnected: {} ({})", user.username(), user.id());
+    tracing::debug!(?user, "Disconnected: {} ({})", user.username(), user.id());
 
     // Refetch presence in case it changed
     let presence = app.ops().fetch_presence(&user).await.expect("Failed to fetch presence");
