@@ -9,7 +9,81 @@ use axum::{
 };
 use derive_builder::UninitializedFieldError;
 use serde_json::json;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use thiserror::Error;
+
+/// An error response returned by the REST API.
+#[derive(Debug, Clone)]
+pub struct ErrResponse {
+    status: StatusCode,
+    error: String,
+}
+
+impl ErrResponse {
+    pub fn new(status: StatusCode, error: impl Into<String>) -> Self {
+        Self {
+            error: error.into(),
+            status,
+        }
+    }
+}
+
+impl ErrResponse {
+    /// The HTTP status code of the error.
+    pub const fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    /// The error message.
+    pub fn error(&self) -> &str {
+        &self.error
+    }
+
+    // TODO: Maybe think of something better than this?
+    /// The hash of the error message. This is used to anonymize internal error messages in production.
+    pub fn error_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.error.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+
+// Depending on the build profile, we either return the full error message
+// or a generic one in the case of an internal server error.
+impl IntoResponse for ErrResponse {
+    #[cfg(debug_assertions)]
+    fn into_response(self) -> Response {
+        (
+            self.status,
+            Json(json!(
+                {
+                    "error": self.error
+                }
+            )),
+        )
+            .into_response()
+    }
+
+    #[cfg(not(debug_assertions))]
+    fn into_response(self) -> Response {
+        let reason = if self.status == StatusCode::INTERNAL_SERVER_ERROR {
+            format!("Internal Server Error - Ref: #{}", self.error_hash())
+        } else {
+            self.error
+        };
+
+        (
+            self.status,
+            Json(json!(
+                {
+                    "error": reason
+                }
+            )),
+        )
+            .into_response()
+    }
+}
 
 /// Errors encountered during object initialization.
 #[non_exhaustive]
@@ -51,13 +125,46 @@ impl IntoResponse for BuildError {
     }
 }
 
-/// Errors that can occur in the application.
+/// Errors that can occur during authentication.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum AuthError {
+    /// Sent when the user provides invalid username/password.
+    #[error("Invalid credentials")]
+    InvalidCredentials,
+    /// Sent when authorization is required but no token was provided.
+    #[error("Missing or malformed credentials")]
+    MissingCredentials,
+    /// Sent when the server fails to create a token.
+    #[error("Token creation failed")]
+    TokenCreation,
+    /// Sent when the user provides an invalid token.
+    #[error("Invalid token")]
+    InvalidToken,
+    /// Sent when the server fails to hash a password.
+    #[error("Failed to generate password hash: {0}")]
+    PasswordHash(#[from] argon2::password_hash::Error),
+}
+
+impl IntoResponse for AuthError {
+    fn into_response(self) -> Response {
+        let status = match self {
+            Self::MissingCredentials | Self::TokenCreation | Self::InvalidToken | Self::InvalidCredentials => {
+                StatusCode::UNAUTHORIZED
+            }
+            Self::PasswordHash(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        ErrResponse::new(status, self.to_string()).into_response()
+    }
+}
+
+/// Errors that can occur during either the gateway or REST API execution.
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum AppError {
     #[error("Database transaction failed: {0}")]
     Database(#[from] sqlx::Error),
-    #[error("S3 error: {0}")]
+    #[error("S3 service returned error: {0}")]
     S3(String),
     #[error("Failed to serialize/deserialize JSON: {0}")]
     JSON(#[from] serde_json::Error),
@@ -92,10 +199,7 @@ impl IntoResponse for AppError {
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             tracing::error!(error = %self);
         }
-        let body = Json(json!({
-            "error": self.to_string()
-        }));
-        (status, body).into_response()
+        ErrResponse::new(status, self.to_string()).into_response()
     }
 }
 
@@ -110,6 +214,7 @@ where
     }
 }
 
+/// Errors that can occur during the gateway execution.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum GatewayError {
@@ -121,19 +226,20 @@ pub enum GatewayError {
     PolicyViolation(String),
     #[error("Malformed frame: {0}")]
     MalformedFrame(String),
-    #[error("Auth error: {0}")]
+    #[error("Authentication error: {0}")]
     AuthError(String),
     #[error("Handshake failure: {0}")]
     HandshakeFailure(String),
 }
 
-// Anything that can be converted into an AppError can be converted into a RESTError
+// Anything that can be converted into an AppError can be converted into a GatewayError
 impl<T: Into<AppError>> From<T> for GatewayError {
     fn from(e: T) -> Self {
         Self::App(e.into())
     }
 }
 
+/// Errors that can occur during the REST API execution.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum RESTError {
@@ -164,59 +270,18 @@ impl<T: Into<AppError>> From<T> for RESTError {
 
 impl IntoResponse for RESTError {
     fn into_response(self) -> Response {
-        let self_str = self.to_string();
-
-        let (status, error_message) = match self {
-            Self::App(e) => return e.into_response(),
-            Self::InternalServerError(message) => {
-                tracing::error!(error = %message);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
-            }
-            Self::MissingField(_) | Self::MalformedField(_) | Self::DuplicateField(_) => {
-                (StatusCode::BAD_REQUEST, self_str)
-            }
-            Self::NotFound(_) => (StatusCode::NOT_FOUND, self_str),
-            Self::Forbidden(_) => (StatusCode::FORBIDDEN, self_str),
-            Self::BadRequest(_) => (StatusCode::BAD_REQUEST, self_str),
-        };
-        let body = Json(json!({
-            "error": error_message
-        }));
-        (status, body).into_response()
-    }
-}
-
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum AuthError {
-    /// Sent when the user provides invalid username/password.
-    #[error("Invalid credentials")]
-    InvalidCredentials,
-    /// Sent when authorization is required but no token was provided.
-    #[error("Missing or malformed credentials")]
-    MissingCredentials,
-    /// Sent when the server fails to create a token.
-    #[error("Token creation failed")]
-    TokenCreation,
-    /// Sent when the user provides an invalid token.
-    #[error("Invalid token")]
-    InvalidToken,
-    /// Sent when the server fails to hash a password.
-    #[error("Failed to generate password hash: {0}")]
-    PasswordHash(#[from] argon2::password_hash::Error),
-}
-
-impl IntoResponse for AuthError {
-    fn into_response(self) -> Response {
         let status = match self {
-            Self::MissingCredentials | Self::TokenCreation | Self::InvalidToken | Self::InvalidCredentials => {
-                StatusCode::UNAUTHORIZED
+            Self::App(e) => return e.into_response(),
+            Self::InternalServerError(ref message) => {
+                tracing::error!(error = %message);
+                StatusCode::INTERNAL_SERVER_ERROR
             }
-            Self::PasswordHash(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::MissingField(_) | Self::MalformedField(_) | Self::DuplicateField(_) | Self::BadRequest(_) => {
+                StatusCode::BAD_REQUEST
+            }
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
         };
-        let body = Json(json!({
-            "error": self.to_string()
-        }));
-        (status, body).into_response()
+        ErrResponse::new(status, self.to_string()).into_response()
     }
 }
