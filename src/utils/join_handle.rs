@@ -1,4 +1,7 @@
-use std::pin::Pin;
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use futures::Future;
 use tokio::task::{AbortHandle, JoinError, JoinHandle};
@@ -54,7 +57,7 @@ impl<T> Drop for AbortingJoinHandle<T> {
 impl<T> Future for AbortingJoinHandle<T> {
     type Output = Result<T, JoinError>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         JoinHandle::poll(Pin::new(&mut self.get_mut().inner), cx)
     }
 }
