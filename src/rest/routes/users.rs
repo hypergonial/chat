@@ -128,7 +128,7 @@ async fn fetch_self(State(app): State<App>, token: Token) -> Result<Json<User>, 
 ///
 /// GET `/users/@me/guilds`
 async fn fetch_self_guilds(State(app): State<App>, token: Token) -> Result<Json<Vec<Guild>>, RESTError> {
-    let guilds = app.ops().fetch_guilds_for_user(token.data().user_id()).await?;
+    let guilds = app.ops().fetch_guilds_for(token.data().user_id()).await?;
 
     Ok(Json(guilds))
 }

@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use super::{
     bucket::Buckets,
@@ -17,10 +17,8 @@ use serde::Serialize;
 
 use super::snowflake::Snowflake;
 
-fn attachment_regex() -> &'static Regex {
-    static ATTACH_REGEX: OnceLock<Regex> = OnceLock::new();
-    ATTACH_REGEX.get_or_init(|| Regex::new(r"attachment-(?P<id>[0-9])").expect("Failed to compile attachment regex"))
-}
+static ATTACH_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"attachment-(?P<id>[0-9])").expect("Failed to compile attachment regex"));
 
 /// Trait used for enum dispatch
 #[enum_dispatch(Attachment)]
@@ -137,7 +135,7 @@ impl FullAttachment {
 
         builder.filename(filename);
 
-        let Some(caps) = attachment_regex().captures(name) else {
+        let Some(caps) = ATTACH_REGEX.captures(name) else {
             return Err(RESTError::MalformedField(
                 "attachment ID could not be parsed from name".into(),
             ));

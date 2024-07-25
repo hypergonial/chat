@@ -1,4 +1,4 @@
-use std::{hash::Hash, sync::OnceLock};
+use std::{hash::Hash, sync::LazyLock};
 
 use chrono::prelude::*;
 use chrono::DateTime;
@@ -16,13 +16,10 @@ use super::{
     state::Config,
 };
 
-fn username_regex() -> &'static Regex {
-    static USERNAME_REGEX: OnceLock<Regex> = OnceLock::new();
-    USERNAME_REGEX.get_or_init(|| {
-        Regex::new(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*[a-zA-Z0-9])$")
-            .expect("Failed to compile username regex")
-    })
-}
+static USERNAME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9]*(?:[._][a-zA-Z0-9]+)*[a-zA-Z0-9])$")
+        .expect("Failed to compile username regex")
+});
 
 /// Represents the presence of a user.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -240,10 +237,10 @@ impl User {
     }
 
     fn validate_username(username: &str) -> Result<&str, BuildError> {
-        if !username_regex().is_match(username) {
+        if !USERNAME_REGEX.is_match(username) {
             return Err(BuildError::ValidationError(format!(
                 "Invalid username, must match regex: {}",
-                username_regex().as_str()
+                USERNAME_REGEX.as_str()
             )));
         }
         if username.len() > 32 || username.len() < 3 {

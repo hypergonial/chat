@@ -270,22 +270,24 @@ impl Gateway {
     pub fn dispatch(&self, event: GatewayEvent) {
         tracing::debug!(?event, "Dispatching event");
 
-        // TODO: Figure out how to use the `HashMap::retain` method here without killing borrowck
+        // TODO: Figure out how to use the `DashMap::retain` method here without killing borrowck
         let mut to_drop: Vec<Snowflake<User>> = Vec::new();
 
         // Avoid cloning the event for each user
         let event: Arc<GatewayEvent> = Arc::new(event);
+        let event_guild_id = event.extract_guild_id();
+        let event_user_id = event.extract_user_id();
 
         for peer in &self.peers {
             let (uid, handle) = peer.pair();
             // If the event is guild-specific, only send it to users that are members of that guild
-            if let Some(event_guild) = event.extract_guild_id() {
+            if let Some(event_guild) = event_guild_id {
                 if !handle.guild_ids().contains(&event_guild) {
                     continue;
                 }
             }
             // Avoid sending events to users that don't share any guilds with the event originator
-            else if let Some(user_id) = event.extract_user_id() {
+            else if let Some(user_id) = event_user_id {
                 if !self.shares_guilds_with(*uid, user_id) {
                     continue;
                 }
@@ -603,7 +605,7 @@ async fn send_ready(
 ) -> Result<(), axum::Error> {
     let guilds = app
         .ops()
-        .fetch_guilds_for_user(&user)
+        .fetch_guilds_for(&user)
         .await
         .expect("Failed to fetch guilds during socket connection handling");
 

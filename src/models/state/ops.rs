@@ -183,41 +183,6 @@ impl<'a> Ops<'a> {
         Some(Guild::from_record(record))
     }
 
-    /// Fetches all guilds from the database that a given user is a member of.
-    ///
-    /// ## Arguments
-    ///
-    /// * `user` - The ID of the user to fetch guilds for.
-    ///
-    /// ## Returns
-    ///
-    /// A vector of guilds that the user is a member of.
-    ///
-    /// ## Errors
-    ///
-    /// * [`sqlx::Error`] - If the database query fails.
-    pub async fn fetch_guilds_for_user(&self, user: impl Into<Snowflake<User>>) -> Result<Vec<Guild>, sqlx::Error> {
-        let records = sqlx::query!(
-            "SELECT guilds.id, guilds.name, guilds.owner_id 
-            FROM guilds JOIN members ON guilds.id = members.guild_id 
-            WHERE members.user_id = $1",
-            user.into() as Snowflake<User>,
-        )
-        .fetch_all(self.app.db.pool())
-        .await?;
-
-        Ok(records
-            .into_iter()
-            .map(|record| {
-                Guild::new(
-                    Snowflake::from(record.id),
-                    record.name,
-                    Snowflake::from(record.owner_id),
-                )
-            })
-            .collect())
-    }
-
     /// Fetch the owner of the guild.
     ///
     /// ## Errors
@@ -625,6 +590,28 @@ impl<'a> Ops<'a> {
         .await?;
 
         Ok(records.into_iter().map(Guild::from_record).collect())
+    }
+
+    /// Fetch all guild IDs that this user is a member of.
+    /// This is a more efficient version of [`Ops::fetch_guilds_for`] if you only need the IDs.
+    ///
+    /// ## Errors
+    ///
+    /// * [`sqlx::Error`] - If the database query fails.
+    pub async fn fetch_guild_ids_for(
+        &self,
+        user: impl Into<Snowflake<User>>,
+    ) -> Result<Vec<Snowflake<Guild>>, sqlx::Error> {
+        let records = sqlx::query!(
+            "SELECT guild_id
+            FROM members
+            WHERE user_id = $1",
+            user.into() as Snowflake<User>
+        )
+        .fetch_all(self.app.db.pool())
+        .await?;
+
+        Ok(records.into_iter().map(|r| r.guild_id.into()).collect())
     }
 
     /// Create a new user in the database.
