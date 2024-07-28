@@ -10,7 +10,7 @@ use std::{
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
-use sqlx::{database::HasValueRef, postgres::PgHasArrayType, Decode, Encode};
+use sqlx::{postgres::PgHasArrayType, Decode, Encode};
 use std::time::SystemTime;
 
 use super::state::Config;
@@ -154,8 +154,8 @@ where
 {
     fn encode_by_ref(
         &self,
-        buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
-    ) -> sqlx::encode::IsNull {
+        buf: &mut <DB as sqlx::Database>::ArgumentBuffer<'q>,
+    ) -> Result<sqlx::encode::IsNull, Box<dyn Error + Send + Sync>> {
         <i64 as sqlx::Encode<DB>>::encode_by_ref(&self.value, buf)
     }
 }
@@ -164,7 +164,7 @@ impl<'r, DB: sqlx::Database, T> Decode<'r, DB> for Snowflake<T>
 where
     i64: Decode<'r, DB>,
 {
-    fn decode(value: <DB as HasValueRef<'r>>::ValueRef) -> Result<Self, Box<dyn Error + Send + Sync>> {
+    fn decode(value: <DB as sqlx::Database>::ValueRef<'r>) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let value = <i64 as Decode<DB>>::decode(value)?;
         Ok(Self::new(value))
     }
