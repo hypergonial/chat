@@ -95,7 +95,7 @@ impl<'a> Ops<'a> {
     ///
     /// * [`AppError::S3`] - If the S3 request to delete all attachments fails.
     /// * [`AppError::Database`] - If the database query fails.
-    pub async fn delete_channel(&mut self, channel: impl Into<Snowflake<Channel>>) -> Result<(), AppError> {
+    pub async fn delete_channel(&self, channel: impl Into<Snowflake<Channel>>) -> Result<(), AppError> {
         let channel_id: Snowflake<Channel> = channel.into();
 
         self.app.s3.remove_all_for_channel(channel_id).await?;
@@ -427,7 +427,7 @@ impl<'a> Ops<'a> {
     ///
     /// * [`AppError::S3`] - If the S3 request to delete all attachments fails.
     /// * [`AppError::Database`] - If the database query fails.
-    pub async fn delete_guild(&mut self, guild: impl Into<Snowflake<Guild>>) -> Result<(), AppError> {
+    pub async fn delete_guild(&self, guild: impl Into<Snowflake<Guild>>) -> Result<(), AppError> {
         let guild_id: Snowflake<Guild> = guild.into();
 
         self.app.s3.remove_all_for_guild(guild_id).await?;
